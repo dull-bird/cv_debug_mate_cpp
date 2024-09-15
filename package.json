@@ -1,0 +1,57 @@
+{
+    "name": "opencv-visualizer",
+    "displayName": "OpenCV Visualizer",
+    "description": "",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.93.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "test-cv.helloWorld",
+                "title": "Hello World"
+            },
+            {
+                "command": "extension.viewVariable",
+                "title": "Get Vector Info"
+            }
+        ],
+        "menus": {
+            "debug/variables/context": [
+                {
+                    "command": "extension.viewVariable",
+                    "when": "debugType == 'cppvsdbg'"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src",
+        "test": "vscode-test"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.7",
+        "@types/node": "20.x",
+        "@types/vscode": "^1.93.0",
+        "@typescript-eslint/eslint-plugin": "^8.3.0",
+        "@typescript-eslint/parser": "^8.3.0",
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.4.1",
+        "eslint": "^9.9.1",
+        "typescript": "^5.5.4",
+        "vite": "^5.4.5"
+    },
+    "dependencies": {
+        "open": "^10.1.0",
+        "three": "^0.168.0"
+    }
+}

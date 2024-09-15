@@ -1,0 +1,1065 @@
+log.ts:419  INFO Started local extension host with pid 31888.
+log.ts:429  WARN [vscode-autohotkey-plus-plus]: Couldn't find message for key ahk++.config.v2.actionWhenV1Detectedd.
+log.ts:429  WARN [csharp]: Couldn't find message for key configuration.dotnet.unitTests.runSettingsPath.markdownDescription.
+log.ts:439   ERR Extension 'MarsCode.marscode-extension CANNOT USE these API proposals 'inlineCompletionsAdditions'. You MUST start in extension development mode or use the --enable-proposed-api command line flag
+log.ts:419  INFO Ignoring configured affinity for 'ms-toolsai.jupyter' because extension host(s) are already running. Reload window.
+log.ts:419  INFO Ignoring configured affinity for 'ms-toolsai.jupyter-renderers' because extension host(s) are already running. Reload window.
+log.ts:419  INFO Ignoring configured affinity for 'ms-python.python' because extension host(s) are already running. Reload window.
+log.ts:419  INFO Ignoring configured affinity for 'ms-python.vscode-pylance' because extension host(s) are already running. Reload window.
+log.ts:419  INFO Placing extension(s) ms-python.black-formatter, ms-python.debugpy, ms-python.isort, ms-python.python, ms-python.vscode-pylance, ms-toolsai.jupyter, ms-toolsai.jupyter-renderers on a separate extension host.
+log.ts:429  WARN [redhat.vscode-yaml]: Cannot register 'redhat.telemetry.enabled'. This property is already registered.
+log.ts:429  WARN [REditorSupport.r]: Cannot register 'r.rpath.windows'. This property is already registered.
+log.ts:429  WARN [REditorSupport.r]: Cannot register 'r.rpath.mac'. This property is already registered.
+log.ts:429  WARN [REditorSupport.r]: Cannot register 'r.rpath.linux'. This property is already registered.
+log.ts:429  WARN [twxs.cmake]: Cannot register 'cmake.cmakePath'. This property is already registered.
+log.ts:419  INFO Creating lazy extension host (LocalWebWorker). Reason: contains 1 extension(s): wengerk.highlight-bad-chars.
+vscode-file://vscode-app/c:/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/out/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html?&vscodeWebWorkerExtHostId=43307036-ab6d-43ab-9ae8-342ce2997447:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+log.ts:419  INFO Started local extension host with pid 34096.
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.log.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/log/syntaxes/log.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/emilast.logfilehighlighter-3.3.2/syntaxes/log.tmLanguage
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.python.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/python/syntaxes/MagicPython.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/magicstack.magicpython-1.1.0/grammars/MagicPython.tmLanguage
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/TeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/Bibtex.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.markdown_latex_combined.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/markdown-latex-combined.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/markdown-latex-combined.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cpp.embedded.latex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/cpp-grammar-bailout.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/cpp-grammar-bailout.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/TeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.doctex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/DocTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/DocTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/Bibtex.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.bst.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/BibTeX-style.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/BibTeX-style.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.expl3.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX-Expl3.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX-Expl3.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cpp.embedded.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/cpp-grammar-bailout.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/cpp-grammar-bailout.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.jlweave.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/JLweave.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/JLweave.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.rsweave.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/RSweave.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/RSweave.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.yaml.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/yaml/syntaxes/yaml.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/redhat.vscode-yaml-1.15.0/syntaxes/yaml.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.r.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/r/syntaxes/r.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/reditorsupport.r-2.8.4/syntax/r.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/Bibtex.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/LaTeX.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/TeX.json
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cmake.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/josetr.cmake-language-support-vscode-0.0.9/syntaxes/CMake.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/twxs.cmake-0.0.17/syntaxes/CMake.tmLanguage
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cmakecache.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/josetr.cmake-language-support-vscode-0.0.9/syntaxes/CMakeCache.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/twxs.cmake-0.0.17/syntaxes/CMakeCache.tmLanguage
+register @ TMScopeRegistry.ts:46
+v @ TMGrammarFactory.ts:74
+S @ textMateTokenizationFeatureImpl.ts:260
+await in S (async)
+U @ textMateTokenizationFeatureImpl.ts:280
+(anonymous) @ textMateTokenizationFeatureImpl.ts:118
+get tokenizationSupport @ languages.ts:2143
+j @ tokenizationRegistry.ts:146
+resolve @ tokenizationRegistry.ts:140
+getOrCreate @ tokenizationRegistry.ts:76
+P @ textMateTokenizationFeatureImpl.ts:129
+(anonymous) @ textMateTokenizationFeatureImpl.ts:82
+d @ extensionsRegistry.ts:151
+acceptUsers @ extensionsRegistry.ts:142
+Hb @ abstractExtensionService.ts:1115
+Eb @ abstractExtensionService.ts:1045
+jb @ abstractExtensionService.ts:507
+ib @ abstractExtensionService.ts:454
+mainThreadExtensionService.ts:78 [adamvoss.vscode-languagetool]spawn EINVAL
+$onExtensionRuntimeError @ mainThreadExtensionService.ts:78
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
+mainThreadExtensionService.ts:79 Error: spawn EINVAL
+	at ChildProcess.spawn (node:internal/child_process:421:11)
+	at Object.spawn (node:child_process:800:9)
+	at Server.<anonymous> (c:\Users\User\.vscode\extensions\adamvoss.vscode-languagetool-3.8.0\out\src\extension.js:55:45)
+	at Object.onceWrapper (node:events:633:28)
+	at Server.emit (node:events:519:28)
+	at emitListeningNT (node:net:1932:10)
+	at process.processTicksAndRejections (node:internal/process/task_queues:81:21)
+$onExtensionRuntimeError @ mainThreadExtensionService.ts:79
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.log.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/log/syntaxes/log.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/emilast.logfilehighlighter-3.3.2/syntaxes/log.tmLanguage
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.python.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/python/syntaxes/MagicPython.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/magicstack.magicpython-1.1.0/grammars/MagicPython.tmLanguage
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/TeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/Bibtex.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.markdown_latex_combined.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/markdown-latex-combined.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/markdown-latex-combined.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cpp.embedded.latex.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/latex/syntaxes/cpp-grammar-bailout.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/cpp-grammar-bailout.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/TeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.doctex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/DocTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/DocTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/Bibtex.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.bst.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/BibTeX-style.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/BibTeX-style.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.expl3.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/LaTeX-Expl3.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX-Expl3.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cpp.embedded.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/cpp-grammar-bailout.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/cpp-grammar-bailout.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.jlweave.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/JLweave.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/JLweave.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.rsweave.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/manhen.latex-workshop-2-9.14.1/syntax/RSweave.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/RSweave.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.yaml.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/yaml/syntaxes/yaml.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/redhat.vscode-yaml-1.15.0/syntaxes/yaml.tmLanguage.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.r.
+Old grammar file: file:///c%3A/Users/User/AppData/Local/Programs/Microsoft%20VS%20Code/resources/app/extensions/r/syntaxes/r.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/reditorsupport.r-2.8.4/syntax/r.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.bibtex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/Bibtex.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/Bibtex.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.latex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/LaTeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/LaTeX.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope text.tex.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/mathematic.vscode-latex-1.3.0/syntax/TeX.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/torn4dom4n.latex-support-3.10.0/grammars/TeX.json
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cmake.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/josetr.cmake-language-support-vscode-0.0.9/syntaxes/CMake.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/twxs.cmake-0.0.17/syntaxes/CMake.tmLanguage
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+TMScopeRegistry.ts:46 Overwriting grammar scope name to file mapping for scope source.cmakecache.
+Old grammar file: file:///c%3A/Users/User/.vscode/extensions/josetr.cmake-language-support-vscode-0.0.9/syntaxes/CMakeCache.tmLanguage.json.
+New grammar file: file:///c%3A/Users/User/.vscode/extensions/twxs.cmake-0.0.17/syntaxes/CMakeCache.tmLanguage
+register @ TMScopeRegistry.ts:46
+O @ TMGrammarFactory.ts:74
+f @ textMateTokenizationWorker.worker.ts:93
+await in f (async)
+$init @ textMateTokenizationWorker.worker.ts:74
+g @ simpleWorker.ts:510
+handleMessage @ simpleWorker.ts:487
+k @ simpleWorker.ts:245
+h @ simpleWorker.ts:209
+handleMessage @ simpleWorker.ts:178
+onmessage @ simpleWorker.ts:493
+self.onmessage @ workerMain.ts:147
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.372Z [info] [proc] Executing command: "C:\Program Files\CMake\bin\cmake.EXE" --version
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.421Z [info] [proc] Executing command: "C:\Program Files\CMake\bin\cmake.EXE" -E capabilities
+console.ts:137 [Extension Host] highlight-bad-chars decorator is activated with configuration {badCharDecorationType: {…}, charRegExp: '[\x82\x84\x85\x88\x91\x92\x93\x94\x95\x96\x97\x99 ¦«»¼½¾¿¨± ᠎           ​‍–—   　﻿￼\x00\x01\x02\x03\x04\x05\x06\x07\b\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x7F؜‎‏‪‫‬‭‮⁦⁧⁨⁩​;¸ǀ∣­]', allowedChars: Array(0)}
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.501Z [debug] [main] Safe constructing new CMakeProject instance
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.502Z [debug] [variant] Constructing VariantManager
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.502Z [debug] [main] Constructing new CMakeProject instance
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.502Z [debug] [main] Starting CMake Tools second-phase init
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.502Z [debug] [expand] expanded ${workspaceFolder}
+log.ts:439   ERR spawn java ENOENT: Error: spawn java ENOENT
+	at ChildProcess._handle.onexit (node:internal/child_process:286:19)
+	at onErrorNT (node:internal/child_process:484:16)
+	at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.594Z [debug] [kit] Reading kits file C:\Users\User\AppData\Local\CMakeTools\cmake-tools-kits.json
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.631Z [info] [kit] Successfully loaded 12 kits from C:\Users\User\AppData\Local\CMakeTools\cmake-tools-kits.json
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.643Z [debug] [kit] Not reading non-existent kits file: c:\Users\User\repos\algorithm_module\.vscode\cmake-kits.json
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.644Z [debug] [main] Injecting new Kit into CMake driver
+console.ts:137 [Extension Host] highlight-bad-chars configuration updated {badCharDecorationType: {…}, charRegExp: '[\x82\x84\x85\x88\x91\x92\x93\x94\x95\x96\x97\x99 ¦«»¼½¾¿¨± ᠎           ​‍–—   　﻿￼\x00\x01\x02\x03\x04\x05\x06\x07\b\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x7F؜‎‏‪‫‬‭‮⁦⁧⁨⁩​;¸ǀ∣­]', allowedChars: Array(0)}
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.700Z [info] [variant] Loaded new set of variants
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.701Z [debug] [main] CMakeProject instance initialization complete.
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.745Z [debug] [extension] Attempting to use cache to configure workspace file:///c%3A/Users/User/repos/algorithm_module
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.785Z [debug] [main] Starting new CMake driver
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.785Z [debug] [main] Starting CMake driver
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.785Z [debug] [cmakefileapi-driver] Creating instance of CMakeFileApiDriver
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.786Z [debug] [driver] Initializing base driver using kit
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.828Z [debug] [driver] CMakeDriver Kit set to Visual Studio Community 2019 Release - amd64
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:00.830Z [info] [proc] Executing command: chcp
+log.ts:419  INFO [perf] Render performance baseline is 11ms
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:01.312Z [debug] [extension] [8441] cmake.buildDirectory started
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:01.855Z [debug] [extension] [3505] cmake.buildDirectory started
+console.ts:137 [Extension Host] Checking if catppuccin is installed for the first time.
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:01 [INFO]: win-ca initialized
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:01 [ERROR]: node-loader:
+Error: c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\dc2d7f63219ca9f39dedf837aec88181.node is not a valid Win32 application.
+c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\dc2d7f63219ca9f39dedf837aec88181.node
+console.ts:137 [Extension Host] Catppuccin has been installed before.
+localProcessExtensionHost.ts:275 Extension Host
+localProcessExtensionHost.ts:276 (VSCode) 2024-09-15 15:09:01 [INFO]: win-ca initialized
+(VSCode) 2024-09-15 15:09:01 [ERROR]: node-loader:
+Error: c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\dc2d7f63219ca9f39dedf837aec88181.node is not a valid Win32 application.
+c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\dc2d7f63219ca9f39dedf837aec88181.node
+
+console.ts:137 [Extension Host] [vscode-icons] v12.8.0 activated!
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:03 [INFO]: Creating manager directory: C:\Users\User\AppData\Local\Temp\4c31fc54-ca8b-4d13-a02f-ff234bb64185\codeium\manager
+localProcessExtensionHost.ts:275 Extension Host
+localProcessExtensionHost.ts:276 (VSCode) 2024-09-15 15:09:03 [INFO]: Creating manager directory: C:\Users\User\AppData\Local\Temp\4c31fc54-ca8b-4d13-a02f-ff234bb64185\codeium\manager
+
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:03 [INFO]: Using cached LS with valid crc32: c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\cee2c2c314ffa41c66be177dd11f9f894805e383\language_server_windows_x64.exe
+localProcessExtensionHost.ts:275 Extension Host
+localProcessExtensionHost.ts:276 (VSCode) 2024-09-15 15:09:03 [INFO]: Using cached LS with valid crc32: c:\Users\User\.vscode\extensions\codeium.codeium-1.14.12\dist\cee2c2c314ffa41c66be177dd11f9f894805e383\language_server_windows_x64.exe
+
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:03 [INFO]: Language server started
+localProcessExtensionHost.ts:275 Extension Host
+localProcessExtensionHost.ts:276 (VSCode) 2024-09-15 15:09:03 [INFO]: Language server started
+
+log.ts:439   ERR [Extension Host] Iconv-lite warning: decode()-ing strings is deprecated. Refer to https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding
+console.ts:137 [Extension Host] Iconv-lite warning: decode()-ing strings is deprecated. Refer to https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding
+C @ console.ts:137
+$logExtensionHostMessage @ mainThreadConsole.ts:39
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.949Z [debug] [visual-studio] OK running C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat x64 , env vars: {"DevEnvDir":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\","Framework40Version":"v4.0","FrameworkDir":"C:\\Windows\\Microsoft.NET\\Framework64\\","FrameworkDIR64":"C:\\Windows\\Microsoft.NET\\Framework64\\","FrameworkVersion":"v4.0.30319","FrameworkVersion64":"v4.0.30319","INCLUDE":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\ATLMFC\\include;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\include;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\include\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\winrt;C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\cppwinrt","LIB":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\ATLMFC\\lib\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\lib\\um\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\ucrt\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\um\\x64","LIBPATH":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\ATLMFC\\lib\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\lib\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\lib\\x86\\store\\references;C:\\Program Files (x86)\\Windows Kits\\10\\UnionMetadata\\10.0.26100.0;C:\\Program Files (x86)\\Windows Kits\\10\\References\\10.0.26100.0;C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319","NETFXSDKDir":"C:\\Program Files (x86)\\Windows Kits\\NETFXSDK\\4.8\\","Path":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\\\Extensions\\Microsoft\\IntelliCode\\CLI;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Team Tools\\Performance Tools\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Team Tools\\Performance Tools;C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\Common\\VSPerfCollectionTools\\vs2019\\\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\Common\\VSPerfCollectionTools\\vs2019\\;C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\x64\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\devinit;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\\\MSBuild\\Current\\Bin;C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\Git\\cmd;C:\\Program Files\\CMake\\bin;C:\\Program Files (x86)\\Incredibuild;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64;C:\\Program Files\\dotnet\\;C:\\Qt\\Qt5.12.12\\5.12.12\\msvc2017_64\\bin;C:\\Users\\User\\repos\\3rdParty\\OpenCV\\opencv4\\build\\x64\\vc15\\bin;C:\\Users\\User\\repos\\3rdParty\\PCL\\bin;C:\\Users\\User\\repos\\3rdParty\\Poco\\bin;C:\\Users\\User\\App\\rclone-v1.67.0-windows-amd64;C:\\Program Files\\MATLAB\\R2024a\\bin;C:\\Program Files\\gnuplot\\bin;C:\\Users\\User\\App\\PlantUML;C:\\Users\\User\\scoop\\apps\\llvm\\current\\bin;C:\\Users\\User\\scoop\\shims;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\User\\AppData\\Local\\gitkraken\\bin;C:\\Users\\User\\AppData\\Local\\Programs\\oh-my-posh\\bin;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GNU.Wget2_Microsoft.Winget.Source_8wekyb3d8bbwe;;C:\\Users\\User\\AppData\\Local\\Programs\\Ollama;C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code Insiders\\bin;C:\\Users\\User\\.dotnet\\tools;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe;;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja","UCRTVersion":"10.0.26100.0","UniversalCRTSdkDir":"C:\\Program Files (x86)\\Windows Kits\\10\\","VCIDEInstallDir":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\VC\\","VCINSTALLDIR":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\","VCToolsInstallDir":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\","VCToolsRedistDir":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Redist\\MSVC\\14.29.30133\\","VCToolsVersion":"14.29.30133","VisualStudioVersion":"16.0","VSINSTALLDIR":"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\","WindowsLibPath":"C:\\Program Files (x86)\\Windows Kits\\10\\UnionMetadata\\10.0.26100.0;C:\\Program Files (x86)\\Windows Kits\\10\\References\\10.0.26100.0","WindowsSdkBinPath":"C:\\Program Files (x86)\\Windows Kits\\10\\bin\\","WindowsSdkDir":"C:\\Program Files (x86)\\Windows Kits\\10\\","WindowsSDKLibVersion":"10.0.26100.0\\","WindowsSDKVersion":"10.0.26100.0\\","WindowsSDK_ExecutablePath_x64":"C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\x64\\","WindowsSDK_ExecutablePath_x86":"C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\","TMP":"C:\\Users\\User\\AppData\\Local\\Temp"}
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.949Z [debug] [kit] The environment for kit 'Visual Studio Community 2019 Release - amd64': {
+  "ALLUSERSPROFILE": "C:\\ProgramData",
+  "APPDATA": "C:\\Users\\User\\AppData\\Roaming",
+  "APPLICATION_INSIGHTS_NO_DIAGNOSTIC_CHANNEL": "1",
+  "CHROME_CRASHPAD_PIPE_NAME": "\\\\.\\pipe\\crashpad_304_CRNJEALHVEWAWYYK",
+  "COMPUTERNAME": "DESKTOP-F9JJEA8",
+  "ComSpec": "C:\\Windows\\system32\\cmd.exe",
+  "CommonProgramFiles": "C:\\Program Files\\Common Files",
+  "CommonProgramFiles(x86)": "C:\\Program Files (x86)\\Common Files",
+  "CommonProgramW6432": "C:\\Program Files\\Common Files",
+  "DriverData": "C:\\Windows\\System32\\Drivers\\DriverData",
+  "EFC_11908": "1",
+  "ELECTRON_RUN_AS_NODE": "1",
+  "GNUPLOT_LIB": "C:\\Program Files\\gnuplot\\demo;C:\\Program Files\\gnuplot\\demo\\games;C:\\Program Files\\gnuplot\\share",
+  "HOMEDRIVE": "C:",
+  "HOMEPATH": "\\Users\\User",
+  "LIBCLANG_PATH": "C:\\Users\\User\\scoop\\apps\\llvm\\current\\bin",
+  "LLVM_LIB_DIR": "C:\\Users\\User\\scoop\\apps\\llvm\\current\\lib",
+  "LOCALAPPDATA": "C:\\Users\\User\\AppData\\Local",
+  "LOGONSERVER": "\\\\DESKTOP-F9JJEA8",
+  "NUMBER_OF_PROCESSORS": "32",
+  "ORIGINAL_XDG_CURRENT_DESKTOP": "undefined",
+  "OS": "Windows_NT",
+  "OneDrive": "C:\\Users\\User\\OneDrive - hkclr",
+  "OneDriveCommercial": "C:\\Users\\User\\OneDrive - hkclr",
+  "OneDriveConsumer": "C:\\Users\\User\\OneDrive",
+  "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC",
+  "PLANTUML_JAR_PATH": "C:\\Users\\User\\App\\PlantUML\\plantuml-1.2024.6.jar",
+  "POSH_INSTALLER": "scoop",
+  "POSH_THEMES_PATH": "C:\\Users\\User\\AppData\\Local\\Programs\\oh-my-posh\\themes",
+  "PROCESSOR_ARCHITECTURE": "AMD64",
+  "PROCESSOR_IDENTIFIER": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "PROCESSOR_LEVEL": "6",
+  "PROCESSOR_REVISION": "b701",
+  "PSModulePath": "C:\\Program Files\\WindowsPowerShell\\Modules;C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules",
+  "PUBLIC": "C:\\Users\\Public",
+  "Path": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\\\Extensions\\Microsoft\\IntelliCode\\CLI;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\VC\\VCPackages;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\bin\\Roslyn;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Team Tools\\Performance Tools\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Team Tools\\Performance Tools;C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\Common\\VSPerfCollectionTools\\vs2019\\\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\Common\\VSPerfCollectionTools\\vs2019\\;C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\x64\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\devinit;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\\\MSBuild\\Current\\Bin;C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\;C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\Git\\cmd;C:\\Program Files\\CMake\\bin;C:\\Program Files (x86)\\Incredibuild;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX64\\x64;C:\\Program Files\\dotnet\\;C:\\Qt\\Qt5.12.12\\5.12.12\\msvc2017_64\\bin;C:\\Users\\User\\repos\\3rdParty\\OpenCV\\opencv4\\build\\x64\\vc15\\bin;C:\\Users\\User\\repos\\3rdParty\\PCL\\bin;C:\\Users\\User\\repos\\3rdParty\\Poco\\bin;C:\\Users\\User\\App\\rclone-v1.67.0-windows-amd64;C:\\Program Files\\MATLAB\\R2024a\\bin;C:\\Program Files\\gnuplot\\bin;C:\\Users\\User\\App\\PlantUML;C:\\Users\\User\\scoop\\apps\\llvm\\current\\bin;C:\\Users\\User\\scoop\\shims;C:\\Users\\User\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\User\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\User\\AppData\\Local\\gitkraken\\bin;C:\\Users\\User\\AppData\\Local\\Programs\\oh-my-posh\\bin;C:\\Users\\User\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GNU.Wget2_Microsoft.Winget.Source_8wekyb3d8bbwe;;C:\\Users\\Use
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.950Z [debug] [driver] Trying to detect generator supported by system
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.951Z [debug] [expand] expanded ${workspaceFolder}/build
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.952Z [debug] [cache] Reading CMake cache file c:/Users/User/repos/algorithm_module/build/CMakeCache.txt
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.952Z [debug] [cache] Parsing CMake cache string
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.957Z [debug] [cache] Reading CMake cache file c:/Users/User/repos/algorithm_module/build/CMakeCache.txt
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.958Z [debug] [cache] Parsing CMake cache string
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.962Z [debug] [cmakefileapi-parser] Read reply folder: c:\Users\User\repos\algorithm_module\build\.cmake\api\v1\reply
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.962Z [debug] [cmakefileapi-parser] Found index files: ["cache-v2-291a4d88c068d8cd7daa.json","cmakeFiles-v1-65f049df88d6b36e45ec.json","codemodel-v2-cfe5b446bcb6c41c0348.json","directory-.-Debug-d0094a50bb2071803777.json","directory-.-MinSizeRel-d0094a50bb2071803777.json","directory-.-Release-d0094a50bb2071803777.json","directory-.-RelWithDebInfo-d0094a50bb2071803777.json","directory-calibrate_camera-Debug-bc7404591ebe85558340.json","directory-calibrate_camera-MinSizeRel-b6c7ac5639d958745eb9.json","directory-calibrate_camera-Release-e68f4219224dc943e041.json","directory-calibrate_camera-RelWithDebInfo-c88894f9599871a5c904.json","directory-calibrate_L-Debug-9ec1e8dd0aff1346c74a.json","directory-calibrate_L-MinSizeRel-5b43f5017451490fe9fe.json","directory-calibrate_L-Release-f278fd8424ca45aaebde.json","directory-calibrate_L-RelWithDebInfo-210fa04409f56a63ef52.json","directory-calibrate_T-Debug-e093f73688aead3d97cd.json","directory-calibrate_T-MinSizeRel-2beed8abba9650b7816e.json","directory-calibrate_T-Release-aebeed87f836074bf6d2.json","directory-calibrate_T-RelWithDebInfo-15748ac6b261e648c62c.json","directory-calibration-Debug-53a49fd5e9fa0b24608d.json","directory-calibration-MinSizeRel-00f6e9a1001d0955fe07.json","directory-calibration-Release-8c0c9e0c3614af1d5319.json","directory-calibration-RelWithDebInfo-4c11e683211733706c6a.json","directory-geom_cal-Debug-4ca266f10321949219dd.json","directory-geom_cal-MinSizeRel-9b88afe710c03e31ac11.json","directory-geom_cal-Release-6dc3ece1d2dd492afbea.json","directory-geom_cal-RelWithDebInfo-58375cccf370cced9f6c.json","directory-image_process-Debug-515837469222878cb30c.json","directory-image_process-MinSizeRel-62a1e6f42ba029e27ab8.json","directory-image_process-Release-bc7ab8c15f10a93b5939.json","directory-image_process-RelWithDebInfo-6c6b927e427ec68ec433.json","directory-line_extract-Debug-7fd8be872aab61f0fb0d.json","directory-line_extract-MinSizeRel-bf6c0d27684bc32ab781.json","directory-line_extract-Release-c5b5e74e0d7213b0b08c.json","directory-line_extract-RelWithDebInfo-96a38605153c2bb5f519.json","directory-line_extract.test-Debug-f4ccad049d015d787535.json","directory-line_extract.test-MinSizeRel-f4ccad049d015d787535.json","directory-line_extract.test-Release-f4ccad049d015d787535.json","directory-line_extract.test-RelWithDebInfo-f4ccad049d015d787535.json","directory-pointcloud_process-Debug-9c3c500665886a63086a.json","directory-pointcloud_process-MinSizeRel-9c3c500665886a63086a.json","directory-pointcloud_process-Release-9c3c500665886a63086a.json","directory-pointcloud_process-RelWithDebInfo-9c3c500665886a63086a.json","directory-profile_process-Debug-80f4c5f134f90e9cd66f.json","directory-profile_process-MinSizeRel-a86b50f1b34cc60b7403.json","directory-profile_process-Release-0e19480f4361eda754d0.json","directory-profile_process-RelWithDebInfo-4c37f2812fabd199022d.json","directory-test_all-Debug-51959bc43242e1c5601b.json","directory-test_all-MinSizeRel-51959bc43242e1c5601b.json","directory-test_all-Release-51959bc43242e1c5601b.json","directory-test_all-RelWithDebInfo-51959bc43242e1c5601b.json","directory-test_all.calibration-Debug-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-MinSizeRel-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-Release-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-RelWithDebInfo-39fd2fc06bc12bcd60ce.json","directory-test_all.geom_cal-Debug-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-MinSizeRel-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-Release-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-RelWithDebInfo-c131ae07efbc3ddf4aca.json","directory-test_all.image_process-Debug-104b593464875b6ad746.json","directory-test_all.image_process-MinSizeRel-104b593464875b6ad746.json","directory-test_all.image_process-Release-104b593464875b6ad746.json","directory-test_all.image_process-RelWithDebInfo-104b593464875b6ad746.json","directory-test_all.line_extract-Debug-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-MinSizeRel-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-Release-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-RelWithDebInfo-55b40a7cbed478cc2b23.json","directory-test_all.pointcloud_process-Debug-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-MinSizeRel-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-Release-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-RelWithDebInfo-9ff09bf6ba36c1e40308.json","directory-test_all.profile_process-Debug-cd16fb32fab9d9128943.json","directory-test_all.profile_process-MinSizeRel-cd16fb32fab9d9128943.json","directory-test_all.profile_process-Release-cd16fb32fab9d9128943.json","directory-test_all.profile_process-RelWithDebInfo-cd16fb32fab9d9128943.json","directory-test_all.utils-Debug-0d40c331f93fdcc6f22e.json","directory-test_all.utils-MinSizeRel-0d40c331f93fdcc6f22e.json","directory-test_all.utils-Release-0d40c331f93fdcc6f22e.json","dire
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.973Z [debug] [driver] Setting new variant Debug
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.974Z [debug] [expand] expanded ${workspaceFolder}/build
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.974Z [debug] [extension] Not updating the configuration provider because "C_Cpp.intelliSenseEngine" is set to "Disabled"
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.975Z [debug] [expand] expanded ${workspaceFolder}/build
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.975Z [debug] [driver] Use cached configuration 
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.975Z [debug] [driver] Running pre-configure checks and steps
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.978Z [debug] [expand] expanded ${workspaceFolder}/build
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.978Z [debug] [cmakefileapi-parser] Read reply folder: c:\Users\User\repos\algorithm_module\build\.cmake\api\v1\reply
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.979Z [debug] [cmakefileapi-parser] Found index files: ["cache-v2-291a4d88c068d8cd7daa.json","cmakeFiles-v1-65f049df88d6b36e45ec.json","codemodel-v2-cfe5b446bcb6c41c0348.json","directory-.-Debug-d0094a50bb2071803777.json","directory-.-MinSizeRel-d0094a50bb2071803777.json","directory-.-Release-d0094a50bb2071803777.json","directory-.-RelWithDebInfo-d0094a50bb2071803777.json","directory-calibrate_camera-Debug-bc7404591ebe85558340.json","directory-calibrate_camera-MinSizeRel-b6c7ac5639d958745eb9.json","directory-calibrate_camera-Release-e68f4219224dc943e041.json","directory-calibrate_camera-RelWithDebInfo-c88894f9599871a5c904.json","directory-calibrate_L-Debug-9ec1e8dd0aff1346c74a.json","directory-calibrate_L-MinSizeRel-5b43f5017451490fe9fe.json","directory-calibrate_L-Release-f278fd8424ca45aaebde.json","directory-calibrate_L-RelWithDebInfo-210fa04409f56a63ef52.json","directory-calibrate_T-Debug-e093f73688aead3d97cd.json","directory-calibrate_T-MinSizeRel-2beed8abba9650b7816e.json","directory-calibrate_T-Release-aebeed87f836074bf6d2.json","directory-calibrate_T-RelWithDebInfo-15748ac6b261e648c62c.json","directory-calibration-Debug-53a49fd5e9fa0b24608d.json","directory-calibration-MinSizeRel-00f6e9a1001d0955fe07.json","directory-calibration-Release-8c0c9e0c3614af1d5319.json","directory-calibration-RelWithDebInfo-4c11e683211733706c6a.json","directory-geom_cal-Debug-4ca266f10321949219dd.json","directory-geom_cal-MinSizeRel-9b88afe710c03e31ac11.json","directory-geom_cal-Release-6dc3ece1d2dd492afbea.json","directory-geom_cal-RelWithDebInfo-58375cccf370cced9f6c.json","directory-image_process-Debug-515837469222878cb30c.json","directory-image_process-MinSizeRel-62a1e6f42ba029e27ab8.json","directory-image_process-Release-bc7ab8c15f10a93b5939.json","directory-image_process-RelWithDebInfo-6c6b927e427ec68ec433.json","directory-line_extract-Debug-7fd8be872aab61f0fb0d.json","directory-line_extract-MinSizeRel-bf6c0d27684bc32ab781.json","directory-line_extract-Release-c5b5e74e0d7213b0b08c.json","directory-line_extract-RelWithDebInfo-96a38605153c2bb5f519.json","directory-line_extract.test-Debug-f4ccad049d015d787535.json","directory-line_extract.test-MinSizeRel-f4ccad049d015d787535.json","directory-line_extract.test-Release-f4ccad049d015d787535.json","directory-line_extract.test-RelWithDebInfo-f4ccad049d015d787535.json","directory-pointcloud_process-Debug-9c3c500665886a63086a.json","directory-pointcloud_process-MinSizeRel-9c3c500665886a63086a.json","directory-pointcloud_process-Release-9c3c500665886a63086a.json","directory-pointcloud_process-RelWithDebInfo-9c3c500665886a63086a.json","directory-profile_process-Debug-80f4c5f134f90e9cd66f.json","directory-profile_process-MinSizeRel-a86b50f1b34cc60b7403.json","directory-profile_process-Release-0e19480f4361eda754d0.json","directory-profile_process-RelWithDebInfo-4c37f2812fabd199022d.json","directory-test_all-Debug-51959bc43242e1c5601b.json","directory-test_all-MinSizeRel-51959bc43242e1c5601b.json","directory-test_all-Release-51959bc43242e1c5601b.json","directory-test_all-RelWithDebInfo-51959bc43242e1c5601b.json","directory-test_all.calibration-Debug-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-MinSizeRel-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-Release-39fd2fc06bc12bcd60ce.json","directory-test_all.calibration-RelWithDebInfo-39fd2fc06bc12bcd60ce.json","directory-test_all.geom_cal-Debug-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-MinSizeRel-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-Release-c131ae07efbc3ddf4aca.json","directory-test_all.geom_cal-RelWithDebInfo-c131ae07efbc3ddf4aca.json","directory-test_all.image_process-Debug-104b593464875b6ad746.json","directory-test_all.image_process-MinSizeRel-104b593464875b6ad746.json","directory-test_all.image_process-Release-104b593464875b6ad746.json","directory-test_all.image_process-RelWithDebInfo-104b593464875b6ad746.json","directory-test_all.line_extract-Debug-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-MinSizeRel-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-Release-55b40a7cbed478cc2b23.json","directory-test_all.line_extract-RelWithDebInfo-55b40a7cbed478cc2b23.json","directory-test_all.pointcloud_process-Debug-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-MinSizeRel-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-Release-9ff09bf6ba36c1e40308.json","directory-test_all.pointcloud_process-RelWithDebInfo-9ff09bf6ba36c1e40308.json","directory-test_all.profile_process-Debug-cd16fb32fab9d9128943.json","directory-test_all.profile_process-MinSizeRel-cd16fb32fab9d9128943.json","directory-test_all.profile_process-Release-cd16fb32fab9d9128943.json","directory-test_all.profile_process-RelWithDebInfo-cd16fb32fab9d9128943.json","directory-test_all.utils-Debug-0d40c331f93fdcc6f22e.json","directory-test_all.utils-MinSizeRel-0d40c331f93fdcc6f22e.json","directory-test_all.utils-Release-0d40c331f93fdcc6f22e.json","dire
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.988Z [debug] [extension] Not updating the configuration provider because "C_Cpp.intelliSenseEngine" is set to "Disabled"
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.990Z [debug] [extension] [8441] cmake.buildDirectory finished (returned "c:/Users/User/repos/algorithm_module/build")
+console.ts:137 [Extension Host] [CMakeTools] 2024-09-15T07:09:05.992Z [debug] [extension] [3505] cmake.buildDirectory finished (returned "c:/Users/User/repos/algorithm_module/build")
+console.ts:137 [Extension Host] (VSCode) 2024-09-15 15:09:06 [INFO]: Found language server running on port 63056
+localProcessExtensionHost.ts:275 Extension Host
+localProcessExtensionHost.ts:276 (VSCode) 2024-09-15 15:09:06 [INFO]: Found language server running on port 63056
+
+mainThreadExtensionService.ts:107 Activating extension 'OpenNingia.vscode-google-test-adapter' failed: Cannot find module 'vscode-test-adapter-util'
+Require stack:
+- c:\Users\User\.vscode\extensions\openningia.vscode-google-test-adapter-0.3.1\out\main.js
+- c:\Users\User\AppData\Local\Programs\Microsoft VS Code\resources\app\out\bootstrap-fork.js.
+$onExtensionActivationError @ mainThreadExtensionService.ts:107
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
+console.ts:137 [Extension Host] Clang Language Server is now active!
+console.ts:137 [Extension Host] ahk++ activated
+console.ts:137 [Extension Host]% (8) ['has', 'get', 'update', 'inspect', 'rterm', 'timeouts', 'checkVersion', 'trackTerminals']
+console.ts:137 [Extension Host]% []
+console.ts:137 [Extension Host] Language client started
+console.ts:137 [Extension Host] Congratulations, your extension "vscode-latex-commands" is now active!
+console.ts:137 [Extension Host] Congratulations, your extension "UltraPreview" is now active!
+console.ts:137 [Extension Host] Extension "vectorPoint3fViewer" is now active.
+notificationsAlerts.ts:42 No variable selected.
+c @ notificationsAlerts.ts:42
+(anonymous) @ notificationsAlerts.ts:28
+B @ event.ts:1242
+C @ event.ts:1253
+fire @ event.ts:1277
+addNotification @ notifications.ts:228
+notify @ notificationService.ts:253
+(anonymous) @ mainThreadMessageService.ts:86
+f @ mainThreadMessageService.ts:51
+$showMessage @ mainThreadMessageService.ts:45
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
+notificationsAlerts.ts:42 No variable selected.
+c @ notificationsAlerts.ts:42
+(anonymous) @ notificationsAlerts.ts:28
+B @ event.ts:1242
+C @ event.ts:1253
+fire @ event.ts:1277
+addNotification @ notifications.ts:228
+notify @ notificationService.ts:253
+(anonymous) @ mainThreadMessageService.ts:86
+f @ mainThreadMessageService.ts:51
+$showMessage @ mainThreadMessageService.ts:45
+S @ rpcProtocol.ts:458
+Q @ rpcProtocol.ts:443
+M @ rpcProtocol.ts:373
+L @ rpcProtocol.ts:299
+(anonymous) @ rpcProtocol.ts:161
+B @ event.ts:1242
+fire @ event.ts:1273
+fire @ ipc.net.ts:652
+K.onmessage @ localProcessExtensionHost.ts:378
