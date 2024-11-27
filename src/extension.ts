@@ -98,44 +98,95 @@ export function activate(context: vscode.ExtensionContext) {
 
 // Function to check if the variable is a vector of cv::Point3f
 function isPoint3fVector(variableInfo: any): boolean {
-  return (
-    variableInfo.type &&
-    (variableInfo.type.includes("std::vector<cv::Point3f>") ||
-      variableInfo.type.includes("std::vector<cv::Point3_<float>") ||
-      variableInfo.type.includes("std::vector<cv::Point3d>") ||
-      variableInfo.type.includes("std::vector<cv::Point3_<double>"))
-  );
+  console.log("Checking if variable is Point3f vector");
+  const type = variableInfo.type || "";
+  console.log("Variable type string:", type);
+  
+  const result = 
+    type.includes("std::vector<cv::Point3f>") ||
+    type.includes("std::vector<cv::Point3_<float>") ||
+    type.includes("std::vector<cv::Point3d>") ||
+    type.includes("std::vector<cv::Point3_<double>") ||
+    // LLDB format
+    type.includes("std::__1::vector<cv::Point3_<float>") ||
+    type.includes("std::__1::vector<cv::Point3_<double>") ||
+    // cppdbg format
+    type.includes("class std::vector<class cv::Point3_<float>") ||
+    type.includes("class std::vector<class cv::Point3_<double>") ||
+    // Generic format for both LLDB and VS
+    /std::.*vector\s*<\s*cv::Point3[fd]?\s*>/.test(type);
+  
+  console.log("isPoint3fVector result:", result);
+  return result;
 }
 
 // Function to check if the variable is a cv::Mat
 function isMat(variableInfo: any): boolean {
-  return variableInfo.type && variableInfo.type.includes("cv::Mat");
+  console.log("Checking if variable is Mat");
+  const type = variableInfo.type || "";
+  console.log("Variable type string:", type);
+  
+  const result = 
+    type.includes("cv::Mat") ||
+    // LLDB format sometimes includes namespace
+    type.includes("class cv::Mat") ||
+    // cppdbg format
+    type.includes("class cv::Mat") ||
+    // Generic format
+    /cv::Mat\b/.test(type);
+  
+  console.log("isMat result:", result);
+  return result;
+}
+
+// Helper function to check if we're using LLDB
+function isUsingLLDB(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "lldb";
+}
+
+// Helper function to check if we're using cppdbg
+function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "cppdbg";
 }
 
 // Function to draw point cloud
-async function drawPointCloud(
-  debugSession: vscode.DebugSession,
-  variableInfo: any
-) {
-  // Retrieve the elements of the vector
-  const elementsResponse = await debugSession.customRequest("variables", {
-    variablesReference: variableInfo.variablesReference,
-  });
-  console.log("Elements of the vector:", elementsResponse);
+async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any) {
+  try {
+    const usingLLDB = isUsingLLDB(debugSession);
+    const usingCppdbg = isUsingCppdbg(debugSession);
+    console.log("Drawing point cloud with debugger type:", debugSession.type);
+    console.log("Using LLDB mode:", usingLLDB);
+    console.log("Using cppdbg mode:", usingCppdbg);
 
-  let points: { x: number; y: number; z: number }[] = [];
+    // Get the number of elements in the vector
+    const sizeResponse = await evaluateWithTimeout(
+      debugSession,
+      `${variableInfo.evaluateName}.size()`,
+      variableInfo.frameId || 0,
+      5000
+    );
+    const size = parseInt(sizeResponse.result);
 
-  // Extract points assuming it's a vector<cv::Point3f>
-  elementsResponse.variables.forEach((element: any) => {
-    if (
-      element.value &&
-      element.value.includes("x=") &&
-      element.value.includes("y=") &&
-      element.value.includes("z=")
-    ) {
-      const matches = element.value.match(
-        /x=([-+]?[0-9]*\.?[0-9]+) y=([-+]?[0-9]*\.?[0-9]+) z=([-+]?[0-9]*\.?[0-9]+)/
+    let points: { x: number; y: number; z: number }[] = [];
+
+    for (let i = 0; i < size; i++) {
+      // Adjust expression based on debugger type
+      const pointExpression = usingCppdbg
+        ? `${variableInfo.evaluateName}[${i}]`
+        : `${variableInfo.evaluateName}.at(${i})`;
+
+      const pointResponse = await evaluateWithTimeout(
+        debugSession,
+        pointExpression,
+        variableInfo.frameId || 0,
+        5000
       );
+
+      // Extract x, y, z values using regular expressions
+      const matches = pointResponse.result.match(
+        /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
+      );
+
       if (matches) {
         points.push({
           x: parseFloat(matches[1]),
@@ -144,18 +195,21 @@ async function drawPointCloud(
         });
       }
     }
-  });
 
-  // Show the webview to visualize the points
-  const panel = vscode.window.createWebviewPanel(
-    "3DPointViewer",
-    "3D Point Viewer",
-    vscode.ViewColumn.One,
-    {
-      enableScripts: true,
-    }
-  );
-  panel.webview.html = getWebviewContentForPointCloud(points);
+    // Show the webview to visualize the points
+    const panel = vscode.window.createWebviewPanel(
+      "3DPointViewer",
+      "3D Point Viewer",
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+      }
+    );
+    panel.webview.html = getWebviewContentForPointCloud(points);
+  } catch (error) {
+    console.error("Error in drawPointCloud:", error);
+    throw error;
+  }
 }
 
 // Function to draw the cv::Mat image
@@ -166,106 +220,126 @@ async function drawMatImage(
   variableName: string
 ) {
   try {
-    // Check if evaluateName is available
-    // const variableName = variableInfo.evaluateName || variableInfo.name;
-    // if (!variableName) {
-    //     console.error("The variable does not have a valid evaluateName or name.");
-    //     return;
-    // }
+    const usingLLDB = isUsingLLDB(debugSession);
+    const usingCppdbg = isUsingCppdbg(debugSession);
+    console.log("Drawing Mat image with debugger type:", debugSession.type);
+    console.log("Using LLDB mode:", usingLLDB);
+    console.log("Using cppdbg mode:", usingCppdbg);
+    
+    let rowsExp, colsExp, channelsExp, depthExp, dataExp;
 
-    // Get the type of the variable and print it
-    // const depthResponse = await debugSession.customRequest("evaluate", {
-    //     expression: `${variableName}.depth()`,
-    //     frameId: frameId, // Use the provided frame ID
-    //     context: "repl" // Use "repl" context since it worked in the console
-    // });
+    if (usingCppdbg) {
+      // cppdbg expressions
+      rowsExp = `${variableName}.rows`;
+      colsExp = `${variableName}.cols`;
+      channelsExp = `${variableName}.channels()`;
+      depthExp = `${variableName}.depth()`;
+      dataExp = `${variableName}.data`;
+    } else {
+      // LLDB expressions
+      rowsExp = `${variableName}.rows`;
+      colsExp = `${variableName}.cols`;
+      channelsExp = `${variableName}.channels()`;
+      depthExp = `${variableName}.depth()`;
+      dataExp = `${variableName}.data`;
+    }
 
-    // const depthResponse = await evaluateWithTimeout(debugSession, `${variableName}.depth()`, frameId, 5000);
-
-    // try {
-    //     // Evaluate the `.type()` method with a 5-second timeout
-    //     const depthResponse = await evaluateWithTimeout(debugSession, `${variableName}.type()`, frameId, 5000);
-    //     console.log("cv::Mat type (int):", variableTypeResponse.result);
-    // } catch (error) {
-    //     console.error("Error evaluating variable type():", error);
-    //     return; // Early return if there was an error during evaluation
-    // }
-
-    // const depth = parseInt(depthResponse.result);
-
-    // const channelsResponse = await debugSession.customRequest("evaluate", {
-    //     expression: `${variableName}.channels()`,
-    //     frameId: frameId, // Use the provided frame ID
-    //     context: "repl" // Use "repl" context since it worked in the console
-    // });
-    // const channelsResponse = await evaluateWithTimeout(debugSession, `${variableName}.channels()`, frameId, 5000);
-    // const channels = parseInt(channelsResponse.result);
-
-    // Retrieve the `flags` property of the cv::Mat
-    const flagsResponse = await debugSession.customRequest("evaluate", {
-      expression: `${variableName}.flags`,
-      frameId: frameId,
-      context: "repl",
-    });
-    const flags = parseInt(flagsResponse.result);
-
-    // Define macros in JavaScript
-    const CV_CN_SHIFT = 3;
-    const CV_CN_MAX = 512;
-    const CV_MAT_CN_MASK = (CV_CN_MAX - 1) << CV_CN_SHIFT;
-    const CV_DEPTH_MAX = 1 << CV_CN_SHIFT;
-    const CV_MAT_DEPTH_MASK = CV_DEPTH_MAX - 1;
-
-    // Extract the number of channels using the macro
-    const channels = ((flags & CV_MAT_CN_MASK) >> CV_CN_SHIFT) + 1;
-
-    // Extract the depth using the macro
-    const depth = flags & CV_MAT_DEPTH_MASK;
-
-    console.log(`Number of channels: ${channels}, Depth: ${depth}`);
-
-    // Retrieve the cv::Mat properties
-    const matPropertiesResponse = await debugSession.customRequest(
-      "variables",
-      {
-        variablesReference: variableInfo.variablesReference,
-      }
+    // Get matrix dimensions
+    const rowsResponse = await evaluateWithTimeout(
+      debugSession,
+      rowsExp,
+      frameId,
+      5000
+    );
+    const colsResponse = await evaluateWithTimeout(
+      debugSession,
+      colsExp,
+      frameId,
+      5000
+    );
+    const channelsResponse = await evaluateWithTimeout(
+      debugSession,
+      channelsExp,
+      frameId,
+      5000
+    );
+    const depthResponse = await evaluateWithTimeout(
+      debugSession,
+      depthExp,
+      frameId,
+      5000
     );
 
-    let rows = 0,
-      cols = 0,
-      dataAddress = "";
+    const rows = parseInt(rowsResponse.result);
+    const cols = parseInt(colsResponse.result);
+    const channels = parseInt(channelsResponse.result);
+    const depth = parseInt(depthResponse.result);
 
-    // Extract rows, cols, and data address from matPropertiesResponse
-    for (const property of matPropertiesResponse.variables) {
-      if (property.name === "rows") {
-        rows = parseInt(property.value);
-      } else if (property.name === "cols") {
-        cols = parseInt(property.value);
-      } else if (property.name === "data") {
-        dataAddress = property.memoryReference;
+    console.log(`Matrix info: ${rows}x${cols}, ${channels} channels, depth=${depth}`);
+
+    if (isNaN(rows) || isNaN(cols) || isNaN(channels) || isNaN(depth)) {
+      throw new Error("Invalid matrix dimensions or type");
+    }
+
+    // Get matrix data
+    const dataSize = rows * cols * channels;
+    const data: number[] = [];
+
+    if (usingCppdbg || usingLLDB) {
+      // Determine data type based on depth
+      let dataType;
+      switch (depth) {
+        case 0: // CV_8U
+          dataType = "unsigned char";
+          break;
+        case 1: // CV_8S
+          dataType = "char";
+          break;
+        case 2: // CV_16U
+          dataType = "unsigned short";
+          break;
+        case 3: // CV_16S
+          dataType = "short";
+          break;
+        case 4: // CV_32S
+          dataType = "int";
+          break;
+        case 5: // CV_32F
+          dataType = "float";
+          break;
+        case 6: // CV_64F
+          dataType = "double";
+          break;
+        default:
+          throw new Error(`Unsupported depth: ${depth}`);
+      }
+
+      console.log(`Using data type: ${dataType} for depth ${depth}`);
+
+      // Read data element by element
+      for (let i = 0; i < dataSize; i++) {
+        const dataResponse = await evaluateWithTimeout(
+          debugSession,
+          `((${dataType}*)${dataExp})[${i}]`,
+          frameId,
+          5000
+        );
+
+        let value: number;
+        if (dataType === "float" || dataType === "double") {
+          value = parseFloat(dataResponse.result);
+        } else {
+          value = parseInt(dataResponse.result);
+        }
+
+        if (!isNaN(value)) {
+          data.push(Math.round(value));
+        } else {
+          console.warn(`Invalid value at index ${i}: ${dataResponse.result}`);
+          data.push(0);
+        }
       }
     }
-
-    if (rows === 0 || cols === 0 || !dataAddress) {
-      vscode.window.showErrorMessage("Failed to retrieve matrix data.");
-      return;
-    }
-
-    // Read matrix data (assuming it's an 8-bit single-channel image)
-    const dataResponse = await debugSession.customRequest("readMemory", {
-      memoryReference: dataAddress,
-      offset: 0,
-      count: rows * cols * channels,
-    });
-    if (!dataResponse || !dataResponse.data) {
-      vscode.window.showErrorMessage("Failed to read matrix memory.");
-      return;
-    }
-
-    // Decode the matrix data (Base64 to binary)
-    const buffer = Buffer.from(dataResponse.data, "base64");
-    const data = Array.from(buffer);
 
     // Show the webview to visualize the matrix as an image
     const panel = vscode.window.createWebviewPanel(
@@ -285,7 +359,8 @@ async function drawMatImage(
       data
     );
   } catch (error) {
-    console.error("Error evaluating variable type():", error);
+    console.error("Error drawing Mat image:", error);
+    throw error;
   }
 }
 
