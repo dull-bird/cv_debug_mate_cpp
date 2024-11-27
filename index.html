@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoomable Image Viewer</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #controls { position: absolute; top: 10px; left: 10px; }
+        #pixelInfo { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px; }
+        button { margin-right: 5px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+    <canvas id="imageCanvas"></canvas>
+    <div id="controls">
+        <button id="zoomIn">Zoom In</button>
+        <button id="zoomOut">Zoom Out</button>
+        <button id="reset">Reset</button>
+    </div>
+    <div id="pixelInfo"></div>
+    <script>
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const pixelInfo = document.getElementById('pixelInfo');
+        
+        // 生成示例图像数据（10x10 的彩色网格）
+        const imageData = Array(10).fill().map(() => 
+            Array(10).fill().map(() => 
+                [Math.floor(Math.random()*256), Math.floor(Math.random()*256), Math.floor(Math.random()*256)]
+            )
+        );
+        
+        let scale = 20;  // 初始缩放级别，使每个像素更容易看到
+        let offsetX = 0;
+        let offsetY = 0;
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        const imgWidth = imageData[0].length;
+        const imgHeight = imageData.length;
+        
+        function drawImage() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+            
+            for (let y = 0; y < imgHeight; y++) {
+                for (let x = 0; x < imgWidth; x++) {
+                    const [r, g, b] = imageData[y][x];
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+            
+            ctx.restore();
+        }
+        
+        function zoom(factor) {
+            scale *= factor;
+            drawImage();
+        }
+        
+        document.getElementById('zoomIn').addEventListener('click', () => zoom(1.2));
+        document.getElementById('zoomOut').addEventListener('click', () => zoom(0.8));
+        document.getElementById('reset').addEventListener('click', () => {
+            scale = 20;
+            offsetX = 0;
+            offsetY = 0;
+            drawImage();
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left - offsetX) / scale);
+            const y = Math.floor((e.clientY - rect.top - offsetY) / scale);
+            
+            if (x >= 0 && x < imgWidth && y >= 0 && y < imgHeight) {
+                const [r, g, b] = imageData[y][x];
+                const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+                pixelInfo.textContent = `Position: (${x}, ${y}) | RGB: (${r}, ${g}, ${b}) | Grayscale: ${gray}`;
+            } else {
+                pixelInfo.textContent = '';
+            }
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY > 0 ? 0.9 : 1.1;
+            zoom(factor);
+        });
+        
+        let isDragging = false;
+        let lastX, lastY;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                offsetX += e.clientX - lastX;
+                offsetY += e.clientY - lastY;
+                lastX = e.clientX;
+                lastY = e.clientY;
+                drawImage();
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            drawImage();
+        });
+        
+        drawImage();
+    </script>
+</body>
+</html>
