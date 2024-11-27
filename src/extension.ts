@@ -470,111 +470,254 @@ function getWebviewContentForPointCloud(
           <title>Matrix Image Viewer</title>
           <style nonce="${nonce}">
               body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #333; }
-              #controls { position: absolute; top: 10px; left: 10px; }
-              #pixelInfo { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.7); color: black; padding: 5px; }
-              button { margin-right: 5px; padding: 5px 10px; }
+              #controls { 
+                  position: absolute; 
+                  top: 10px; 
+                  left: 10px; 
+                  background: rgba(255,255,255,0.9); 
+                  padding: 10px; 
+                  border-radius: 5px;
+                  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                  cursor: move;
+                  user-select: none;
+                  z-index: 1000;
+              }
+              #controls:hover { background: rgba(255,255,255,1); }
+              #pixelInfo { 
+                  position: absolute; 
+                  bottom: 10px; 
+                  left: 10px; 
+                  background: rgba(255,255,255,0.9); 
+                  color: black; 
+                  padding: 10px; 
+                  border-radius: 5px;
+                  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+              }
+              button { 
+                  margin-right: 5px; 
+                  padding: 5px 10px; 
+                  cursor: pointer;
+                  border: 1px solid #ccc;
+                  border-radius: 3px;
+                  background: white;
+              }
+              button:hover { background: #f0f0f0; }
+              #container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+              canvas { position: absolute; top: 0; left: 0; }
+              #grid-canvas { 
+                  position: absolute; 
+                  top: 0; 
+                  left: 0; 
+                  pointer-events: none;
+                  z-index: 1;
+              }
           </style>
       </head>
       <body>
-          <canvas id="canvas"></canvas>
+          <div id="container">
+              <canvas id="canvas"></canvas>
+              <canvas id="grid-canvas"></canvas>
+          </div>
           <div id="controls">
               <button id="zoomIn">Zoom In</button>
               <button id="zoomOut">Zoom Out</button>
               <button id="reset">Reset</button>
+              <span id="zoomLevel">Zoom: 100%</span>
           </div>
           <div id="pixelInfo"></div>
           <script nonce="${nonce}">
-              // Your JavaScript code here (unchanged)
               (function() {
-                  const vscode = acquireVsCodeApi();
+                  const container = document.getElementById('container');
+                  const canvas = document.getElementById('canvas');
+                  const gridCanvas = document.getElementById('grid-canvas');
+                  const ctx = canvas.getContext('2d');
+                  const gridCtx = gridCanvas.getContext('2d');
+                  const pixelInfo = document.getElementById('pixelInfo');
+                  const zoomLevelDisplay = document.getElementById('zoomLevel');
+                  const controls = document.getElementById('controls');
+                  
                   const rows = ${rows};
                   const cols = ${cols};
                   const channels = ${channels};
-                  const depth = ${depth};
                   const data = ${imageData};
-  
-                  const canvas = document.getElementById('canvas');
-                  const ctx = canvas.getContext('2d');
-                  const pixelInfo = document.getElementById('pixelInfo');
-  
-                  let state = vscode.getState() || { scale: 1, offsetX: 0, offsetY: 0 };
-                  let { scale, offsetX, offsetY } = state;
-  
-                  canvas.width = window.innerWidth;
-                  canvas.height = window.innerHeight;
-  
-                  const imageData = new ImageData(cols, rows);
-  
-                  function updateImageData() {
-                      for (let i = 0; i < rows; i++) {
-                          for (let j = 0; j < cols; j++) {
-                              const idx = (i * cols + j) * channels;
-                              const pixelIdx = (i * cols + j) * 4;
-  
-                              if (channels === 1) {
-                                  // Grayscale
-                                  const value = data[idx];
-                                  imageData.data[pixelIdx] = value;
-                                  imageData.data[pixelIdx + 1] = value;
-                                  imageData.data[pixelIdx + 2] = value;
-                                  imageData.data[pixelIdx + 3] = 255;
-                              } else if (channels === 3) {
-                                  // RGB
-                                  imageData.data[pixelIdx] = data[idx];
-                                  imageData.data[pixelIdx + 1] = data[idx + 1];
-                                  imageData.data[pixelIdx + 2] = data[idx + 2];
-                                  imageData.data[pixelIdx + 3] = 255;
-                              }
+                  
+                  let scale = 1;
+                  let isDragging = false;
+                  let startX = 0;
+                  let startY = 0;
+                  let offsetX = 0;
+                  let offsetY = 0;
+
+                  // Make controls draggable
+                  let controlsDragging = false;
+                  let controlsStartX = 0;
+                  let controlsStartY = 0;
+
+                  controls.addEventListener('mousedown', (e) => {
+                      if (e.target === controls) {
+                          controlsDragging = true;
+                          controlsStartX = e.clientX - controls.offsetLeft;
+                          controlsStartY = e.clientY - controls.offsetTop;
+                          e.preventDefault();
+                      }
+                  });
+
+                  document.addEventListener('mousemove', (e) => {
+                      if (controlsDragging) {
+                          controls.style.left = (e.clientX - controlsStartX) + 'px';
+                          controls.style.top = (e.clientY - controlsStartY) + 'px';
+                      }
+                  });
+
+                  document.addEventListener('mouseup', () => {
+                      controlsDragging = false;
+                  });
+
+                  // Create off-screen canvas for the original image
+                  const offscreenCanvas = document.createElement('canvas');
+                  offscreenCanvas.width = cols;
+                  offscreenCanvas.height = rows;
+                  const offscreenCtx = offscreenCanvas.getContext('2d');
+                  const imgData = offscreenCtx.createImageData(cols, rows);
+
+                  // Fill image data
+                  for (let i = 0; i < rows; i++) {
+                      for (let j = 0; j < cols; j++) {
+                          const idx = (i * cols + j) * channels;
+                          const pixelIdx = (i * cols + j) * 4;
+
+                          if (channels === 1) {
+                              // Grayscale
+                              const value = data[idx];
+                              imgData.data[pixelIdx] = value;
+                              imgData.data[pixelIdx + 1] = value;
+                              imgData.data[pixelIdx + 2] = value;
+                              imgData.data[pixelIdx + 3] = 255;
+                          } else if (channels === 3) {
+                              // RGB
+                              imgData.data[pixelIdx] = data[idx];
+                              imgData.data[pixelIdx + 1] = data[idx + 1];
+                              imgData.data[pixelIdx + 2] = data[idx + 2];
+                              imgData.data[pixelIdx + 3] = 255;
                           }
                       }
                   }
-  
-                  function drawImage() {
+                  
+                  // Put the image data on the offscreen canvas
+                  offscreenCtx.putImageData(imgData, 0, 0);
+
+                  function updateCanvasSize() {
+                      const containerRect = container.getBoundingClientRect();
+                      canvas.width = containerRect.width;
+                      canvas.height = containerRect.height;
+                      gridCanvas.width = containerRect.width;
+                      gridCanvas.height = containerRect.height;
+                  }
+
+                  function drawGrid() {
+                      if (scale >= 10) {
+                          gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+                          gridCtx.strokeStyle = 'rgba(128, 128, 128, 0.5)';
+                          gridCtx.lineWidth = 0.5;
+                          
+                          // Draw vertical lines
+                          for (let x = 0; x <= cols; x++) {
+                              const pixelX = x * scale + offsetX;
+                              gridCtx.beginPath();
+                              gridCtx.moveTo(pixelX, offsetY);
+                              gridCtx.lineTo(pixelX, rows * scale + offsetY);
+                              gridCtx.stroke();
+                          }
+                          
+                          // Draw horizontal lines
+                          for (let y = 0; y <= rows; y++) {
+                              const pixelY = y * scale + offsetY;
+                              gridCtx.beginPath();
+                              gridCtx.moveTo(offsetX, pixelY);
+                              gridCtx.lineTo(cols * scale + offsetX, pixelY);
+                              gridCtx.stroke();
+                          }
+                      } else {
+                          gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+                      }
+                  }
+
+                  function draw() {
                       ctx.clearRect(0, 0, canvas.width, canvas.height);
-                      ctx.save();
-                      ctx.translate(offsetX, offsetY);
-                      ctx.scale(scale, scale);
-                      ctx.imageSmoothingEnabled = false;
-                      ctx.putImageData(imageData, 0, 0);
-                      ctx.restore();
+                      
+                      // Calculate scaled dimensions
+                      const scaledWidth = cols * scale;
+                      const scaledHeight = rows * scale;
+                      
+                      // Draw from top-left corner with offset
+                      const x = offsetX;
+                      const y = offsetY;
+                      
+                      ctx.imageSmoothingEnabled = scale < 4; // Disable smoothing when zoomed in
+                      ctx.drawImage(offscreenCanvas, x, y, scaledWidth, scaledHeight);
+                      
+                      // Draw grid when zoomed in
+                      drawGrid();
+                      
+                      // Update zoom level display
+                      zoomLevelDisplay.textContent = \`Zoom: \${Math.round(scale * 100)}%\`;
                   }
-  
-                  function zoom(factor) {
-                      const zoomPoint = {
-                          x: canvas.width / 2 - offsetX,
-                          y: canvas.height / 2 - offsetY
-                      };
-  
-                      scale *= factor;
-                      offsetX = zoomPoint.x - (zoomPoint.x - offsetX) * factor;
-                      offsetY = zoomPoint.y - (zoomPoint.y - offsetY) * factor;
-  
-                      state = { scale, offsetX, offsetY };
-                      vscode.setState(state);
-  
-                      drawImage();
+
+                  function setZoom(newScale) {
+                      scale = Math.max(0.1, Math.min(50, newScale)); // Increased max zoom to 50x
+                      draw();
                   }
-  
-                  document.getElementById('zoomIn').addEventListener('click', () => zoom(1.2));
-                  document.getElementById('zoomOut').addEventListener('click', () => zoom(0.8));
+
+                  // Event Listeners
+                  document.getElementById('zoomIn').addEventListener('click', () => {
+                      setZoom(scale * 1.5); // Increased zoom factor
+                  });
+
+                  document.getElementById('zoomOut').addEventListener('click', () => {
+                      setZoom(scale / 1.5);
+                  });
+
                   document.getElementById('reset').addEventListener('click', () => {
                       scale = 1;
                       offsetX = 0;
                       offsetY = 0;
-                      state = { scale, offsetX, offsetY };
-                      vscode.setState(state);
-                      drawImage();
+                      draw();
                   });
-  
+
+                  canvas.addEventListener('wheel', (e) => {
+                      e.preventDefault();
+                      const zoomFactor = e.deltaY > 0 ? 0.8 : 1.25; // Adjusted zoom speed
+                      setZoom(scale * zoomFactor);
+                  });
+
+                  canvas.addEventListener('mousedown', (e) => {
+                      if (e.target === canvas) {
+                          isDragging = true;
+                          startX = e.clientX - offsetX;
+                          startY = e.clientY - offsetY;
+                      }
+                  });
+
                   canvas.addEventListener('mousemove', (e) => {
+                      if (isDragging) {
+                          offsetX = e.clientX - startX;
+                          offsetY = e.clientY - startY;
+                          draw();
+                      }
+
+                      // Update pixel info
                       const rect = canvas.getBoundingClientRect();
-                      const x = Math.floor((e.clientX - rect.left - offsetX) / scale);
-                      const y = Math.floor((e.clientY - rect.top - offsetY) / scale);
-  
-                      if (x >= 0 && x < cols && y >= 0 && y < rows) {
-                          const idx = (y * cols + x) * channels;
-                          let pixelInfoText = \`Position: (\${x}, \${y}) | \`;
-  
+                      const mouseX = e.clientX - rect.left;
+                      const mouseY = e.clientY - rect.top;
+                      
+                      // Convert mouse coordinates to image coordinates
+                      const imageX = Math.floor((mouseX - offsetX) / scale);
+                      const imageY = Math.floor((mouseY - offsetY) / scale);
+
+                      if (imageX >= 0 && imageX < cols && imageY >= 0 && imageY < rows) {
+                          const idx = (imageY * cols + imageX) * channels;
+                          let pixelInfoText = \`Position: (\${imageX}, \${imageY}) | \`;
+
                           if (channels === 1) {
                               const value = data[idx];
                               pixelInfoText += \`Grayscale: \${value}\`;
@@ -584,87 +727,34 @@ function getWebviewContentForPointCloud(
                               const b = data[idx + 2];
                               pixelInfoText += \`RGB: (\${r}, \${g}, \${b})\`;
                           }
-  
+
                           pixelInfo.textContent = pixelInfoText;
                       } else {
                           pixelInfo.textContent = '';
                       }
                   });
-  
-                  canvas.addEventListener('wheel', (e) => {
-                      e.preventDefault();
-                      const rect = canvas.getBoundingClientRect();
-                      const mouseX = e.clientX - rect.left;
-                      const mouseY = e.clientY - rect.top;
-  
-                      const factor = e.deltaY > 0 ? 0.9 : 1.1;
-  
-                      const zoomPoint = {
-                          x: mouseX - offsetX,
-                          y: mouseY - offsetY
-                      };
-  
-                      scale *= factor;
-                      offsetX = mouseX - zoomPoint.x * factor;
-                      offsetY = mouseY - zoomPoint.y * factor;
-  
-                      state = { scale, offsetX, offsetY };
-                      vscode.setState(state);
-  
-                      drawImage();
-                  });
-  
-                  let isDragging = false;
-                  let lastX, lastY;
-  
-                  canvas.addEventListener('mousedown', (e) => {
-                      isDragging = true;
-                      lastX = e.clientX;
-                      lastY = e.clientY;
-                  });
-  
-                  canvas.addEventListener('mousemove', (e) => {
-                      if (isDragging) {
-                          offsetX += e.clientX - lastX;
-                          offsetY += e.clientY - lastY;
-                          lastX = e.clientX;
-                          lastY = e.clientY;
-  
-                          state = { scale, offsetX, offsetY };
-                          vscode.setState(state);
-  
-                          drawImage();
-                      }
-                  });
-  
+
                   canvas.addEventListener('mouseup', () => {
                       isDragging = false;
                   });
-  
+
+                  canvas.addEventListener('mouseleave', () => {
+                      isDragging = false;
+                  });
+
                   window.addEventListener('resize', () => {
-                      canvas.width = window.innerWidth;
-                      canvas.height = window.innerHeight;
-                      drawImage();
+                      updateCanvasSize();
+                      draw();
                   });
-  
-                  updateImageData();
-                  drawImage();
-  
-                  // Handle messages from the extension
-                  window.addEventListener('message', event => {
-                      const message = event.data;
-                      switch (message.command) {
-                          case 'update':
-                              // Handle update message
-                              break;
-                      }
-                  });
+
+                  // Initialize
+                  updateCanvasSize();
+                  draw();
               })();
           </script>
       </body>
       </html>
     `;
   }
-
 
 export function deactivate() {}
