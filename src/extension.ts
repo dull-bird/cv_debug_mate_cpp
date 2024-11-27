@@ -328,12 +328,16 @@ async function drawMatImage(
         let value: number;
         if (dataType === "float" || dataType === "double") {
           value = parseFloat(dataResponse.result);
+          // For 32F images, multiply by 255 directly
+          if (depth === 5) {
+            value = Math.round(value * 255);
+          }
         } else {
           value = parseInt(dataResponse.result);
         }
 
         if (!isNaN(value)) {
-          data.push(Math.round(value));
+          data.push(value);
         } else {
           console.warn(`Invalid value at index ${i}: ${dataResponse.result}`);
           data.push(0);
