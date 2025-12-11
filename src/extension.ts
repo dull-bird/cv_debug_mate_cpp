@@ -212,6 +212,245 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
   }
 }
 
+// Get bytes per element based on depth
+function getBytesPerElement(depth: number): number {
+  switch (depth) {
+    case 0: // CV_8U
+    case 1: // CV_8S
+      return 1;
+    case 2: // CV_16U
+    case 3: // CV_16S
+      return 2;
+    case 4: // CV_32S
+    case 5: // CV_32F
+      return 4;
+    case 6: // CV_64F
+      return 8;
+    default:
+      return 1;
+  }
+}
+
+// Fast batch read using memory read with progress
+async function readMatDataFast(
+  debugSession: vscode.DebugSession,
+  dataExp: string,
+  frameId: number,
+  dataSize: number,
+  depth: number,
+  progress: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<number[]> {
+  const data: number[] = [];
+  const bytesPerElement = getBytesPerElement(depth);
+  
+  // Batch size: read multiple elements at once to reduce requests
+  // For 8-bit images, read 1024 elements per batch
+  // For larger types, reduce batch size accordingly
+  const batchSize = Math.min(1024, Math.floor(4096 / bytesPerElement));
+  const totalBatches = Math.ceil(dataSize / batchSize);
+  
+  let dataType: string;
+  switch (depth) {
+    case 0: dataType = "unsigned char"; break;
+    case 1: dataType = "char"; break;
+    case 2: dataType = "unsigned short"; break;
+    case 3: dataType = "short"; break;
+    case 4: dataType = "int"; break;
+    case 5: dataType = "float"; break;
+    case 6: dataType = "double"; break;
+    default: dataType = "unsigned char";
+  }
+
+  console.log(`Reading ${dataSize} elements in ${totalBatches} batches (batch size: ${batchSize})`);
+
+  for (let batch = 0; batch < totalBatches; batch++) {
+    const startIdx = batch * batchSize;
+    const endIdx = Math.min(startIdx + batchSize, dataSize);
+    const currentBatchSize = endIdx - startIdx;
+
+    // Update progress
+    const percentComplete = Math.round((batch / totalBatches) * 100);
+    progress.report({ 
+      message: `Reading pixels: ${percentComplete}% (${startIdx}/${dataSize})`,
+      increment: (1 / totalBatches) * 100
+    });
+
+    // Try to read batch using array format expression
+    // This creates a single expression that returns multiple values
+    try {
+      // Use a format that returns comma-separated values
+      // Different debuggers support different batch read methods
+      const batchValues = await readBatchValues(
+        debugSession,
+        dataExp,
+        dataType,
+        startIdx,
+        currentBatchSize,
+        frameId,
+        depth
+      );
+      data.push(...batchValues);
+    } catch (error) {
+      console.warn(`Batch read failed at ${startIdx}, falling back to individual reads:`, error);
+      // Fallback: read elements individually for this batch
+      for (let i = startIdx; i < endIdx; i++) {
+        try {
+          const response = await evaluateWithTimeout(
+            debugSession,
+            `((${dataType}*)${dataExp})[${i}]`,
+            frameId,
+            2000
+          );
+          let value = parseNumericResult(response.result, depth);
+          data.push(value);
+        } catch {
+          data.push(0);
+        }
+      }
+    }
+  }
+
+  return data;
+}
+
+// Read a batch of values - optimized for speed
+async function readBatchValues(
+  debugSession: vscode.DebugSession,
+  dataExp: string,
+  dataType: string,
+  startIdx: number,
+  count: number,
+  frameId: number,
+  depth: number
+): Promise<number[]> {
+  const values: number[] = [];
+  
+  // Strategy 1: Try using readMemory if available (fastest)
+  try {
+    const bytesPerElement = getBytesPerElement(depth);
+    const dataPointerResponse = await evaluateWithTimeout(
+      debugSession,
+      dataExp,
+      frameId,
+      2000
+    );
+    
+    // Parse pointer address
+    const ptrMatch = dataPointerResponse.result.match(/0x([0-9a-fA-F]+)/);
+    if (ptrMatch) {
+      const baseAddress = ptrMatch[0];
+      const offsetBytes = startIdx * bytesPerElement;
+      const readBytes = count * bytesPerElement;
+      
+      // Calculate address with offset
+      const addressNum = BigInt(baseAddress) + BigInt(offsetBytes);
+      const targetAddress = "0x" + addressNum.toString(16);
+      
+      try {
+        const memoryResponse = await debugSession.customRequest("readMemory", {
+          memoryReference: targetAddress,
+          count: readBytes
+        });
+        
+        if (memoryResponse && memoryResponse.data) {
+          // Decode base64 data
+          const buffer = Buffer.from(memoryResponse.data, 'base64');
+          return parseMemoryBuffer(buffer, depth, count);
+        }
+      } catch (memError) {
+        // readMemory not supported, fall through to strategy 2
+        console.log("readMemory not available, using evaluate fallback");
+      }
+    }
+  } catch (e) {
+    // Fall through to strategy 2
+  }
+  
+  // Strategy 2: Parallel evaluate requests (faster than sequential)
+  const PARALLEL_BATCH = 50; // Number of parallel requests
+  for (let i = 0; i < count; i += PARALLEL_BATCH) {
+    const parallelCount = Math.min(PARALLEL_BATCH, count - i);
+    const promises: Promise<any>[] = [];
+    
+    for (let j = 0; j < parallelCount; j++) {
+      const idx = startIdx + i + j;
+      promises.push(
+        evaluateWithTimeout(
+          debugSession,
+          `((${dataType}*)${dataExp})[${idx}]`,
+          frameId,
+          2000
+        ).catch(() => ({ result: "0" }))
+      );
+    }
+    
+    const results = await Promise.all(promises);
+    for (const response of results) {
+      values.push(parseNumericResult(response.result, depth));
+    }
+  }
+  
+  return values;
+}
+
+// Parse memory buffer based on depth type
+function parseMemoryBuffer(buffer: Buffer, depth: number, count: number): number[] {
+  const values: number[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    let value: number;
+    switch (depth) {
+      case 0: // CV_8U
+        value = buffer.readUInt8(i);
+        break;
+      case 1: // CV_8S
+        value = buffer.readInt8(i);
+        break;
+      case 2: // CV_16U
+        value = buffer.readUInt16LE(i * 2);
+        break;
+      case 3: // CV_16S
+        value = buffer.readInt16LE(i * 2);
+        break;
+      case 4: // CV_32S
+        value = buffer.readInt32LE(i * 4);
+        break;
+      case 5: // CV_32F
+        value = buffer.readFloatLE(i * 4);
+        value = Math.round(value * 255); // Normalize to 0-255
+        break;
+      case 6: // CV_64F
+        value = buffer.readDoubleLE(i * 8);
+        value = Math.round(value * 255); // Normalize to 0-255
+        break;
+      default:
+        value = buffer.readUInt8(i);
+    }
+    values.push(value);
+  }
+  
+  return values;
+}
+
+// Parse numeric result from evaluate response
+function parseNumericResult(result: string, depth: number): number {
+  let value: number;
+  if (depth === 5 || depth === 6) {
+    value = parseFloat(result);
+    if (!isNaN(value)) {
+      value = Math.round(value * 255);
+    } else {
+      value = 0;
+    }
+  } else {
+    value = parseInt(result);
+    if (isNaN(value)) {
+      value = 0;
+    }
+  }
+  return value;
+}
+
 // Function to draw the cv::Mat image
 async function drawMatImage(
   debugSession: vscode.DebugSession,
@@ -223,52 +462,20 @@ async function drawMatImage(
     const usingLLDB = isUsingLLDB(debugSession);
     const usingCppdbg = isUsingCppdbg(debugSession);
     console.log("Drawing Mat image with debugger type:", debugSession.type);
-    console.log("Using LLDB mode:", usingLLDB);
-    console.log("Using cppdbg mode:", usingCppdbg);
     
-    let rowsExp, colsExp, channelsExp, depthExp, dataExp;
+    const rowsExp = `${variableName}.rows`;
+    const colsExp = `${variableName}.cols`;
+    const channelsExp = `${variableName}.channels()`;
+    const depthExp = `${variableName}.depth()`;
+    const dataExp = `${variableName}.data`;
 
-    if (usingCppdbg) {
-      // cppdbg expressions
-      rowsExp = `${variableName}.rows`;
-      colsExp = `${variableName}.cols`;
-      channelsExp = `${variableName}.channels()`;
-      depthExp = `${variableName}.depth()`;
-      dataExp = `${variableName}.data`;
-    } else {
-      // LLDB expressions
-      rowsExp = `${variableName}.rows`;
-      colsExp = `${variableName}.cols`;
-      channelsExp = `${variableName}.channels()`;
-      depthExp = `${variableName}.depth()`;
-      dataExp = `${variableName}.data`;
-    }
-
-    // Get matrix dimensions
-    const rowsResponse = await evaluateWithTimeout(
-      debugSession,
-      rowsExp,
-      frameId,
-      5000
-    );
-    const colsResponse = await evaluateWithTimeout(
-      debugSession,
-      colsExp,
-      frameId,
-      5000
-    );
-    const channelsResponse = await evaluateWithTimeout(
-      debugSession,
-      channelsExp,
-      frameId,
-      5000
-    );
-    const depthResponse = await evaluateWithTimeout(
-      debugSession,
-      depthExp,
-      frameId,
-      5000
-    );
+    // Get matrix dimensions in parallel
+    const [rowsResponse, colsResponse, channelsResponse, depthResponse] = await Promise.all([
+      evaluateWithTimeout(debugSession, rowsExp, frameId, 5000),
+      evaluateWithTimeout(debugSession, colsExp, frameId, 5000),
+      evaluateWithTimeout(debugSession, channelsExp, frameId, 5000),
+      evaluateWithTimeout(debugSession, depthExp, frameId, 5000)
+    ]);
 
     const rows = parseInt(rowsResponse.result);
     const cols = parseInt(colsResponse.result);
@@ -281,69 +488,32 @@ async function drawMatImage(
       throw new Error("Invalid matrix dimensions or type");
     }
 
-    // Get matrix data
-    const dataSize = rows * cols * channels;
-    const data: number[] = [];
-
-    if (usingCppdbg || usingLLDB) {
-      // Determine data type based on depth
-      let dataType;
-      switch (depth) {
-        case 0: // CV_8U
-          dataType = "unsigned char";
-          break;
-        case 1: // CV_8S
-          dataType = "char";
-          break;
-        case 2: // CV_16U
-          dataType = "unsigned short";
-          break;
-        case 3: // CV_16S
-          dataType = "short";
-          break;
-        case 4: // CV_32S
-          dataType = "int";
-          break;
-        case 5: // CV_32F
-          dataType = "float";
-          break;
-        case 6: // CV_64F
-          dataType = "double";
-          break;
-        default:
-          throw new Error(`Unsupported depth: ${depth}`);
-      }
-
-      console.log(`Using data type: ${dataType} for depth ${depth}`);
-
-      // Read data element by element
-      for (let i = 0; i < dataSize; i++) {
-        const dataResponse = await evaluateWithTimeout(
-          debugSession,
-          `((${dataType}*)${dataExp})[${i}]`,
-          frameId,
-          5000
-        );
-
-        let value: number;
-        if (dataType === "float" || dataType === "double") {
-          value = parseFloat(dataResponse.result);
-          // For 32F images, multiply by 255 directly
-          if (depth === 5) {
-            value = Math.round(value * 255);
-          }
-        } else {
-          value = parseInt(dataResponse.result);
-        }
-
-        if (!isNaN(value)) {
-          data.push(value);
-        } else {
-          console.warn(`Invalid value at index ${i}: ${dataResponse.result}`);
-          data.push(0);
-        }
-      }
+    if (rows <= 0 || cols <= 0) {
+      throw new Error("Matrix is empty");
     }
+
+    const dataSize = rows * cols * channels;
+    console.log(`Total data size: ${dataSize} elements`);
+
+    // Read data with progress indicator
+    const data = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Loading OpenCV Mat",
+        cancellable: false
+      },
+      async (progress) => {
+        progress.report({ message: "Starting to read pixel data..." });
+        return await readMatDataFast(
+          debugSession,
+          dataExp,
+          frameId,
+          dataSize,
+          depth,
+          progress
+        );
+      }
+    );
 
     // Show the webview to visualize the matrix as an image
     const panel = vscode.window.createWebviewPanel(
