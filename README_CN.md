@@ -65,9 +65,11 @@
 
 1. 在 VS Code 中启动 C++ 调试会话
 2. 在 OpenCV 变量可见的位置设置断点
-3. 在 **变量** 或 **监视** 面板中，右键点击 `cv::Mat` 或 `std::vector<cv::Point3f>` 变量
-4. 选择 **"View by CV DebugMate"**
+3. 在 **变量** 或 **监视** 面板中，右键点击支持的变量（`cv::Mat` 或 `std::vector<cv::Point3f>`）
+4. 在右键菜单中选择 **"View by CV DebugMate"**
 5. 可视化界面将在新标签页中打开
+
+![调试使用方法](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/debug_usage.png)
 
 ---
 

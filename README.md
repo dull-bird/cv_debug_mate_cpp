@@ -63,9 +63,11 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 
 1. Start a C++ debug session in VS Code
 2. Set a breakpoint where OpenCV variables are in scope
-3. In the **Variables** or **Watch** panel, right-click on a `cv::Mat` or `std::vector<cv::Point3f>` variable
-4. Select **"View by CV DebugMate"**
+3. In the **Variables** or **Watch** panel, right-click on a supported variable (`cv::Mat` or `std::vector<cv::Point3f>`)
+4. Select **"View by CV DebugMate"** from the context menu
 5. The visualization will open in a new tab
+
+![Debug Usage](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/debug_usage.png)
 
 ---
 

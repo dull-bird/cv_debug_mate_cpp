@@ -13,7 +13,7 @@
         "url": "https://github.com/dull-bird/cv_debug_mate_cpp/issues"
     },
     "homepage": "https://github.com/dull-bird/cv_debug_mate_cpp#readme",
-    "icon": "https://github.com/dull-bird/cv_debug_mate_cpp/raw/main/assets/icon.png",
+    "icon": "assets/icon.png",
     "engines": {
         "vscode": "^1.93.0"
     },
