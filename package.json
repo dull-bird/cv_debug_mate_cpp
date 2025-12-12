@@ -20,6 +20,13 @@
     "categories": [
         "Other"
     ],
+    "keywords": [
+        "image watch",
+        "debug",
+        "mat",
+        "point cloud",
+        "c++"
+    ],
     "main": "./out/extension.js",
     "contributes": {
         "commands": [
