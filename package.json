@@ -4,6 +4,15 @@
     "description": "Visualize OpenCV Mat and Point Cloud during C++ debugging. Inspired by Image Watch.",
     "version": "0.0.1",
     "license": "MIT",
+    "publisher": "dull-bird",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/dull-bird/cv_debug_mate_cpp"
+    },
+    "bugs": {
+        "url": "https://github.com/dull-bird/cv_debug_mate_cpp/issues"
+    },
+    "homepage": "https://github.com/dull-bird/cv_debug_mate_cpp#readme",
     "engines": {
         "vscode": "^1.93.0"
     },

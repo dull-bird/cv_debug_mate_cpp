@@ -31,10 +31,10 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 ## Screenshots
 
 ### Mat Visualization
-![Mat Visualization](assets/image.png)
+![Mat Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image.png)
 
 ### Point Cloud Visualization
-![Point Cloud Visualization](assets/pointcloud.png)
+![Point Cloud Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
 ---
 
