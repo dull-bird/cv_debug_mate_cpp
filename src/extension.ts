@@ -216,45 +216,56 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
     const usingLLDB = isUsingLLDB(debugSession);
     const usingCppdbg = isUsingCppdbg(debugSession);
     console.log("Drawing point cloud with debugger type:", debugSession.type);
-    console.log("Using LLDB mode:", usingLLDB);
-    console.log("Using cppdbg mode:", usingCppdbg);
-
-    // Get the number of elements in the vector
-    const sizeResponse = await evaluateWithTimeout(
-      debugSession,
-      `${variableInfo.evaluateName}.size()`,
-      variableInfo.frameId || 0,
-      5000
-    );
-    const size = parseInt(sizeResponse.result);
+    console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
 
     let points: { x: number; y: number; z: number }[] = [];
 
-    for (let i = 0; i < size; i++) {
-      // Adjust expression based on debugger type
-      const pointExpression = usingCppdbg
-        ? `${variableInfo.evaluateName}[${i}]`
-        : `${variableInfo.evaluateName}.at(${i})`;
-
-      const pointResponse = await evaluateWithTimeout(
+    if (usingLLDB && variableInfo.variablesReference > 0) {
+      // LLDB: Use variables request instead of evaluate
+      console.log("LLDB: Using variables request for point cloud");
+      points = await getPointCloudFromVariables(debugSession, variableInfo.variablesReference);
+    } else {
+      // Other debuggers: Use evaluate expressions
+      const sizeResponse = await evaluateWithTimeout(
         debugSession,
-        pointExpression,
+        `${variableInfo.evaluateName}.size()`,
         variableInfo.frameId || 0,
         5000
       );
+      const size = parseInt(sizeResponse.result);
+      console.log(`Point cloud size: ${size}`);
 
-      // Extract x, y, z values using regular expressions
-      const matches = pointResponse.result.match(
-        /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
-      );
+      for (let i = 0; i < size; i++) {
+        const pointExpression = usingCppdbg
+          ? `${variableInfo.evaluateName}[${i}]`
+          : `${variableInfo.evaluateName}.at(${i})`;
 
-      if (matches) {
-        points.push({
-          x: parseFloat(matches[1]),
-          y: parseFloat(matches[2]),
-          z: parseFloat(matches[3]),
-        });
+        const pointResponse = await evaluateWithTimeout(
+          debugSession,
+          pointExpression,
+          variableInfo.frameId || 0,
+          5000
+        );
+
+        const matches = pointResponse.result.match(
+          /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
+        );
+
+        if (matches) {
+          points.push({
+            x: parseFloat(matches[1]),
+            y: parseFloat(matches[2]),
+            z: parseFloat(matches[3]),
+          });
+        }
       }
+    }
+
+    console.log(`Loaded ${points.length} points`);
+
+    if (points.length === 0) {
+      vscode.window.showWarningMessage("No points found in the vector");
+      return;
     }
 
     // Show the webview to visualize the points
@@ -271,6 +282,60 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
     console.error("Error in drawPointCloud:", error);
     throw error;
   }
+}
+
+// Get point cloud data from LLDB variables request
+async function getPointCloudFromVariables(
+  debugSession: vscode.DebugSession,
+  variablesReference: number
+): Promise<{ x: number; y: number; z: number }[]> {
+  const points: { x: number; y: number; z: number }[] = [];
+  
+  console.log("Getting vector elements from variablesReference:", variablesReference);
+  
+  // Get vector elements
+  const vectorVars = await debugSession.customRequest("variables", {
+    variablesReference: variablesReference
+  });
+  
+  console.log("Vector variables count:", vectorVars.variables.length);
+  
+  for (const v of vectorVars.variables) {
+    // Skip non-element variables like __begin_, __end_, etc.
+    if (v.name.startsWith("__") || v.name === "size" || v.name === "capacity") {
+      continue;
+    }
+    
+    console.log(`  Element ${v.name}: ${v.value}`);
+    
+    // Try to parse x, y, z from the value string
+    const matches = v.value.match(
+      /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
+    );
+    
+    if (matches) {
+      points.push({
+        x: parseFloat(matches[1]),
+        y: parseFloat(matches[2]),
+        z: parseFloat(matches[3]),
+      });
+    } else if (v.variablesReference > 0) {
+      // Need to expand the point to get x, y, z
+      const pointVars = await debugSession.customRequest("variables", {
+        variablesReference: v.variablesReference
+      });
+      
+      let x = 0, y = 0, z = 0;
+      for (const pv of pointVars.variables) {
+        if (pv.name === "x") x = parseFloat(pv.value) || 0;
+        else if (pv.name === "y") y = parseFloat(pv.value) || 0;
+        else if (pv.name === "z") z = parseFloat(pv.value) || 0;
+      }
+      points.push({ x, y, z });
+    }
+  }
+  
+  return points;
 }
 
 // Get bytes per element based on depth
@@ -657,15 +722,13 @@ async function getMatInfoFromVariables(
     } else if (name === "flags") {
       flags = parseInt(value);
       // Extract depth and channels from flags
-      // CV_MAT_DEPTH(flags) = flags & 7
-      // CV_MAT_CN(flags) = ((flags >> 3) & 63) + 1  -- This is wrong!
-      // Correct: CV_MAT_CN(flags) = ((flags >> CV_CN_SHIFT) & ((1 << 14) - 1)) + 1
-      // But for simplicity, we use the step array or compute from data size
-      depth = flags & 7;
-      // For channels, we need a different approach - compute from step or assume 3 for color
-      const rawChannels = ((flags >> 3) & ((1 << 14) - 1)) + 1;
-      channels = rawChannels > 0 && rawChannels <= 4 ? rawChannels : 1;
-      console.log(`Extracted from flags ${flags} (0x${flags.toString(16)}): depth=${depth}, channels=${channels}`);
+      // OpenCV flags format: lower 12 bits contain the type
+      // type = depth | ((channels - 1) << 3)
+      // CV_MAT_TYPE_MASK = 0xFFF
+      const type = flags & 0xFFF;
+      depth = type & 7;  // CV_MAT_DEPTH_MASK = 7
+      channels = ((type >> 3) & 63) + 1;  // ((type >> 3) & 63) gives (channels - 1)
+      console.log(`Extracted from flags ${flags} (0x${flags.toString(16)}): type=0x${type.toString(16)}, depth=${depth}, channels=${channels}`);
     }
   }
   
@@ -902,6 +965,8 @@ function getWebviewContentForPointCloud(
               <button id="zoomIn">Zoom In</button>
               <button id="zoomOut">Zoom Out</button>
               <button id="reset">Reset</button>
+              <button id="downloadPng">Save PNG</button>
+              <button id="downloadTiff">Save TIFF</button>
               <span id="zoomLevel">Zoom: 100%</span>
           </div>
           <div id="pixelInfo"></div>
@@ -1063,6 +1128,152 @@ function getWebviewContentForPointCloud(
                       offsetY = 0;
                       draw();
                   });
+
+                  // Download PNG
+                  document.getElementById('downloadPng').addEventListener('click', () => {
+                      const link = document.createElement('a');
+                      link.download = 'image.png';
+                      link.href = offscreenCanvas.toDataURL('image/png');
+                      link.click();
+                  });
+
+                  // Download TIFF (with raw data for float support)
+                  document.getElementById('downloadTiff').addEventListener('click', () => {
+                      // Create TIFF file
+                      const tiffData = createTiff(cols, rows, channels, data, ${depth});
+                      const blob = new Blob([tiffData], { type: 'image/tiff' });
+                      const link = document.createElement('a');
+                      link.download = 'image.tiff';
+                      link.href = URL.createObjectURL(blob);
+                      link.click();
+                      URL.revokeObjectURL(link.href);
+                  });
+
+                  // Simple TIFF encoder
+                  function createTiff(width, height, channels, data, depth) {
+                      // Determine bits per sample and sample format based on depth
+                      let bitsPerSample, sampleFormat, bytesPerSample;
+                      if (depth === 5) { // CV_32F
+                          bitsPerSample = 32;
+                          sampleFormat = 3; // IEEE float
+                          bytesPerSample = 4;
+                      } else if (depth === 6) { // CV_64F
+                          bitsPerSample = 64;
+                          sampleFormat = 3; // IEEE float
+                          bytesPerSample = 8;
+                      } else {
+                          bitsPerSample = 8;
+                          sampleFormat = 1; // unsigned int
+                          bytesPerSample = 1;
+                      }
+
+                      const samplesPerPixel = channels === 1 ? 1 : 3;
+                      const photometric = channels === 1 ? 1 : 2; // 1=grayscale, 2=RGB
+                      const rowsPerStrip = height;
+                      const stripByteCount = width * height * samplesPerPixel * bytesPerSample;
+
+                      // IFD entries
+                      const numEntries = 12;
+                      const headerSize = 8;
+                      const ifdOffset = headerSize;
+                      const ifdSize = 2 + numEntries * 12 + 4;
+                      const dataOffset = ifdOffset + ifdSize + 20; // extra space for arrays
+                      const stripOffset = dataOffset;
+
+                      const totalSize = stripOffset + stripByteCount;
+                      const buffer = new ArrayBuffer(totalSize);
+                      const view = new DataView(buffer);
+                      const bytes = new Uint8Array(buffer);
+
+                      let offset = 0;
+
+                      // TIFF header (little endian)
+                      view.setUint16(offset, 0x4949, true); offset += 2; // II = little endian
+                      view.setUint16(offset, 42, true); offset += 2; // TIFF magic
+                      view.setUint32(offset, ifdOffset, true); offset += 4; // IFD offset
+
+                      // IFD
+                      view.setUint16(offset, numEntries, true); offset += 2;
+
+                      // Helper to write IFD entry
+                      function writeEntry(tag, type, count, value) {
+                          view.setUint16(offset, tag, true); offset += 2;
+                          view.setUint16(offset, type, true); offset += 2;
+                          view.setUint32(offset, count, true); offset += 4;
+                          if (type === 3 && count === 1) { // SHORT
+                              view.setUint16(offset, value, true); offset += 2;
+                              view.setUint16(offset, 0, true); offset += 2;
+                          } else if (type === 4 && count === 1) { // LONG
+                              view.setUint32(offset, value, true); offset += 4;
+                          } else {
+                              view.setUint32(offset, value, true); offset += 4;
+                          }
+                      }
+
+                      // IFD entries
+                      writeEntry(256, 3, 1, width);  // ImageWidth
+                      writeEntry(257, 3, 1, height); // ImageLength
+                      writeEntry(258, 3, samplesPerPixel, samplesPerPixel === 1 ? bitsPerSample : ifdOffset + ifdSize); // BitsPerSample
+                      writeEntry(259, 3, 1, 1); // Compression = none
+                      writeEntry(262, 3, 1, photometric); // PhotometricInterpretation
+                      writeEntry(273, 4, 1, stripOffset); // StripOffsets
+                      writeEntry(277, 3, 1, samplesPerPixel); // SamplesPerPixel
+                      writeEntry(278, 3, 1, rowsPerStrip); // RowsPerStrip
+                      writeEntry(279, 4, 1, stripByteCount); // StripByteCounts
+                      writeEntry(282, 5, 1, ifdOffset + ifdSize + 8); // XResolution
+                      writeEntry(283, 5, 1, ifdOffset + ifdSize + 16); // YResolution
+                      writeEntry(339, 3, samplesPerPixel, samplesPerPixel === 1 ? sampleFormat : ifdOffset + ifdSize + 6); // SampleFormat
+
+                      // Next IFD = 0
+                      view.setUint32(offset, 0, true); offset += 4;
+
+                      // BitsPerSample array (if RGB)
+                      if (samplesPerPixel > 1) {
+                          const bpsOffset = ifdOffset + ifdSize;
+                          view.setUint16(bpsOffset, bitsPerSample, true);
+                          view.setUint16(bpsOffset + 2, bitsPerSample, true);
+                          view.setUint16(bpsOffset + 4, bitsPerSample, true);
+                          // SampleFormat array
+                          view.setUint16(bpsOffset + 6, sampleFormat, true);
+                          view.setUint16(bpsOffset + 8, sampleFormat, true);
+                          view.setUint16(bpsOffset + 10, sampleFormat, true);
+                      }
+
+                      // Resolution (72 dpi as rational 72/1)
+                      const resOffset = ifdOffset + ifdSize + 8;
+                      view.setUint32(resOffset, 72, true);
+                      view.setUint32(resOffset + 4, 1, true);
+                      view.setUint32(resOffset + 8, 72, true);
+                      view.setUint32(resOffset + 12, 1, true);
+
+                      // Write pixel data
+                      let pixelOffset = stripOffset;
+                      for (let i = 0; i < height; i++) {
+                          for (let j = 0; j < width; j++) {
+                              const srcIdx = (i * width + j) * channels;
+                              if (depth === 5) { // CV_32F
+                                  for (let c = 0; c < samplesPerPixel; c++) {
+                                      const val = channels === 1 ? data[srcIdx] : data[srcIdx + c];
+                                      view.setFloat32(pixelOffset, val / 255.0, true);
+                                      pixelOffset += 4;
+                                  }
+                              } else if (depth === 6) { // CV_64F
+                                  for (let c = 0; c < samplesPerPixel; c++) {
+                                      const val = channels === 1 ? data[srcIdx] : data[srcIdx + c];
+                                      view.setFloat64(pixelOffset, val / 255.0, true);
+                                      pixelOffset += 8;
+                                  }
+                              } else { // 8-bit
+                                  for (let c = 0; c < samplesPerPixel; c++) {
+                                      const val = channels === 1 ? data[srcIdx] : data[srcIdx + c];
+                                      bytes[pixelOffset++] = val;
+                                  }
+                              }
+                          }
+                      }
+
+                      return buffer;
+                  }
 
                   canvas.addEventListener('wheel', (e) => {
                       e.preventDefault();

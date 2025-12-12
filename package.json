@@ -1,8 +1,9 @@
 {
-    "name": "opencv-visualizer",
-    "displayName": "OpenCV Visualizer",
-    "description": "",
+    "name": "cv-debugmate-cpp",
+    "displayName": "CV DebugMate C++",
+    "description": "Visualize OpenCV Mat and Point Cloud during C++ debugging. Inspired by Image Watch.",
     "version": "0.0.1",
+    "license": "MIT",
     "engines": {
         "vscode": "^1.93.0"
     },
@@ -13,12 +14,8 @@
     "contributes": {
         "commands": [
             {
-                "command": "test-cv.helloWorld",
-                "title": "Hello World"
-            },
-            {
                 "command": "extension.viewVariable",
-                "title": "Get Vector Info"
+                "title": "View by CV DebugMate"
             }
         ],
         "menus": {
