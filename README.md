@@ -1,5 +1,7 @@
 # CV DebugMate C++
 
+English | [中文](https://github.com/dull-bird/cv_debug_mate_cpp/blob/main/README_CN.md)
+
 A Visual Studio Code extension for visualizing OpenCV data structures during C++ debugging.
 
 **Inspired by [Image Watch](https://marketplace.visualstudio.com/items?itemName=VisualCPPTeam.ImageWatch2022) for Visual Studio.**
