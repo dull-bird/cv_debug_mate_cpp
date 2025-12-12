@@ -28,15 +28,32 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 
 ---
 
+## Screenshots
+
+### Mat Visualization
+![Mat Visualization](assets/image.png)
+
+### Point Cloud Visualization
+![Point Cloud Visualization](assets/pointcloud.png)
+
+---
+
 ## Supported Debuggers
 
-| Debugger | Status |
-|----------|--------|
-| **cppvsdbg** (Visual Studio Debugger) | ✅ Full support |
-| **cppdbg** (GDB/LLDB via cpptools) | ✅ Full support |
-| **lldb** (CodeLLDB) | ✅ Full support |
+| Debugger | cv::Mat | Point Cloud | Notes |
+|----------|---------|-------------|-------|
+| **cppvsdbg** (Visual Studio Debugger) | ✅ Tested | ✅ Tested | Full support on Windows |
+| **cppdbg** (GDB/LLDB via cpptools) | ❓ Untested | ❓ Untested | Should work, not tested |
+| **lldb** (CodeLLDB + MSVC) | ✅ Tested | ❌ Not working | LLDB cannot parse MSVC STL, vector size always returns 0 |
+| **lldb** (CodeLLDB + GCC/Clang) | ❓ Untested | ❓ Untested | May work with libstdc++/libc++, not tested |
 
-> **💡 Tip:** If you are using closed-source VS Code forks like **Cursor**, **Qoder**, or similar IDEs, it is recommended to use **CodeLLDB** for debugging MSVC-compiled code, as cppvsdbg may not be available in these environments.
+### Known Limitations
+
+- **CodeLLDB + MSVC**: When using CodeLLDB to debug MSVC-compiled code, point cloud visualization does not work because LLDB cannot correctly parse MSVC's STL implementation (`std::vector` size always returns 0). However, `cv::Mat` visualization works correctly.
+  
+- **CodeLLDB + GCC/Clang**: If you compile with GCC or Clang (using libstdc++ or libc++), point cloud visualization may work, but this has not been tested.
+
+- **cppvsdbg license**: If you are using closed-source VS Code forks like **Cursor**, **Qoder**, or similar IDEs, you may need to use **CodeLLDB** for debugging MSVC-compiled code, as cppvsdbg may not be available in these environments. Note that point cloud visualization will not work in this case due to LLDB's limited support for MSVC STL.
 
 ---
 

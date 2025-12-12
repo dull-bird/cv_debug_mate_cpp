@@ -120,6 +120,8 @@ export function activate(context: vscode.ExtensionContext) {
             frameId: frameId,
             context: evalContext,
           });
+          // Add evaluateName since evaluate response doesn't include it
+          variableInfo.evaluateName = variableName;
           console.log("Evaluate result:", JSON.stringify(variableInfo, null, 2));
         }
 
@@ -214,57 +216,65 @@ function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
 async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any) {
   try {
     const usingLLDB = isUsingLLDB(debugSession);
-    const usingCppdbg = isUsingCppdbg(debugSession);
     console.log("Drawing point cloud with debugger type:", debugSession.type);
     console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
 
     let points: { x: number; y: number; z: number }[] = [];
 
-    if (usingLLDB && variableInfo.variablesReference > 0) {
-      // LLDB: Use variables request instead of evaluate
-      console.log("LLDB: Using variables request for point cloud");
-      points = await getPointCloudFromVariables(debugSession, variableInfo.variablesReference);
-    } else {
-      // Other debuggers: Use evaluate expressions
-      const sizeResponse = await evaluateWithTimeout(
-        debugSession,
-        `${variableInfo.evaluateName}.size()`,
-        variableInfo.frameId || 0,
-        5000
-      );
-      const size = parseInt(sizeResponse.result);
-      console.log(`Point cloud size: ${size}`);
-
-      for (let i = 0; i < size; i++) {
-        const pointExpression = usingCppdbg
-          ? `${variableInfo.evaluateName}[${i}]`
-          : `${variableInfo.evaluateName}.at(${i})`;
-
-        const pointResponse = await evaluateWithTimeout(
+    // Try using variables request first (works for all debuggers)
+    if (variableInfo.variablesReference > 0) {
+      console.log("Using variables request for point cloud");
+      try {
+        points = await getPointCloudFromVariables(debugSession, variableInfo.variablesReference, variableInfo.result, variableInfo.evaluateName);
+      } catch (e) {
+        console.log("Variables request failed, trying evaluate:", e);
+      }
+    }
+    
+    // Fallback to evaluate for debuggers that support it (non-LLDB)
+    if (points.length === 0 && !usingLLDB && variableInfo.evaluateName) {
+      console.log("Trying evaluate fallback");
+      try {
+        const sizeResponse = await evaluateWithTimeout(
           debugSession,
-          pointExpression,
+          `${variableInfo.evaluateName}.size()`,
           variableInfo.frameId || 0,
           5000
         );
+        const size = parseInt(sizeResponse.result);
+        console.log(`Point cloud size: ${size}`);
 
-        const matches = pointResponse.result.match(
-          /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
-        );
+        for (let i = 0; i < size; i++) {
+          const pointExpression = `${variableInfo.evaluateName}[${i}]`;
 
-        if (matches) {
-          points.push({
-            x: parseFloat(matches[1]),
-            y: parseFloat(matches[2]),
-            z: parseFloat(matches[3]),
-          });
+          const pointResponse = await evaluateWithTimeout(
+            debugSession,
+            pointExpression,
+            variableInfo.frameId || 0,
+            5000
+          );
+
+          const matches = pointResponse.result.match(
+            /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
+          );
+
+          if (matches) {
+            points.push({
+              x: parseFloat(matches[1]),
+              y: parseFloat(matches[2]),
+              z: parseFloat(matches[3]),
+            });
+          }
         }
+      } catch (e) {
+        console.log("Evaluate fallback also failed:", e);
       }
     }
 
     console.log(`Loaded ${points.length} points`);
 
     if (points.length === 0) {
-      vscode.window.showWarningMessage("No points found in the vector");
+      vscode.window.showWarningMessage("No points found in the vector. Make sure the vector is not empty.");
       return;
     }
 
@@ -287,55 +297,152 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
 // Get point cloud data from LLDB variables request
 async function getPointCloudFromVariables(
   debugSession: vscode.DebugSession,
-  variablesReference: number
+  variablesReference: number,
+  resultString?: string,
+  evaluateName?: string
 ): Promise<{ x: number; y: number; z: number }[]> {
   const points: { x: number; y: number; z: number }[] = [];
   
-  console.log("Getting vector elements from variablesReference:", variablesReference);
-  
-  // Get vector elements
-  const vectorVars = await debugSession.customRequest("variables", {
-    variablesReference: variablesReference
-  });
-  
-  console.log("Vector variables count:", vectorVars.variables.length);
-  
-  for (const v of vectorVars.variables) {
-    // Skip non-element variables like __begin_, __end_, etc.
-    if (v.name.startsWith("__") || v.name === "size" || v.name === "capacity") {
-      continue;
-    }
-    
-    console.log(`  Element ${v.name}: ${v.value}`);
-    
-    // Try to parse x, y, z from the value string
-    const matches = v.value.match(
-      /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
-    );
-    
-    if (matches) {
-      points.push({
-        x: parseFloat(matches[1]),
-        y: parseFloat(matches[2]),
-        z: parseFloat(matches[3]),
-      });
-    } else if (v.variablesReference > 0) {
-      // Need to expand the point to get x, y, z
-      const pointVars = await debugSession.customRequest("variables", {
-        variablesReference: v.variablesReference
-      });
-      
-      let x = 0, y = 0, z = 0;
-      for (const pv of pointVars.variables) {
-        if (pv.name === "x") x = parseFloat(pv.value) || 0;
-        else if (pv.name === "y") y = parseFloat(pv.value) || 0;
-        else if (pv.name === "z") z = parseFloat(pv.value) || 0;
-      }
-      points.push({ x, y, z });
+  // Try to parse size from result string like "{ size=31675 }"
+  let totalSize = 0;
+  if (resultString) {
+    const sizeMatch = resultString.match(/size\s*=\s*(\d+)/);
+    if (sizeMatch) {
+      totalSize = parseInt(sizeMatch[1]);
+      console.log(`Parsed vector size from result: ${totalSize}`);
     }
   }
   
+  // Force use readMemory if we have size and evaluateName
+  if (totalSize > 0 && evaluateName) {
+    try {
+      // Get data pointer via evaluate expression
+      const dataResponse = await debugSession.customRequest("evaluate", {
+        expression: `(void*)${evaluateName}.data()`,
+        frameId: await getCurrentFrameId(debugSession),
+        context: "watch"
+      });
+      
+      console.log("Data pointer response:", dataResponse);
+      
+      let dataPtr: string | null = null;
+      if (dataResponse && dataResponse.result) {
+        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
+        if (ptrMatch) {
+          dataPtr = ptrMatch[0];
+        }
+      }
+      
+      if (dataPtr) {
+        // Read all points at once: Point3f = 3 floats = 12 bytes per point
+        const bytesPerPoint = 12;
+        const totalBytes = totalSize * bytesPerPoint;
+        
+        console.log(`Reading ${totalSize} points (${totalBytes} bytes) from ${dataPtr}`);
+        
+        const memoryResponse = await debugSession.customRequest("readMemory", {
+          memoryReference: dataPtr,
+          count: totalBytes
+        });
+        
+        if (memoryResponse && memoryResponse.data) {
+          const buffer = Buffer.from(memoryResponse.data, 'base64');
+          
+          for (let i = 0; i < totalSize && i * 12 + 11 < buffer.length; i++) {
+            const offset = i * 12;
+            const x = buffer.readFloatLE(offset);
+            const y = buffer.readFloatLE(offset + 4);
+            const z = buffer.readFloatLE(offset + 8);
+            points.push({ x, y, z });
+          }
+          
+          console.log(`Loaded ${points.length} points via readMemory`);
+          return points;
+        }
+      } else {
+        console.log("Could not extract data pointer from response");
+      }
+    } catch (e) {
+      console.log("readMemory approach failed:", e);
+    }
+  }
+  
+  // Fallback: Use variables request with [More] node expansion
+  console.log("Using fallback: variables request with [More] expansion");
+  const queue: number[] = [variablesReference];
+  
+  while (queue.length > 0 && points.length < 100000) {
+    const currentRef = queue.shift()!;
+    
+    const vectorVars = await debugSession.customRequest("variables", {
+      variablesReference: currentRef
+    });
+    
+    if (!vectorVars.variables || vectorVars.variables.length === 0) {
+      continue;
+    }
+    
+    console.log(`Got ${vectorVars.variables.length} variables from ref ${currentRef}, total points so far: ${points.length}`);
+    
+    for (const v of vectorVars.variables) {
+      if (v.name.startsWith("__") || v.name === "size" || v.name === "capacity" || v.name === "[Raw View]") {
+        continue;
+      }
+      
+      if (v.name === "[More]" && v.variablesReference > 0) {
+        queue.push(v.variablesReference);
+        continue;
+      }
+      
+      const matches = v.value.match(
+        /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
+      );
+      
+      if (matches) {
+        points.push({
+          x: parseFloat(matches[1]),
+          y: parseFloat(matches[2]),
+          z: parseFloat(matches[3]),
+        });
+      } else if (v.variablesReference > 0) {
+        const pointVars = await debugSession.customRequest("variables", {
+          variablesReference: v.variablesReference
+        });
+        
+        let x = 0, y = 0, z = 0;
+        for (const pv of pointVars.variables) {
+          if (pv.name === "x") x = parseFloat(pv.value) || 0;
+          else if (pv.name === "y") y = parseFloat(pv.value) || 0;
+          else if (pv.name === "z") z = parseFloat(pv.value) || 0;
+        }
+        points.push({ x, y, z });
+      }
+    }
+  }
+  
+  console.log(`Total points loaded: ${points.length}`);
   return points;
+}
+
+// Helper function to get current frame ID
+async function getCurrentFrameId(debugSession: vscode.DebugSession): Promise<number> {
+  try {
+    const threadsResponse = await debugSession.customRequest("threads", {});
+    if (threadsResponse.threads && threadsResponse.threads.length > 0) {
+      const threadId = threadsResponse.threads[0].id;
+      const stackResponse = await debugSession.customRequest("stackTrace", {
+        threadId: threadId,
+        startFrame: 0,
+        levels: 1
+      });
+      if (stackResponse.stackFrames && stackResponse.stackFrames.length > 0) {
+        return stackResponse.stackFrames[0].id;
+      }
+    }
+  } catch (e) {
+    console.log("Error getting frame ID:", e);
+  }
+  return 0;
 }
 
 // Get bytes per element based on depth
@@ -823,7 +930,89 @@ function getWebviewContentForPointCloud(
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>3D Point Viewer</title>
-            <style> body { margin: 0; } canvas { display: block; } </style>
+            <style>
+                body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+                canvas { display: block; }
+                #info {
+                    position: absolute;
+                    top: 10px;
+                    left: 10px;
+                    background: rgba(0, 0, 0, 0.7);
+                    color: white;
+                    padding: 10px 15px;
+                    border-radius: 5px;
+                    font-size: 14px;
+                    z-index: 100;
+                }
+                #info h3 { margin: 0 0 8px 0; font-size: 16px; }
+                #info p { margin: 4px 0; }
+                #controls {
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    background: rgba(0, 0, 0, 0.7);
+                    color: white;
+                    padding: 10px 15px;
+                    border-radius: 5px;
+                    z-index: 100;
+                }
+                #controls button {
+                    background: #4a9eff;
+                    color: white;
+                    border: none;
+                    padding: 8px 12px;
+                    margin: 3px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                }
+                #controls button:hover { background: #3a8eef; }
+                #controls button.active { background: #2a7edf; }
+                #controls label { font-size: 12px; margin-right: 5px; }
+                #controls input[type="number"] {
+                    width: 60px;
+                    padding: 4px;
+                    border: 1px solid #555;
+                    border-radius: 3px;
+                    background: #333;
+                    color: white;
+                    font-size: 12px;
+                }
+                #axisView {
+                    position: absolute;
+                    bottom: 10px;
+                    right: 10px;
+                    width: 120px;
+                    height: 120px;
+                    background: rgba(0, 0, 0, 0.5);
+                    border-radius: 5px;
+                    border: 1px solid #444;
+                }
+                #colorbar {
+                    position: absolute;
+                    bottom: 140px;
+                    right: 10px;
+                    background: rgba(0, 0, 0, 0.7);
+                    color: white;
+                    padding: 10px;
+                    border-radius: 5px;
+                    display: none;
+                }
+                #colorbar-gradient {
+                    width: 20px;
+                    height: 120px;
+                    background: linear-gradient(to top, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000);
+                    margin-right: 10px;
+                }
+                #colorbar-labels {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    height: 120px;
+                    font-size: 11px;
+                }
+                #colorbar-container { display: flex; }
+            </style>
             <script type="importmap">
             {
                 "imports": {
@@ -834,33 +1023,243 @@ function getWebviewContentForPointCloud(
             </script>
         </head>
         <body>
+            <div id="info">
+                <h3>Point Cloud Viewer</h3>
+                <p>Points: <span id="pointCount">0</span></p>
+                <p>X (Right): <span id="boundsX">-</span></p>
+                <p>Y (Forward): <span id="boundsY">-</span></p>
+                <p>Z (Up): <span id="boundsZ">-</span></p>
+            </div>
+            <div id="controls">
+                <div style="margin-bottom: 8px;">
+                    <label>Point Size:</label>
+                    <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
+                </div>
+                <button id="btnSolid">Solid Color</button>
+                <button id="btnHeightZ">Color by Z</button>
+                <button id="btnHeightY">Color by Y</button>
+                <button id="btnHeightX">Color by X</button>
+                <button id="btnResetView">Reset View</button>
+            </div>
+            <div id="axisView"></div>
+            <div id="colorbar">
+                <div id="colorbar-container">
+                    <div id="colorbar-gradient"></div>
+                    <div id="colorbar-labels">
+                        <span id="colorbar-max">1.0</span>
+                        <span id="colorbar-mid">0.5</span>
+                        <span id="colorbar-min">0.0</span>
+                    </div>
+                </div>
+            </div>
             <script type="module">
                 import * as THREE from 'three';
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+                
                 const points = ${pointsArray};
+                
+                // Main scene
                 const scene = new THREE.Scene();
-                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                const renderer = new THREE.WebGLRenderer();
+                scene.background = new THREE.Color(0x1a1a2e);
+                
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100000);
+                const renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.autoClear = false;
                 document.body.appendChild(renderer.domElement);
+                
+                // Axis view (inset)
+                const axisScene = new THREE.Scene();
+                const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+                axisCamera.position.set(0, 0, 3);
+                axisCamera.lookAt(0, 0, 0);
+                
+                const axisContainer = document.getElementById('axisView');
+                const axisRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                axisRenderer.setSize(120, 120);
+                axisRenderer.setClearColor(0x000000, 0);
+                axisContainer.appendChild(axisRenderer.domElement);
+                
+                // Create axis arrows for inset view
+                const axisLength = 0.7;
+                const axisOrigin = new THREE.Vector3(0, 0, 0);
+                
+                // X axis (red) - right
+                const xAxisInset = new THREE.ArrowHelper(
+                    new THREE.Vector3(1, 0, 0), axisOrigin, axisLength, 0xff0000, 0.12, 0.06
+                );
+                axisScene.add(xAxisInset);
+                
+                // Y axis (green) - forward (negative Z in Three.js)
+                const yAxisInset = new THREE.ArrowHelper(
+                    new THREE.Vector3(0, 0, -1), axisOrigin, axisLength, 0x00ff00, 0.12, 0.06
+                );
+                axisScene.add(yAxisInset);
+                
+                // Z axis (blue) - up (Y in Three.js)
+                const zAxisInset = new THREE.ArrowHelper(
+                    new THREE.Vector3(0, 1, 0), axisOrigin, axisLength, 0x0000ff, 0.12, 0.06
+                );
+                axisScene.add(zAxisInset);
+                
+                // Add axis labels
+                function createTextSprite(text, color) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 64;
+                    canvas.height = 64;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 48px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, 32, 32);
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    sprite.scale.set(0.22, 0.22, 1);
+                    return sprite;
+                }
+                
+                const labelX = createTextSprite('X', '#ff0000');
+                labelX.position.set(0.9, 0, 0);
+                axisScene.add(labelX);
+                
+                const labelY = createTextSprite('Y', '#00ff00');
+                labelY.position.set(0, 0, -0.9);
+                axisScene.add(labelY);
+                
+                const labelZ = createTextSprite('Z', '#0000ff');
+                labelZ.position.set(0, 0.9, 0);
+                axisScene.add(labelZ);
 
+                // Calculate bounds
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+                
                 const geometry = new THREE.BufferGeometry();
                 const vertices = [];
+                
                 points.forEach(point => {
-                    vertices.push(point.x, point.y, point.z);
+                    vertices.push(point.x, point.z, -point.y);
+                    minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
+                    minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);
+                    minZ = Math.min(minZ, point.z); maxZ = Math.max(maxZ, point.z);
                 });
+                
+                document.getElementById('pointCount').textContent = points.length.toLocaleString();
+                document.getElementById('boundsX').textContent = minX.toFixed(2) + ' ~ ' + maxX.toFixed(2);
+                document.getElementById('boundsY').textContent = minY.toFixed(2) + ' ~ ' + maxY.toFixed(2);
+                document.getElementById('boundsZ').textContent = minZ.toFixed(2) + ' ~ ' + maxZ.toFixed(2);
+                
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                const material = new THREE.PointsMaterial({ color: 0x00ff00, size: 0.2 });
+                
+                const range = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
+                let currentPointSize = Math.max(0.1, range / 1000);
+                
+                document.getElementById('pointSizeInput').value = currentPointSize.toFixed(1);
+                
+                let material = new THREE.PointsMaterial({ 
+                    color: 0x00ffff, 
+                    size: currentPointSize,
+                    sizeAttenuation: true,
+                    vertexColors: false
+                });
+                
                 const pointsObject = new THREE.Points(geometry, material);
                 scene.add(pointsObject);
-
-                camera.position.set(5, 5, 5);
-                camera.lookAt(scene.position);
+                
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                const centerZ = (minZ + maxZ) / 2;
+                
+                const threeCenterX = centerX;
+                const threeCenterY = centerZ;
+                const threeCenterZ = -centerY;
+                
+                const distance = range * 2;
+                
+                function resetView() {
+                    const angle = Math.PI / 4;
+                    const elevation = Math.PI / 6;
+                    camera.position.set(
+                        threeCenterX + distance * Math.cos(angle) * Math.cos(elevation),
+                        threeCenterY + distance * Math.sin(elevation),
+                        threeCenterZ + distance * Math.sin(angle) * Math.cos(elevation)
+                    );
+                    camera.up.set(0, 1, 0);
+                    camera.lookAt(threeCenterX, threeCenterY, threeCenterZ);
+                    controls.target.set(threeCenterX, threeCenterY, threeCenterZ);
+                    controls.update();
+                }
 
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.25;
+                controls.dampingFactor = 0.1;
                 controls.enableZoom = true;
+                controls.rotateSpeed = 0.5;
+                controls.screenSpacePanning = true;
+                
+                resetView();
+                
+                // Point size handler
+                document.getElementById('pointSizeInput').onchange = (e) => {
+                    const newSize = parseFloat(e.target.value);
+                    if (newSize > 0) {
+                        material.size = newSize;
+                        material.needsUpdate = true;
+                    }
+                };
+                
+                // Color by height functions
+                function getColorForValue(value, min, max) {
+                    const t = (value - min) / (max - min || 1);
+                    const r = Math.min(1, Math.max(0, 1.5 - Math.abs(t - 1) * 2));
+                    const g = Math.min(1, Math.max(0, 1.5 - Math.abs(t - 0.5) * 2));
+                    const b = Math.min(1, Math.max(0, 1.5 - Math.abs(t - 0) * 2));
+                    return { r, g, b };
+                }
+                
+                function colorByAxis(axis) {
+                    const colors = [];
+                    let min, max;
+                    
+                    if (axis === 'z') { min = minZ; max = maxZ; }
+                    else if (axis === 'y') { min = minY; max = maxY; }
+                    else { min = minX; max = maxX; }
+                    
+                    points.forEach(point => {
+                        const value = axis === 'z' ? point.z : (axis === 'y' ? point.y : point.x);
+                        const color = getColorForValue(value, min, max);
+                        colors.push(color.r, color.g, color.b);
+                    });
+                    
+                    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                    material.vertexColors = true;
+                    material.color.setHex(0xffffff);
+                    material.needsUpdate = true;
+                    
+                    document.getElementById('colorbar').style.display = 'block';
+                    document.getElementById('colorbar-max').textContent = max.toFixed(2);
+                    document.getElementById('colorbar-mid').textContent = ((min + max) / 2).toFixed(2);
+                    document.getElementById('colorbar-min').textContent = min.toFixed(2);
+                }
+                
+                function solidColor() {
+                    material.vertexColors = false;
+                    material.color.setHex(0x00ffff);
+                    material.needsUpdate = true;
+                    document.getElementById('colorbar').style.display = 'none';
+                }
+                
+                document.getElementById('btnSolid').onclick = () => solidColor();
+                document.getElementById('btnHeightZ').onclick = () => colorByAxis('z');
+                document.getElementById('btnHeightY').onclick = () => colorByAxis('y');
+                document.getElementById('btnHeightX').onclick = () => colorByAxis('x');
+                document.getElementById('btnResetView').onclick = () => resetView();
+                
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
 
                 window.addEventListener('resize', () => {
                     camera.aspect = window.innerWidth / window.innerHeight;
@@ -871,7 +1270,16 @@ function getWebviewContentForPointCloud(
                 function animate() {
                     requestAnimationFrame(animate);
                     controls.update();
+                    
+                    // Sync axis camera rotation with main camera
+                    axisCamera.position.copy(camera.position);
+                    axisCamera.position.sub(controls.target);
+                    axisCamera.position.normalize().multiplyScalar(3);
+                    axisCamera.lookAt(0, 0, 0);
+                    
+                    renderer.clear();
                     renderer.render(scene, camera);
+                    axisRenderer.render(axisScene, axisCamera);
                 }
                 animate();
             </script>
