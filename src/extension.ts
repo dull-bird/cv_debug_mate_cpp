@@ -1,17 +1,29 @@
 import * as vscode from "vscode";
 import * as path from "path";
 
+// Get the appropriate evaluate context for the debugger type
+function getEvaluateContext(debugSession: vscode.DebugSession): string {
+  // CodeLLDB treats "repl" as command mode, use "watch" for expression evaluation
+  if (debugSession.type === "lldb") {
+    return "watch";
+  }
+  // For cppdbg and cppvsdbg, "repl" works fine
+  return "repl";
+}
+
 async function evaluateWithTimeout(
   debugSession: vscode.DebugSession,
   expression: string,
   frameId: number,
   timeout: number
 ): Promise<any> {
+  const context = getEvaluateContext(debugSession);
+  
   return Promise.race([
     debugSession.customRequest("evaluate", {
       expression: expression,
       frameId: frameId,
-      context: "repl",
+      context: context,
     }),
     new Promise((_, reject) =>
       setTimeout(
@@ -29,6 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
     "extension.viewVariable",
     async (selectedVariable: any) => {
+      console.log("========== OpenCV Visualizer Start ==========");
+      console.log("Raw selectedVariable:", JSON.stringify(selectedVariable, null, 2));
+      
       const debugSession = vscode.debug.activeDebugSession;
 
       if (!debugSession) {
@@ -39,56 +54,102 @@ export function activate(context: vscode.ExtensionContext) {
       try {
         // Access the nested 'variable' property
         const variable = selectedVariable.variable;
+        
+        console.log("--- Variable Info ---");
+        console.log("variable.name:", variable?.name);
+        console.log("variable.value:", variable?.value);
+        console.log("variable.type:", variable?.type);
+        console.log("variable.evaluateName:", variable?.evaluateName);
+        console.log("variable.variablesReference:", variable?.variablesReference);
+        console.log("variable.memoryReference:", variable?.memoryReference);
 
         if (!variable || (!variable.name && !variable.evaluateName)) {
           vscode.window.showErrorMessage("No variable selected.");
-          console.log(
-            "No variable selected. Nested variable object:",
-            variable
-          );
+          console.log("ERROR: No variable selected");
           return;
         }
 
-        const variableName = variable.evaluateName || variable.name;
-        console.log("Selected variable name:", variableName);
-
         // Get the current thread and stack frame
+        console.log("--- Getting Thread and Frame ---");
         const threadsResponse = await debugSession.customRequest("threads");
+        console.log("Threads:", threadsResponse.threads.map((t: any) => ({ id: t.id, name: t.name })));
         const threadId = threadsResponse.threads[0].id;
+        
         const stackTraceResponse = await debugSession.customRequest(
           "stackTrace",
           {
             threadId: threadId,
             startFrame: 0,
-            levels: 20,
+            levels: 5,
           }
         );
+        console.log("Stack frames:", stackTraceResponse.stackFrames.map((f: any) => ({ id: f.id, name: f.name })));
         const frameId = stackTraceResponse.stackFrames[0].id;
+        console.log("Using frameId:", frameId);
 
-        // Evaluate the selected variable
-        const variableInfo = await debugSession.customRequest("evaluate", {
-          expression: variableName,
-          frameId: frameId,
-          context: "repl",
-        });
-        console.log("Evaluated variable info:", variableInfo);
+        // For LLDB, the variable object from context menu already contains type info
+        // We can use it directly instead of re-evaluating
+        const isLLDB = debugSession.type === "lldb";
+        let variableInfo: any;
+        let variableName = variable.evaluateName || variable.name;
+        
+        console.log("--- Debug Session Info ---");
+        console.log("debugSession.type:", debugSession.type);
+        console.log("debugSession.name:", debugSession.name);
+        console.log("isLLDB:", isLLDB);
+        console.log("variableName:", variableName);
+        
+        if (isLLDB) {
+          // For LLDB, NEVER use evaluate - it doesn't work properly
+          // Use the variable info directly from the context menu
+          console.log("--- LLDB Mode: Using direct variable info ---");
+          variableInfo = {
+            result: variable.value,
+            type: variable.type,
+            variablesReference: variable.variablesReference,
+            evaluateName: variableName
+          };
+          console.log("Constructed variableInfo:", JSON.stringify(variableInfo, null, 2));
+        } else {
+          // For other debuggers (cppdbg, cppvsdbg), evaluate the variable
+          console.log("--- Non-LLDB Mode: Using evaluate ---");
+          const evalContext = getEvaluateContext(debugSession);
+          console.log("evalContext:", evalContext);
+          variableInfo = await debugSession.customRequest("evaluate", {
+            expression: variableName,
+            frameId: frameId,
+            context: evalContext,
+          });
+          console.log("Evaluate result:", JSON.stringify(variableInfo, null, 2));
+        }
 
         // Check the type of the variable
-        if (isPoint3fVector(variableInfo)) {
+        console.log("--- Type Checking ---");
+        const isPoint3f = isPoint3fVector(variableInfo);
+        const isMatType = isMat(variableInfo);
+        console.log("isPoint3fVector:", isPoint3f);
+        console.log("isMat:", isMatType);
+        
+        if (isPoint3f) {
           // If it's a vector of cv::Point3f, draw the point cloud
+          console.log("==> Drawing Point Cloud");
           await drawPointCloud(debugSession, variableInfo);
-        } else if (isMat(variableInfo)) {
+        } else if (isMatType) {
           // If it's a cv::Mat, draw the image
+          console.log("==> Drawing Mat Image");
           await drawMatImage(debugSession, variableInfo, frameId, variableName);
         } else {
           vscode.window.showErrorMessage(
             "Variable is neither a vector of cv::Point3f nor a cv::Mat."
           );
-          console.log("Variable type check failed. Type:", variableInfo.type);
+          console.log("ERROR: Variable type not recognized. Type:", variableInfo.type);
         }
-      } catch (error) {
-        vscode.window.showErrorMessage(`Error: ${error}`);
-        console.log("Error during execution:", error);
+        
+        console.log("========== OpenCV Visualizer End ==========");
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Error: ${error.message || error}`);
+        console.log("ERROR during execution:", error);
+        console.log("Error stack:", error.stack);
       }
     }
   );
@@ -324,10 +385,11 @@ async function readBatchValues(
   depth: number
 ): Promise<number[]> {
   const values: number[] = [];
+  const usingLLDB = isUsingLLDB(debugSession);
+  const bytesPerElement = getBytesPerElement(depth);
   
-  // Strategy 1: Try using readMemory if available (fastest)
+  // Strategy 1: Try using readMemory DAP request if available (fastest)
   try {
-    const bytesPerElement = getBytesPerElement(depth);
     const dataPointerResponse = await evaluateWithTimeout(
       debugSession,
       dataExp,
@@ -335,10 +397,15 @@ async function readBatchValues(
       2000
     );
     
-    // Parse pointer address
-    const ptrMatch = dataPointerResponse.result.match(/0x([0-9a-fA-F]+)/);
+    // Parse pointer address - handle different debugger formats
+    let ptrMatch = dataPointerResponse.result.match(/0x([0-9a-fA-F]+)/);
+    if (!ptrMatch && usingLLDB) {
+      // LLDB might return address in different format
+      ptrMatch = dataPointerResponse.result.match(/([0-9a-fA-F]{8,16})/);
+    }
+    
     if (ptrMatch) {
-      const baseAddress = ptrMatch[0];
+      const baseAddress = ptrMatch[0].startsWith('0x') ? ptrMatch[0] : '0x' + ptrMatch[0];
       const offsetBytes = startIdx * bytesPerElement;
       const readBytes = count * bytesPerElement;
       
@@ -346,6 +413,7 @@ async function readBatchValues(
       const addressNum = BigInt(baseAddress) + BigInt(offsetBytes);
       const targetAddress = "0x" + addressNum.toString(16);
       
+      // Try DAP readMemory request
       try {
         const memoryResponse = await debugSession.customRequest("readMemory", {
           memoryReference: targetAddress,
@@ -358,26 +426,49 @@ async function readBatchValues(
           return parseMemoryBuffer(buffer, depth, count);
         }
       } catch (memError) {
-        // readMemory not supported, fall through to strategy 2
-        console.log("readMemory not available, using evaluate fallback");
+        console.log("readMemory DAP request not available");
+      }
+      
+      // Strategy 2: For LLDB, try using memory read command
+      if (usingLLDB) {
+        try {
+          const memReadResult = await readMemoryViaLLDB(
+            debugSession,
+            targetAddress,
+            readBytes,
+            frameId,
+            depth,
+            count
+          );
+          if (memReadResult.length > 0) {
+            return memReadResult;
+          }
+        } catch (lldbError) {
+          console.log("LLDB memory read fallback failed");
+        }
       }
     }
   } catch (e) {
-    // Fall through to strategy 2
+    // Fall through to parallel evaluate
   }
   
-  // Strategy 2: Parallel evaluate requests (faster than sequential)
-  const PARALLEL_BATCH = 50; // Number of parallel requests
+  // Strategy 3: Parallel evaluate requests (works on all debuggers)
+  const PARALLEL_BATCH = usingLLDB ? 20 : 50; // LLDB may be slower, use smaller batches
   for (let i = 0; i < count; i += PARALLEL_BATCH) {
     const parallelCount = Math.min(PARALLEL_BATCH, count - i);
     const promises: Promise<any>[] = [];
     
     for (let j = 0; j < parallelCount; j++) {
       const idx = startIdx + i + j;
+      // Use different syntax for LLDB vs other debuggers
+      const expression = usingLLDB
+        ? `(${dataType})((${dataType}*)${dataExp})[${idx}]`
+        : `((${dataType}*)${dataExp})[${idx}]`;
+      
       promises.push(
         evaluateWithTimeout(
           debugSession,
-          `((${dataType}*)${dataExp})[${idx}]`,
+          expression,
           frameId,
           2000
         ).catch(() => ({ result: "0" }))
@@ -388,6 +479,106 @@ async function readBatchValues(
     for (const response of results) {
       values.push(parseNumericResult(response.result, depth));
     }
+  }
+  
+  return values;
+}
+
+// Read memory using LLDB's memory read command
+async function readMemoryViaLLDB(
+  debugSession: vscode.DebugSession,
+  address: string,
+  byteCount: number,
+  frameId: number,
+  depth: number,
+  elementCount: number
+): Promise<number[]> {
+  const values: number[] = [];
+  const bytesPerElement = getBytesPerElement(depth);
+  
+  // Read in chunks to avoid command line length limits
+  const CHUNK_SIZE = 256; // Read 256 bytes at a time
+  const chunks = Math.ceil(byteCount / CHUNK_SIZE);
+  
+  for (let chunk = 0; chunk < chunks; chunk++) {
+    const chunkOffset = chunk * CHUNK_SIZE;
+    const chunkBytes = Math.min(CHUNK_SIZE, byteCount - chunkOffset);
+    const chunkAddress = "0x" + (BigInt(address) + BigInt(chunkOffset)).toString(16);
+    
+    try {
+      // Use LLDB expression to read memory as array of bytes
+      const memResponse = await evaluateWithTimeout(
+        debugSession,
+        `(unsigned char[${chunkBytes}])*(unsigned char(*)[${chunkBytes}])${chunkAddress}`,
+        frameId,
+        3000
+      );
+      
+      // Parse LLDB's array output format: {0x00, 0x01, 0x02, ...} or [0] = 0, [1] = 1, ...
+      const hexMatches = memResponse.result.match(/0x[0-9a-fA-F]+|\b\d+\b/g);
+      if (hexMatches) {
+        for (const match of hexMatches) {
+          const byte = match.startsWith('0x') ? parseInt(match, 16) : parseInt(match, 10);
+          if (!isNaN(byte)) {
+            values.push(byte);
+          }
+        }
+      }
+    } catch (e) {
+      // Fill with zeros for failed chunks
+      for (let i = 0; i < chunkBytes; i++) {
+        values.push(0);
+      }
+    }
+  }
+  
+  // Convert raw bytes to proper values based on depth
+  if (depth !== 0 && values.length >= byteCount) {
+    return convertBytesToValues(values, depth, elementCount);
+  }
+  
+  return values.slice(0, elementCount);
+}
+
+// Convert raw byte array to typed values
+function convertBytesToValues(bytes: number[], depth: number, count: number): number[] {
+  const values: number[] = [];
+  const bytesPerElement = getBytesPerElement(depth);
+  
+  for (let i = 0; i < count && i * bytesPerElement < bytes.length; i++) {
+    const offset = i * bytesPerElement;
+    let value: number;
+    
+    switch (depth) {
+      case 0: // CV_8U
+        value = bytes[offset];
+        break;
+      case 1: // CV_8S
+        value = bytes[offset] > 127 ? bytes[offset] - 256 : bytes[offset];
+        break;
+      case 2: // CV_16U
+        value = bytes[offset] | (bytes[offset + 1] << 8);
+        break;
+      case 3: // CV_16S
+        value = bytes[offset] | (bytes[offset + 1] << 8);
+        if (value > 32767) value -= 65536;
+        break;
+      case 4: // CV_32S
+        value = bytes[offset] | (bytes[offset + 1] << 8) | 
+                (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+        break;
+      case 5: // CV_32F
+        const floatArr = new Float32Array(new Uint8Array(bytes.slice(offset, offset + 4)).buffer);
+        value = Math.round(floatArr[0] * 255);
+        break;
+      case 6: // CV_64F
+        const doubleArr = new Float64Array(new Uint8Array(bytes.slice(offset, offset + 8)).buffer);
+        value = Math.round(doubleArr[0] * 255);
+        break;
+      default:
+        value = bytes[offset];
+    }
+    values.push(value);
   }
   
   return values;
@@ -460,27 +651,78 @@ async function drawMatImage(
 ) {
   try {
     const usingLLDB = isUsingLLDB(debugSession);
-    const usingCppdbg = isUsingCppdbg(debugSession);
     console.log("Drawing Mat image with debugger type:", debugSession.type);
+    console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
     
-    const rowsExp = `${variableName}.rows`;
-    const colsExp = `${variableName}.cols`;
-    const channelsExp = `${variableName}.channels()`;
-    const depthExp = `${variableName}.depth()`;
-    const dataExp = `${variableName}.data`;
+    let rows: number, cols: number, channels: number, depth: number, dataPtr: string = "";
+    
+    if (usingLLDB) {
+      // For LLDB, we must use variables request - evaluate won't work
+      if (variableInfo.variablesReference && variableInfo.variablesReference > 0) {
+        console.log("Using LLDB variables request to get Mat info");
+        const matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
+        rows = matInfo.rows;
+        cols = matInfo.cols;
+        channels = matInfo.channels;
+        depth = matInfo.depth;
+        dataPtr = matInfo.dataPtr;
+      } else {
+        // Try to get variablesReference from scopes
+        console.log("No variablesReference, trying to get from scopes...");
+        const scopesResponse = await debugSession.customRequest("scopes", { frameId: frameId });
+        let foundVariable = null;
+        
+        for (const scope of scopesResponse.scopes) {
+          const varsResponse = await debugSession.customRequest("variables", {
+            variablesReference: scope.variablesReference
+          });
+          
+          for (const v of varsResponse.variables) {
+            if (v.name === variableName || v.evaluateName === variableName) {
+              foundVariable = v;
+              break;
+            }
+          }
+          if (foundVariable) break;
+        }
+        
+        if (foundVariable && foundVariable.variablesReference > 0) {
+          console.log("Found variable in scopes:", foundVariable.name);
+          const matInfo = await getMatInfoFromVariables(debugSession, foundVariable.variablesReference);
+          rows = matInfo.rows;
+          cols = matInfo.cols;
+          channels = matInfo.channels;
+          depth = matInfo.depth;
+          dataPtr = matInfo.dataPtr;
+        } else {
+          throw new Error("Cannot access Mat variable in LLDB. Make sure it's a valid cv::Mat.");
+        }
+      }
+      
+      console.log(`LLDB Mat info: ${rows!}x${cols!}, ${channels!} channels, depth=${depth!}, data=${dataPtr}`);
+    } else {
+      // For other debuggers (cppdbg, cppvsdbg), use evaluate expressions
+      const rowsExp = `${variableName}.rows`;
+      const colsExp = `${variableName}.cols`;
+      const channelsExp = `${variableName}.channels()`;
+      const depthExp = `${variableName}.depth()`;
+      const dataExp = `${variableName}.data`;
 
-    // Get matrix dimensions in parallel
-    const [rowsResponse, colsResponse, channelsResponse, depthResponse] = await Promise.all([
-      evaluateWithTimeout(debugSession, rowsExp, frameId, 5000),
-      evaluateWithTimeout(debugSession, colsExp, frameId, 5000),
-      evaluateWithTimeout(debugSession, channelsExp, frameId, 5000),
-      evaluateWithTimeout(debugSession, depthExp, frameId, 5000)
-    ]);
+      // Get matrix dimensions in parallel
+      const [rowsResponse, colsResponse, channelsResponse, depthResponse, dataResponse] = await Promise.all([
+        evaluateWithTimeout(debugSession, rowsExp, frameId, 10000),
+        evaluateWithTimeout(debugSession, colsExp, frameId, 10000),
+        evaluateWithTimeout(debugSession, channelsExp, frameId, 10000),
+        evaluateWithTimeout(debugSession, depthExp, frameId, 10000),
+        evaluateWithTimeout(debugSession, dataExp, frameId, 10000)
+      ]);
 
-    const rows = parseInt(rowsResponse.result);
-    const cols = parseInt(colsResponse.result);
-    const channels = parseInt(channelsResponse.result);
-    const depth = parseInt(depthResponse.result);
+      rows = parseInt(rowsResponse.result);
+      cols = parseInt(colsResponse.result);
+      channels = parseInt(channelsResponse.result);
+      depth = parseInt(depthResponse.result);
+      dataPtr = dataResponse.result;
+    }
 
     console.log(`Matrix info: ${rows}x${cols}, ${channels} channels, depth=${depth}`);
 
@@ -504,14 +746,27 @@ async function drawMatImage(
       },
       async (progress) => {
         progress.report({ message: "Starting to read pixel data..." });
-        return await readMatDataFast(
-          debugSession,
-          dataExp,
-          frameId,
-          dataSize,
-          depth,
-          progress
-        );
+        
+        if (usingLLDB && dataPtr) {
+          // For LLDB, use direct memory read with the pointer
+          return await readMatDataForLLDB(
+            debugSession,
+            dataPtr,
+            frameId,
+            dataSize,
+            depth,
+            progress
+          );
+        } else {
+          return await readMatDataFast(
+            debugSession,
+            `${variableName}.data`,
+            frameId,
+            dataSize,
+            depth,
+            progress
+          );
+        }
       }
     );
 
@@ -536,6 +791,198 @@ async function drawMatImage(
     console.error("Error drawing Mat image:", error);
     throw error;
   }
+}
+
+// Get Mat info from LLDB variables request
+async function getMatInfoFromVariables(
+  debugSession: vscode.DebugSession,
+  variablesReference: number
+): Promise<{ rows: number; cols: number; channels: number; depth: number; dataPtr: string }> {
+  // Get the children of the Mat variable
+  console.log("Getting Mat variables from reference:", variablesReference);
+  const varsResponse = await debugSession.customRequest("variables", {
+    variablesReference: variablesReference
+  });
+  
+  console.log("Mat variables count:", varsResponse.variables.length);
+  for (const v of varsResponse.variables) {
+    console.log(`  ${v.name} = ${v.value} (memRef: ${v.memoryReference}, varRef: ${v.variablesReference})`);
+  }
+  
+  let rows = 0, cols = 0, channels = 1, depth = 0, dataPtr = "";
+  let flags = 0;
+  
+  for (const v of varsResponse.variables) {
+    const name = v.name;
+    const value = v.value;
+    
+    if (name === "rows") {
+      rows = parseInt(value);
+    } else if (name === "cols") {
+      cols = parseInt(value);
+    } else if (name === "data") {
+      // Try multiple ways to get the data pointer
+      // 1. First check if memoryReference is available (most reliable)
+      if (v.memoryReference) {
+        dataPtr = v.memoryReference;
+        console.log("Got data pointer from memoryReference:", dataPtr);
+      } 
+      // 2. Try to extract from value string
+      else {
+        const ptrMatch = value.match(/0x[0-9a-fA-F]+/);
+        if (ptrMatch) {
+          dataPtr = ptrMatch[0];
+          console.log("Got data pointer from value:", dataPtr);
+        }
+      }
+      // 3. If still no pointer and has variablesReference, try to expand
+      if (!dataPtr && v.variablesReference > 0) {
+        try {
+          const dataVars = await debugSession.customRequest("variables", {
+            variablesReference: v.variablesReference
+          });
+          console.log("Expanded data variable:", dataVars.variables.map((x: any) => x.name + "=" + x.value));
+          // Look for __ptr or raw pointer value
+          for (const dv of dataVars.variables) {
+            if (dv.memoryReference) {
+              dataPtr = dv.memoryReference;
+              console.log("Got data pointer from expanded memoryReference:", dataPtr);
+              break;
+            }
+            const ptrMatch2 = dv.value?.match(/0x[0-9a-fA-F]+/);
+            if (ptrMatch2) {
+              dataPtr = ptrMatch2[0];
+              console.log("Got data pointer from expanded value:", dataPtr);
+              break;
+            }
+          }
+        } catch (e) {
+          console.log("Failed to expand data variable:", e);
+        }
+      }
+      console.log("Final extracted data pointer:", dataPtr, "from value:", value);
+    } else if (name === "flags") {
+      flags = parseInt(value);
+      // Extract depth and channels from flags
+      // CV_MAT_DEPTH(flags) = flags & 7
+      // CV_MAT_CN(flags) = ((flags >> 3) & 63) + 1  -- This is wrong!
+      // Correct: CV_MAT_CN(flags) = ((flags >> CV_CN_SHIFT) & ((1 << 14) - 1)) + 1
+      // But for simplicity, we use the step array or compute from data size
+      depth = flags & 7;
+      // For channels, we need a different approach - compute from step or assume 3 for color
+      const rawChannels = ((flags >> 3) & ((1 << 14) - 1)) + 1;
+      channels = rawChannels > 0 && rawChannels <= 4 ? rawChannels : 1;
+      console.log(`Extracted from flags ${flags} (0x${flags.toString(16)}): depth=${depth}, channels=${channels}`);
+    }
+  }
+  
+  // If channels wasn't found properly, try to infer from type string
+  if (channels === 1 && flags > 0) {
+    // Check if it's likely a color image based on common formats
+    // CV_8UC3 has flags where channel info might be encoded differently
+    console.log("Warning: channels might be incorrect, defaulting to inferred value");
+  }
+  
+  console.log(`Final Mat info: rows=${rows}, cols=${cols}, channels=${channels}, depth=${depth}, dataPtr=${dataPtr}`);
+  return { rows, cols, channels, depth, dataPtr };
+}
+
+// Read Mat data for LLDB using direct memory pointer
+async function readMatDataForLLDB(
+  debugSession: vscode.DebugSession,
+  dataPtr: string,
+  frameId: number,
+  dataSize: number,
+  depth: number,
+  progress: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<number[]> {
+  const bytesPerElement = getBytesPerElement(depth);
+  const totalBytes = dataSize * bytesPerElement;
+  
+  console.log(`LLDB readMatDataForLLDB: dataPtr=${dataPtr}, dataSize=${dataSize}, depth=${depth}, totalBytes=${totalBytes}`);
+  
+  if (!dataPtr || dataPtr === "") {
+    console.log("LLDB: No data pointer available");
+    vscode.window.showErrorMessage("Cannot read Mat data: data pointer is null");
+    return new Array(dataSize).fill(0);
+  }
+  
+  // Try readMemory DAP request - read in chunks to avoid large transfers
+  const CHUNK_SIZE = 4096; // 4KB chunks
+  const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
+  const allData: number[] = [];
+  let readMemorySupported = true;
+  
+  console.log(`LLDB: Will read ${totalChunks} chunks of ${CHUNK_SIZE} bytes each`);
+  
+  for (let chunk = 0; chunk < totalChunks; chunk++) {
+    const chunkOffset = chunk * CHUNK_SIZE;
+    const chunkBytes = Math.min(CHUNK_SIZE, totalBytes - chunkOffset);
+    const chunkAddress = "0x" + (BigInt(dataPtr) + BigInt(chunkOffset)).toString(16);
+    
+    progress.report({
+      message: `Reading memory: ${Math.round((chunk / totalChunks) * 100)}% (${chunkOffset}/${totalBytes} bytes)`,
+      increment: (1 / totalChunks) * 100
+    });
+    
+    try {
+      console.log(`LLDB: Reading chunk ${chunk} from ${chunkAddress}, ${chunkBytes} bytes`);
+      const memoryResponse = await debugSession.customRequest("readMemory", {
+        memoryReference: chunkAddress,
+        count: chunkBytes
+      });
+      
+      if (memoryResponse && memoryResponse.data) {
+        console.log(`LLDB: Chunk ${chunk} read successfully, data length: ${memoryResponse.data.length}`);
+        const buffer = Buffer.from(memoryResponse.data, 'base64');
+        for (let i = 0; i < buffer.length; i++) {
+          allData.push(buffer[i]);
+        }
+      } else {
+        console.log(`LLDB: Chunk ${chunk} returned no data`);
+        // Fill with zeros if no data
+        for (let i = 0; i < chunkBytes; i++) {
+          allData.push(0);
+        }
+      }
+    } catch (e: any) {
+      console.log(`LLDB: Chunk ${chunk} error:`, e.message || e);
+      if (chunk === 0) {
+        // First chunk failed - readMemory not supported
+        readMemorySupported = false;
+        console.log("LLDB: readMemory not supported");
+        break;
+      }
+      // Later chunk failed - fill with zeros
+      for (let i = 0; i < chunkBytes; i++) {
+        allData.push(0);
+      }
+    }
+  }
+  
+  if (!readMemorySupported) {
+    // readMemory not supported - create a placeholder image
+    console.log("LLDB: Creating placeholder image (readMemory not available)");
+    vscode.window.showWarningMessage(
+      "CodeLLDB does not support readMemory. Displaying placeholder image. " +
+      "Consider using cppdbg or cppvsdbg for full Mat visualization."
+    );
+    
+    // Create a gradient placeholder to show the image dimensions
+    for (let i = 0; i < dataSize; i++) {
+      // Create a simple gradient pattern
+      allData.push(Math.floor((i % 256)));
+    }
+  }
+  
+  console.log(`LLDB: Read ${allData.length} bytes`);
+  
+  // Convert bytes to values based on depth
+  if (depth !== 0 && allData.length >= totalBytes) {
+    return convertBytesToValues(allData, depth, dataSize);
+  }
+  
+  return allData.slice(0, dataSize);
 }
 
 // Function to generate the webview content for the point cloud

@@ -25,7 +25,7 @@
             "debug/variables/context": [
                 {
                     "command": "extension.viewVariable",
-                    "when": "debugType == 'cppvsdbg' || debugType == 'cppdbg'"
+                    "when": "debugType == 'cppvsdbg' || debugType == 'cppdbg' || debugType == 'lldb'"
                 }
             ]
         }
