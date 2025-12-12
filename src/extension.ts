@@ -292,7 +292,7 @@ function getBytesPerElement(depth: number): number {
   }
 }
 
-// Fast batch read using memory read with progress
+// Read Mat data using single readMemory call (fastest)
 async function readMatDataFast(
   debugSession: vscode.DebugSession,
   dataExp: string,
@@ -301,243 +301,75 @@ async function readMatDataFast(
   depth: number,
   progress: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<number[]> {
-  const data: number[] = [];
   const bytesPerElement = getBytesPerElement(depth);
+  const totalBytes = dataSize * bytesPerElement;
   
-  // Batch size: read multiple elements at once to reduce requests
-  // For 8-bit images, read 1024 elements per batch
-  // For larger types, reduce batch size accordingly
-  const batchSize = Math.min(1024, Math.floor(4096 / bytesPerElement));
-  const totalBatches = Math.ceil(dataSize / batchSize);
+  console.log(`readMatDataFast: dataSize=${dataSize}, depth=${depth}, totalBytes=${totalBytes}`);
+  progress.report({ message: "Getting data pointer..." });
   
-  let dataType: string;
-  switch (depth) {
-    case 0: dataType = "unsigned char"; break;
-    case 1: dataType = "char"; break;
-    case 2: dataType = "unsigned short"; break;
-    case 3: dataType = "short"; break;
-    case 4: dataType = "int"; break;
-    case 5: dataType = "float"; break;
-    case 6: dataType = "double"; break;
-    default: dataType = "unsigned char";
-  }
-
-  console.log(`Reading ${dataSize} elements in ${totalBatches} batches (batch size: ${batchSize})`);
-
-  for (let batch = 0; batch < totalBatches; batch++) {
-    const startIdx = batch * batchSize;
-    const endIdx = Math.min(startIdx + batchSize, dataSize);
-    const currentBatchSize = endIdx - startIdx;
-
-    // Update progress
-    const percentComplete = Math.round((batch / totalBatches) * 100);
-    progress.report({ 
-      message: `Reading pixels: ${percentComplete}% (${startIdx}/${dataSize})`,
-      increment: (1 / totalBatches) * 100
-    });
-
-    // Try to read batch using array format expression
-    // This creates a single expression that returns multiple values
-    try {
-      // Use a format that returns comma-separated values
-      // Different debuggers support different batch read methods
-      const batchValues = await readBatchValues(
-        debugSession,
-        dataExp,
-        dataType,
-        startIdx,
-        currentBatchSize,
-        frameId,
-        depth
-      );
-      data.push(...batchValues);
-    } catch (error) {
-      console.warn(`Batch read failed at ${startIdx}, falling back to individual reads:`, error);
-      // Fallback: read elements individually for this batch
-      for (let i = startIdx; i < endIdx; i++) {
-        try {
-          const response = await evaluateWithTimeout(
-            debugSession,
-            `((${dataType}*)${dataExp})[${i}]`,
-            frameId,
-            2000
-          );
-          let value = parseNumericResult(response.result, depth);
-          data.push(value);
-        } catch {
-          data.push(0);
-        }
-      }
-    }
-  }
-
-  return data;
-}
-
-// Read a batch of values - optimized for speed
-async function readBatchValues(
-  debugSession: vscode.DebugSession,
-  dataExp: string,
-  dataType: string,
-  startIdx: number,
-  count: number,
-  frameId: number,
-  depth: number
-): Promise<number[]> {
-  const values: number[] = [];
-  const usingLLDB = isUsingLLDB(debugSession);
-  const bytesPerElement = getBytesPerElement(depth);
-  
-  // Strategy 1: Try using readMemory DAP request if available (fastest)
+  // Get the data pointer address
+  let dataPtr: string | null = null;
   try {
     const dataPointerResponse = await evaluateWithTimeout(
       debugSession,
       dataExp,
       frameId,
-      2000
+      5000
     );
     
-    // Parse pointer address - handle different debugger formats
-    let ptrMatch = dataPointerResponse.result.match(/0x([0-9a-fA-F]+)/);
-    if (!ptrMatch && usingLLDB) {
-      // LLDB might return address in different format
-      ptrMatch = dataPointerResponse.result.match(/([0-9a-fA-F]{8,16})/);
-    }
-    
+    const ptrMatch = dataPointerResponse.result.match(/0x[0-9a-fA-F]+/);
     if (ptrMatch) {
-      const baseAddress = ptrMatch[0].startsWith('0x') ? ptrMatch[0] : '0x' + ptrMatch[0];
-      const offsetBytes = startIdx * bytesPerElement;
-      const readBytes = count * bytesPerElement;
-      
-      // Calculate address with offset
-      const addressNum = BigInt(baseAddress) + BigInt(offsetBytes);
-      const targetAddress = "0x" + addressNum.toString(16);
-      
-      // Try DAP readMemory request
-      try {
-        const memoryResponse = await debugSession.customRequest("readMemory", {
-          memoryReference: targetAddress,
-          count: readBytes
-        });
-        
-        if (memoryResponse && memoryResponse.data) {
-          // Decode base64 data
-          const buffer = Buffer.from(memoryResponse.data, 'base64');
-          return parseMemoryBuffer(buffer, depth, count);
-        }
-      } catch (memError) {
-        console.log("readMemory DAP request not available");
-      }
-      
-      // Strategy 2: For LLDB, try using memory read command
-      if (usingLLDB) {
-        try {
-          const memReadResult = await readMemoryViaLLDB(
-            debugSession,
-            targetAddress,
-            readBytes,
-            frameId,
-            depth,
-            count
-          );
-          if (memReadResult.length > 0) {
-            return memReadResult;
-          }
-        } catch (lldbError) {
-          console.log("LLDB memory read fallback failed");
-        }
-      }
+      dataPtr = ptrMatch[0];
     }
   } catch (e) {
-    // Fall through to parallel evaluate
+    console.log("Failed to get data pointer:", e);
   }
   
-  // Strategy 3: Parallel evaluate requests (works on all debuggers)
-  const PARALLEL_BATCH = usingLLDB ? 20 : 50; // LLDB may be slower, use smaller batches
-  for (let i = 0; i < count; i += PARALLEL_BATCH) {
-    const parallelCount = Math.min(PARALLEL_BATCH, count - i);
-    const promises: Promise<any>[] = [];
+  if (!dataPtr) {
+    vscode.window.showErrorMessage("Cannot get data pointer from Mat");
+    return new Array(dataSize).fill(0);
+  }
+  
+  console.log(`Data pointer: ${dataPtr}, reading ${totalBytes} bytes in ONE request`);
+  progress.report({ message: `Reading ${totalBytes} bytes...` });
+  
+  // Single readMemory call for ALL data
+  try {
+    const memoryResponse = await debugSession.customRequest("readMemory", {
+      memoryReference: dataPtr,
+      count: totalBytes
+    });
     
-    for (let j = 0; j < parallelCount; j++) {
-      const idx = startIdx + i + j;
-      // Use different syntax for LLDB vs other debuggers
-      const expression = usingLLDB
-        ? `(${dataType})((${dataType}*)${dataExp})[${idx}]`
-        : `((${dataType}*)${dataExp})[${idx}]`;
+    if (memoryResponse && memoryResponse.data) {
+      console.log(`Read complete: ${memoryResponse.data.length} base64 chars`);
+      progress.report({ message: "Decoding data..." });
       
-      promises.push(
-        evaluateWithTimeout(
-          debugSession,
-          expression,
-          frameId,
-          2000
-        ).catch(() => ({ result: "0" }))
-      );
-    }
-    
-    const results = await Promise.all(promises);
-    for (const response of results) {
-      values.push(parseNumericResult(response.result, depth));
-    }
-  }
-  
-  return values;
-}
-
-// Read memory using LLDB's memory read command
-async function readMemoryViaLLDB(
-  debugSession: vscode.DebugSession,
-  address: string,
-  byteCount: number,
-  frameId: number,
-  depth: number,
-  elementCount: number
-): Promise<number[]> {
-  const values: number[] = [];
-  const bytesPerElement = getBytesPerElement(depth);
-  
-  // Read in chunks to avoid command line length limits
-  const CHUNK_SIZE = 256; // Read 256 bytes at a time
-  const chunks = Math.ceil(byteCount / CHUNK_SIZE);
-  
-  for (let chunk = 0; chunk < chunks; chunk++) {
-    const chunkOffset = chunk * CHUNK_SIZE;
-    const chunkBytes = Math.min(CHUNK_SIZE, byteCount - chunkOffset);
-    const chunkAddress = "0x" + (BigInt(address) + BigInt(chunkOffset)).toString(16);
-    
-    try {
-      // Use LLDB expression to read memory as array of bytes
-      const memResponse = await evaluateWithTimeout(
-        debugSession,
-        `(unsigned char[${chunkBytes}])*(unsigned char(*)[${chunkBytes}])${chunkAddress}`,
-        frameId,
-        3000
-      );
+      const buffer = Buffer.from(memoryResponse.data, 'base64');
+      console.log(`Decoded ${buffer.length} bytes`);
       
-      // Parse LLDB's array output format: {0x00, 0x01, 0x02, ...} or [0] = 0, [1] = 1, ...
-      const hexMatches = memResponse.result.match(/0x[0-9a-fA-F]+|\b\d+\b/g);
-      if (hexMatches) {
-        for (const match of hexMatches) {
-          const byte = match.startsWith('0x') ? parseInt(match, 16) : parseInt(match, 10);
-          if (!isNaN(byte)) {
-            values.push(byte);
-          }
-        }
+      // Convert buffer to array
+      const allData: number[] = new Array(buffer.length);
+      for (let i = 0; i < buffer.length; i++) {
+        allData[i] = buffer[i];
       }
-    } catch (e) {
-      // Fill with zeros for failed chunks
-      for (let i = 0; i < chunkBytes; i++) {
-        values.push(0);
+      
+      // Convert bytes to values based on depth
+      if (depth !== 0) {
+        return convertBytesToValues(allData, depth, dataSize);
       }
+      
+      return allData.slice(0, dataSize);
+    } else {
+      vscode.window.showErrorMessage("readMemory returned no data");
+      return new Array(dataSize).fill(0);
     }
+  } catch (e: any) {
+    console.log("readMemory error:", e.message || e);
+    vscode.window.showErrorMessage(
+      `readMemory failed: ${e.message || e}. Please use cppvsdbg or lldb.`
+    );
+    return new Array(dataSize).fill(0);
   }
-  
-  // Convert raw bytes to proper values based on depth
-  if (depth !== 0 && values.length >= byteCount) {
-    return convertBytesToValues(values, depth, elementCount);
-  }
-  
-  return values.slice(0, elementCount);
 }
 
 // Convert raw byte array to typed values
@@ -577,45 +409,6 @@ function convertBytesToValues(bytes: number[], depth: number, count: number): nu
         break;
       default:
         value = bytes[offset];
-    }
-    values.push(value);
-  }
-  
-  return values;
-}
-
-// Parse memory buffer based on depth type
-function parseMemoryBuffer(buffer: Buffer, depth: number, count: number): number[] {
-  const values: number[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    let value: number;
-    switch (depth) {
-      case 0: // CV_8U
-        value = buffer.readUInt8(i);
-        break;
-      case 1: // CV_8S
-        value = buffer.readInt8(i);
-        break;
-      case 2: // CV_16U
-        value = buffer.readUInt16LE(i * 2);
-        break;
-      case 3: // CV_16S
-        value = buffer.readInt16LE(i * 2);
-        break;
-      case 4: // CV_32S
-        value = buffer.readInt32LE(i * 4);
-        break;
-      case 5: // CV_32F
-        value = buffer.readFloatLE(i * 4);
-        value = Math.round(value * 255); // Normalize to 0-255
-        break;
-      case 6: // CV_64F
-        value = buffer.readDoubleLE(i * 8);
-        value = Math.round(value * 255); // Normalize to 0-255
-        break;
-      default:
-        value = buffer.readUInt8(i);
     }
     values.push(value);
   }
@@ -887,7 +680,7 @@ async function getMatInfoFromVariables(
   return { rows, cols, channels, depth, dataPtr };
 }
 
-// Read Mat data for LLDB using direct memory pointer
+// Read Mat data for LLDB using single readMemory call
 async function readMatDataForLLDB(
   debugSession: vscode.DebugSession,
   dataPtr: string,
@@ -907,82 +700,52 @@ async function readMatDataForLLDB(
     return new Array(dataSize).fill(0);
   }
   
-  // Try readMemory DAP request - read in chunks to avoid large transfers
-  const CHUNK_SIZE = 4096; // 4KB chunks
-  const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
-  const allData: number[] = [];
-  let readMemorySupported = true;
+  console.log(`LLDB: Reading ${totalBytes} bytes in ONE request`);
+  progress.report({ message: `Reading ${totalBytes} bytes...` });
   
-  console.log(`LLDB: Will read ${totalChunks} chunks of ${CHUNK_SIZE} bytes each`);
-  
-  for (let chunk = 0; chunk < totalChunks; chunk++) {
-    const chunkOffset = chunk * CHUNK_SIZE;
-    const chunkBytes = Math.min(CHUNK_SIZE, totalBytes - chunkOffset);
-    const chunkAddress = "0x" + (BigInt(dataPtr) + BigInt(chunkOffset)).toString(16);
-    
-    progress.report({
-      message: `Reading memory: ${Math.round((chunk / totalChunks) * 100)}% (${chunkOffset}/${totalBytes} bytes)`,
-      increment: (1 / totalChunks) * 100
+  // Single readMemory call for ALL data
+  try {
+    const memoryResponse = await debugSession.customRequest("readMemory", {
+      memoryReference: dataPtr,
+      count: totalBytes
     });
     
-    try {
-      console.log(`LLDB: Reading chunk ${chunk} from ${chunkAddress}, ${chunkBytes} bytes`);
-      const memoryResponse = await debugSession.customRequest("readMemory", {
-        memoryReference: chunkAddress,
-        count: chunkBytes
-      });
+    if (memoryResponse && memoryResponse.data) {
+      console.log(`LLDB: Read complete: ${memoryResponse.data.length} base64 chars`);
+      progress.report({ message: "Decoding data..." });
       
-      if (memoryResponse && memoryResponse.data) {
-        console.log(`LLDB: Chunk ${chunk} read successfully, data length: ${memoryResponse.data.length}`);
-        const buffer = Buffer.from(memoryResponse.data, 'base64');
-        for (let i = 0; i < buffer.length; i++) {
-          allData.push(buffer[i]);
-        }
-      } else {
-        console.log(`LLDB: Chunk ${chunk} returned no data`);
-        // Fill with zeros if no data
-        for (let i = 0; i < chunkBytes; i++) {
-          allData.push(0);
-        }
+      const buffer = Buffer.from(memoryResponse.data, 'base64');
+      console.log(`LLDB: Decoded ${buffer.length} bytes`);
+      
+      // Convert buffer to array
+      const allData: number[] = new Array(buffer.length);
+      for (let i = 0; i < buffer.length; i++) {
+        allData[i] = buffer[i];
       }
-    } catch (e: any) {
-      console.log(`LLDB: Chunk ${chunk} error:`, e.message || e);
-      if (chunk === 0) {
-        // First chunk failed - readMemory not supported
-        readMemorySupported = false;
-        console.log("LLDB: readMemory not supported");
-        break;
+      
+      // Convert bytes to values based on depth
+      if (depth !== 0) {
+        return convertBytesToValues(allData, depth, dataSize);
       }
-      // Later chunk failed - fill with zeros
-      for (let i = 0; i < chunkBytes; i++) {
-        allData.push(0);
-      }
+      
+      return allData.slice(0, dataSize);
+    } else {
+      vscode.window.showErrorMessage("LLDB readMemory returned no data");
+      return new Array(dataSize).fill(0);
     }
-  }
-  
-  if (!readMemorySupported) {
-    // readMemory not supported - create a placeholder image
-    console.log("LLDB: Creating placeholder image (readMemory not available)");
+  } catch (e: any) {
+    console.log("LLDB readMemory error:", e.message || e);
     vscode.window.showWarningMessage(
-      "CodeLLDB does not support readMemory. Displaying placeholder image. " +
-      "Consider using cppdbg or cppvsdbg for full Mat visualization."
+      `LLDB readMemory failed: ${e.message || e}. Creating placeholder image.`
     );
     
-    // Create a gradient placeholder to show the image dimensions
+    // Create a gradient placeholder
+    const allData: number[] = new Array(dataSize);
     for (let i = 0; i < dataSize; i++) {
-      // Create a simple gradient pattern
-      allData.push(Math.floor((i % 256)));
+      allData[i] = i % 256;
     }
+    return allData;
   }
-  
-  console.log(`LLDB: Read ${allData.length} bytes`);
-  
-  // Convert bytes to values based on depth
-  if (depth !== 0 && allData.length >= totalBytes) {
-    return convertBytesToValues(allData, depth, dataSize);
-  }
-  
-  return allData.slice(0, dataSize);
 }
 
 // Function to generate the webview content for the point cloud

@@ -27,6 +27,12 @@
                     "command": "extension.viewVariable",
                     "when": "debugType == 'cppvsdbg' || debugType == 'cppdbg' || debugType == 'lldb'"
                 }
+            ],
+            "debug/watch/context": [
+                {
+                    "command": "extension.viewVariable",
+                    "when": "debugType == 'cppvsdbg' || debugType == 'cppdbg' || debugType == 'lldb'"
+                }
             ]
         }
     },
