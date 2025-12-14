@@ -11,28 +11,6 @@ function getEvaluateContext(debugSession: vscode.DebugSession): string {
   return "repl";
 }
 
-// Infer variable type from its value format (for LLDB on Mac where type field is missing)
-function inferTypeFromValue(value: string): string {
-  if (!value) {
-    return "";
-  }
-  
-  // Check if it's a cv::Mat based on value format
-  // Mat typically shows: {flags:..., dims:..., rows:..., cols:...}
-  if (/\{.*flags\s*:.*dims\s*:.*rows\s*:/.test(value) ||
-      /\{.*rows\s*:.*cols\s*:.*data\s*:/.test(value)) {
-    return "cv::Mat";
-  }
-  
-  // Check if it's a vector of Point3f
-  // Vector typically shows size and capacity
-  if (/std::.*vector/.test(value)) {
-    return "std::vector";
-  }
-  
-  return "";
-}
-
 async function evaluateWithTimeout(
   debugSession: vscode.DebugSession,
   expression: string,
@@ -122,73 +100,34 @@ export function activate(context: vscode.ExtensionContext) {
         console.log("variableName:", variableName);
         
         if (isLLDB) {
-          // For LLDB on Mac, use LLDB native command to get type info
-          // The evaluate request may not return type field, but LLDB's expr -T does
-          console.log("--- LLDB Mode: Using LLDB native command to get type ---");
+          // For LLDB, use evaluate to get type info
+          console.log("--- LLDB Mode: Using evaluate to get type ---");
           console.log("[DEBUG] variable.type from context menu:", variable.type);
           console.log("[DEBUG] variable.value from context menu:", variable.value);
           
           try {
-            // First, try to get type using LLDB's expr -T command
-            console.log("[DEBUG] Calling LLDB expr -T command for:", variableName);
-            const typeExpr = `-exec expr -T -- ${variableName}`;
-            let typeResult: any;
-            try {
-              typeResult = await debugSession.customRequest("evaluate", {
-                expression: typeExpr,
-                frameId: frameId,
-                context: "repl",
-              });
-              console.log("[DEBUG] LLDB expr -T result:", typeResult.result);
-              
-              // Parse type from result like "(cv::Mat) $0 = {...}"
-              const typeMatch = typeResult.result?.match(/^\(([^)]+)\)/);
-              if (typeMatch) {
-                const extractedType = typeMatch[1];
-                console.log("[DEBUG] Extracted type:", extractedType);
-                
-                variableInfo = {
-                  result: variable.value,
-                  type: extractedType,
-                  variablesReference: variable.variablesReference,
-                  evaluateName: variableName
-                };
-                console.log("[DEBUG] Type extracted successfully!");
-              } else {
-                throw new Error("Failed to parse type from expr -T result");
-              }
-            } catch (exprError) {
-              console.log("[DEBUG] LLDB expr -T failed, trying evaluate:", exprError);
-              
-              // Fallback: try standard evaluate
-              const evalResult = await debugSession.customRequest("evaluate", {
-                expression: variableName,
-                frameId: frameId,
-                context: "watch",
-              });
-              console.log("[DEBUG] Evaluate result:", JSON.stringify(evalResult, null, 2));
-              
-              // Try to infer type if evaluate didn't return it
-              const inferredType = inferTypeFromValue(variable.value);
-              console.log("[DEBUG] Inferred type from value:", inferredType);
-              
-              variableInfo = {
-                result: evalResult.result || variable.value,
-                type: evalResult.type || variable.type || inferredType,
-                variablesReference: evalResult.variablesReference || variable.variablesReference,
-                evaluateName: variableName
-              };
-            }
-            console.log("[DEBUG] Final type used:", variableInfo.type);
-          } catch (error) {
-            console.log("[DEBUG] All type detection methods failed:", error);
-            // Last resort: infer from value
-            const inferredType = inferTypeFromValue(variable.value);
-            console.log("[DEBUG] Using inferred type:", inferredType);
+            // Use evaluate with "watch" context to get full variable info including type
+            console.log("[DEBUG] Calling evaluate for:", variableName);
+            const evalResult = await debugSession.customRequest("evaluate", {
+              expression: variableName,
+              frameId: frameId,
+              context: "watch",
+            });
+            console.log("[DEBUG] Evaluate result:", JSON.stringify(evalResult, null, 2));
             
             variableInfo = {
+              result: evalResult.result || variable.value,
+              type: evalResult.type || variable.type,
+              variablesReference: evalResult.variablesReference || variable.variablesReference,
+              evaluateName: variableName
+            };
+            console.log("[DEBUG] Final type used:", variableInfo.type);
+          } catch (error) {
+            console.log("[DEBUG] Evaluate failed:", error);
+            // Fallback: use variable info directly
+            variableInfo = {
               result: variable.value,
-              type: variable.type || inferredType,
+              type: variable.type,
               variablesReference: variable.variablesReference,
               evaluateName: variableName
             };
@@ -1233,9 +1172,17 @@ function getWebviewContentForPointCloud(
                 });
                 
                 document.getElementById('pointCount').textContent = points.length.toLocaleString();
-                document.getElementById('boundsX').textContent = minX.toFixed(2) + ' ~ ' + maxX.toFixed(2);
-                document.getElementById('boundsY').textContent = minY.toFixed(2) + ' ~ ' + maxY.toFixed(2);
-                document.getElementById('boundsZ').textContent = minZ.toFixed(2) + ' ~ ' + maxZ.toFixed(2);
+                
+                // Check if we have valid points
+                if (vertices.length === 0) {
+                    document.getElementById('boundsX').textContent = 'N/A';
+                    document.getElementById('boundsY').textContent = 'N/A';
+                    document.getElementById('boundsZ').textContent = 'N/A';
+                } else {
+                    document.getElementById('boundsX').textContent = minX.toFixed(2) + ' ~ ' + maxX.toFixed(2);
+                    document.getElementById('boundsY').textContent = minY.toFixed(2) + ' ~ ' + maxY.toFixed(2);
+                    document.getElementById('boundsZ').textContent = minZ.toFixed(2) + ' ~ ' + maxZ.toFixed(2);
+                }
                 
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
                 
