@@ -409,6 +409,12 @@ async function getPointCloudFromVariables(
     console.log(`Got ${vectorVars.variables.length} variables from ref ${currentRef}, total points so far: ${points.length}`);
     
     for (const v of vectorVars.variables) {
+      // Stop if we already have enough points based on size
+      if (totalSize > 0 && points.length >= totalSize) {
+        console.log(`Reached target size ${totalSize}, stopping`);
+        break;
+      }
+      
       if (v.name.startsWith("__") || v.name === "size" || v.name === "capacity" || v.name === "[Raw View]") {
         continue;
       }
@@ -434,12 +440,25 @@ async function getPointCloudFromVariables(
         });
         
         let x = 0, y = 0, z = 0;
+        let foundX = false, foundY = false, foundZ = false;
         for (const pv of pointVars.variables) {
-          if (pv.name === "x") x = parseFloat(pv.value) || 0;
-          else if (pv.name === "y") y = parseFloat(pv.value) || 0;
-          else if (pv.name === "z") z = parseFloat(pv.value) || 0;
+          if (pv.name === "x") {
+            x = parseFloat(pv.value) || 0;
+            foundX = true;
+          }
+          else if (pv.name === "y") {
+            y = parseFloat(pv.value) || 0;
+            foundY = true;
+          }
+          else if (pv.name === "z") {
+            z = parseFloat(pv.value) || 0;
+            foundZ = true;
+          }
         }
-        points.push({ x, y, z });
+        // Only add if we found ALL THREE fields (x, y, z) - this is a valid Point3f
+        if (foundX && foundY && foundZ) {
+          points.push({ x, y, z });
+        }
       }
     }
   }
