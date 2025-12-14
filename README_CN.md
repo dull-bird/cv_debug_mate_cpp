@@ -109,6 +109,127 @@
 
 ---
 
+## 实现原理
+
+### 概述
+
+CV DebugMate C++ 利用 **VS Code 调试适配器协议（DAP）** 在活动调试会话期间提取和可视化 OpenCV 数据结构。该扩展充当调试器和自定义可视化 UI 之间的桥梁。
+
+### 核心概念
+
+#### 1. 调试适配器协议（Debug Adapter Protocol, DAP）
+- **定义**：VS Code 与调试器之间通信的标准化协议
+- **作用**：提供 API 用于检查变量、求值表达式、读取内存等调试操作
+- **支持的调试器**：兼容任何符合 DAP 标准的调试器（cppvsdbg、cppdbg、CodeLLDB）
+
+#### 2. 变量检查流水线
+
+**步骤 1：右键菜单触发**
+- 用户在变量/监视面板中右键点击变量（`cv::Mat` 或 `std::vector<cv::Point3f>`）
+- 扩展接收变量的元数据（名称、类型、值、variablesReference）
+
+**步骤 2：类型检测**
+- Windows（MSVC）：类型信息可直接从调试器获取
+- macOS/Linux（LLDB）：扩展调用 `evaluate()` 请求获取完整类型信息
+- 正则表达式匹配识别支持的类型：`cv::Mat`、`std::vector<cv::Point3f>` 等
+
+**步骤 3：数据提取**
+
+对于 **cv::Mat**：
+```
+1. 通过 DAP variables 请求提取元数据：
+   - rows, cols（图像尺寸）
+   - channels（1=灰度图，3=BGR，4=BGRA）
+   - depth（CV_8U, CV_32F 等）
+   - step（每行字节数）
+   
+2. 获取数据指针地址：
+   - 求值表达式：mat.data
+   - 解析内存地址（例如：0x12345678）
+   
+3. 读取原始图像数据：
+   - 使用 DAP readMemory() 请求
+   - 计算总字节数：rows × step
+   - 数据以 Base64 编码缓冲区形式返回
+   
+4. 解码并渲染：
+   - 解码 Base64 → 原始字节
+   - 根据 depth/channels 解析数据
+   - 渲染到 HTML5 Canvas
+```
+
+对于 **点云**：
+```
+1. 从调试信息解析 vector 大小：
+   - 从值字符串提取："{ size=1234 }"
+   
+2. 尝试快速路径（readMemory）：
+   - 获取数据指针：vec.data()
+   - 一次性读取所有点：size × 12 字节（3 个 float）
+   - 解析二进制数据：[x1,y1,z1, x2,y2,z2, ...]
+   
+3. 回退路径（variables 请求）：
+   - 如果 readMemory 失败，遍历 vector 元素
+   - 通过 variablesReference 展开 [0], [1], [2], ...
+   - 解析每个 Point3f 的 x, y, z 字段
+   - 达到目标 size 时停止
+   
+4. 验证点数据：
+   - 仅接受同时具有 x, y, z 三个字段的对象
+   - 遵守 size 限制，避免虚假的点
+   
+5. 使用 Three.js 渲染：
+   - 创建包含点位置的 BufferGeometry
+   - 应用颜色映射（纯色/按轴着色）
+   - 交互式 3D 控制
+```
+
+#### 3. Webview 渲染
+- 扩展创建 VS Code Webview 面板
+- 注入包含可视化 UI 的 HTML/JS/CSS
+- 图像：HTML5 Canvas，支持平移/缩放控制
+- 点云：Three.js WebGL 渲染器
+- 数据通过消息传递从扩展 → webview
+
+### 架构图
+
+```
+用户操作（右键点击变量）
+         |
+         v
+[扩展主机] ────────────> [调试适配器]
+         |                            |
+         |  1. 获取变量元数据         |
+         |  2. 求值表达式             |
+         |  3. 读取内存（DAP）        |
+         |<───────────────────────────|
+         |
+         v
+[数据解析器]
+   - Mat: 提取 rows/cols/数据指针
+   - PointCloud: 解析 size，读取点
+         |
+         v
+[Webview 面板]
+   - Canvas（Mat）
+   - Three.js（点云）
+         |
+         v
+   用户看到可视化结果
+```
+
+### 平台差异
+
+| 平台 | 调试器 | 类型检测 | 内存读取 | 点云支持 |
+|------|--------|----------|----------|----------|
+| Windows | cppvsdbg | 直接获取 | ✅ 快速 | ✅ 完整支持 |
+| macOS | CodeLLDB | evaluate() | ✅ 快速 | ✅ 完整支持 |
+| Linux | cppdbg/lldb | evaluate() | ✅ 快速 | ⚠️ 取决于 STL |
+
+**注意**：LLDB + MSVC 组合对 STL 支持有限，导致 vector 解析不可靠。
+
+---
+
 ## 安装
 
 ### 从 VSIX 安装

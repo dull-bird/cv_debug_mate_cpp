@@ -105,6 +105,127 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 
 ---
 
+## How It Works
+
+### Overview
+
+CV DebugMate C++ leverages the **VS Code Debug Adapter Protocol (DAP)** to extract and visualize OpenCV data structures during active debugging sessions. The extension acts as a bridge between the debugger and custom visualization UI.
+
+### Key Concepts
+
+#### 1. Debug Adapter Protocol (DAP)
+- **What**: A standardized protocol for communication between VS Code and debuggers
+- **Role**: Provides APIs to inspect variables, evaluate expressions, and read memory during debugging
+- **Supported Debuggers**: Works with any DAP-compliant debugger (cppvsdbg, cppdbg, CodeLLDB)
+
+#### 2. Variable Inspection Pipeline
+
+**Step 1: Context Menu Trigger**
+- User right-clicks on a variable (`cv::Mat` or `std::vector<cv::Point3f>`) in Variables/Watch panel
+- Extension receives the variable's metadata (name, type, value, variablesReference)
+
+**Step 2: Type Detection**
+- On Windows (MSVC): Type information available directly from the debugger
+- On macOS/Linux (LLDB): Extension calls `evaluate()` request to get full type information
+- Regex matching identifies supported types: `cv::Mat`, `std::vector<cv::Point3f>`, etc.
+
+**Step 3: Data Extraction**
+
+For **cv::Mat**:
+```
+1. Extract metadata via DAP variables request:
+   - rows, cols (image dimensions)
+   - channels (1=grayscale, 3=BGR, 4=BGRA)
+   - depth (CV_8U, CV_32F, etc.)
+   - step (bytes per row)
+   
+2. Get data pointer address:
+   - Evaluate expression: mat.data
+   - Parse memory address (e.g., 0x12345678)
+   
+3. Read raw image data:
+   - Use DAP readMemory() request
+   - Calculate total bytes: rows × step
+   - Data returned as Base64-encoded buffer
+   
+4. Decode and render:
+   - Decode Base64 → raw bytes
+   - Parse according to depth/channels
+   - Render to HTML5 Canvas
+```
+
+For **Point Clouds**:
+```
+1. Parse vector size from debug info:
+   - Extract from value string: "{ size=1234 }"
+   
+2. Attempt fast path (readMemory):
+   - Get data pointer: vec.data()
+   - Read all points at once: size × 12 bytes (3 floats)
+   - Parse binary data: [x1,y1,z1, x2,y2,z2, ...]
+   
+3. Fallback path (variables request):
+   - If readMemory fails, iterate through vector elements
+   - Expand [0], [1], [2], ... via variablesReference
+   - Parse each Point3f's x, y, z fields
+   - Stop when reaching target size
+   
+4. Validate points:
+   - Only accept objects with all three fields (x, y, z)
+   - Respect size limit to avoid phantom points
+   
+5. Render with Three.js:
+   - Create BufferGeometry with point positions
+   - Apply color mapping (solid/by axis)
+   - Interactive 3D controls
+```
+
+#### 3. Webview Rendering
+- Extension creates a VS Code Webview panel
+- HTML/JS/CSS injected with visualization UI
+- For images: HTML5 Canvas with pan/zoom controls
+- For point clouds: Three.js WebGL renderer
+- Data passed from extension → webview via message passing
+
+### Architecture Diagram
+
+```
+User Action (Right-click variable)
+         |
+         v
+[Extension Host] ────────────> [Debug Adapter]
+         |                            |
+         |  1. Get variable metadata  |
+         |  2. Evaluate expressions   |
+         |  3. Read memory (DAP)      |
+         |<───────────────────────────|
+         |
+         v
+[Data Parser]
+   - Mat: Extract rows/cols/data pointer
+   - PointCloud: Parse size, read points
+         |
+         v
+[Webview Panel]
+   - Canvas (Mat)
+   - Three.js (PointCloud)
+         |
+         v
+   User sees visualization
+```
+
+### Platform Differences
+
+| Platform | Debugger | Type Detection | Memory Read | Point Cloud |
+|----------|----------|----------------|-------------|-------------|
+| Windows | cppvsdbg | Direct | ✅ Fast | ✅ Full support |
+| macOS | CodeLLDB | evaluate() | ✅ Fast | ✅ Full support |
+| Linux | cppdbg/lldb | evaluate() | ✅ Fast | ⚠️ Depends on STL |
+
+**Note**: LLDB + MSVC combination has limited STL support, making vector parsing unreliable.
+
+---
+
 ## Installation
 
 ### From VSIX
