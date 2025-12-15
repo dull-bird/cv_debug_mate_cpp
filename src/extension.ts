@@ -710,27 +710,56 @@ async function drawMatImage(
       
       console.log(`LLDB Mat info: ${rows!}x${cols!}, ${channels!} channels, depth=${depth!}, data=${dataPtr}`);
     } else {
-      // For other debuggers (cppdbg, cppvsdbg), use evaluate expressions
-      const rowsExp = `${variableName}.rows`;
-      const colsExp = `${variableName}.cols`;
-      const channelsExp = `${variableName}.channels()`;
-      const depthExp = `${variableName}.depth()`;
-      const dataExp = `${variableName}.data`;
+      // For other debuggers (cppdbg, cppvsdbg), prefer variablesReference to get Mat info
+      // because .depth() and .channels() method calls may not work via evaluate
+      if (variableInfo.variablesReference && variableInfo.variablesReference > 0) {
+        console.log("Using variablesReference to get Mat info for cppvsdbg/cppdbg");
+        const matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
+        rows = matInfo.rows;
+        cols = matInfo.cols;
+        channels = matInfo.channels;
+        depth = matInfo.depth;
+        dataPtr = matInfo.dataPtr;
+        console.log(`Mat info from variablesReference: ${rows}x${cols}, ${channels} channels, depth=${depth}, dataPtr=${dataPtr}`);
+      } else {
+        // Fallback: use evaluate expressions
+        console.log("Fallback: Using evaluate expressions for Mat info");
+        const rowsExp = `${variableName}.rows`;
+        const colsExp = `${variableName}.cols`;
+        const flagsExp = `${variableName}.flags`;
+        const dataExp = `${variableName}.data`;
 
-      // Get matrix dimensions in parallel
-      const [rowsResponse, colsResponse, channelsResponse, depthResponse, dataResponse] = await Promise.all([
-        evaluateWithTimeout(debugSession, rowsExp, frameId, 10000),
-        evaluateWithTimeout(debugSession, colsExp, frameId, 10000),
-        evaluateWithTimeout(debugSession, channelsExp, frameId, 10000),
-        evaluateWithTimeout(debugSession, depthExp, frameId, 10000),
-        evaluateWithTimeout(debugSession, dataExp, frameId, 10000)
-      ]);
+        // Get matrix dimensions in parallel
+        const [rowsResponse, colsResponse, flagsResponse, dataResponse] = await Promise.all([
+          evaluateWithTimeout(debugSession, rowsExp, frameId, 10000),
+          evaluateWithTimeout(debugSession, colsExp, frameId, 10000),
+          evaluateWithTimeout(debugSession, flagsExp, frameId, 10000),
+          evaluateWithTimeout(debugSession, dataExp, frameId, 10000)
+        ]);
 
-      rows = parseInt(rowsResponse.result);
-      cols = parseInt(colsResponse.result);
-      channels = parseInt(channelsResponse.result);
-      depth = parseInt(depthResponse.result);
-      dataPtr = dataResponse.result;
+        rows = parseInt(rowsResponse.result);
+        cols = parseInt(colsResponse.result);
+        dataPtr = dataResponse.result;
+        
+        // Parse depth and channels from flags (same logic as LLDB)
+        const flags = parseInt(flagsResponse.result);
+        if (!isNaN(flags)) {
+          const type = flags & 0xFFF;
+          depth = type & 7;  // CV_MAT_DEPTH_MASK = 7
+          channels = ((type >> 3) & 63) + 1;  // ((type >> 3) & 63) gives (channels - 1)
+          console.log(`Extracted from flags ${flags}: depth=${depth}, channels=${channels}`);
+        } else {
+          // Last resort: try .depth() and .channels()
+          const channelsExp = `${variableName}.channels()`;
+          const depthExp = `${variableName}.depth()`;
+          const [channelsResponse, depthResponse] = await Promise.all([
+            evaluateWithTimeout(debugSession, channelsExp, frameId, 10000),
+            evaluateWithTimeout(debugSession, depthExp, frameId, 10000)
+          ]);
+          channels = parseInt(channelsResponse.result);
+          depth = parseInt(depthResponse.result);
+        }
+      }
     }
 
     console.log(`Matrix info: ${rows}x${cols}, ${channels} channels, depth=${depth}`);
