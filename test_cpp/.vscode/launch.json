@@ -5,9 +5,35 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "cppdbg",
+            "request": "launch",
+            "name": "Debug (gdb)",
+            "program": "${workspaceFolder}/build_gcc/test_debugmate.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "C:\\msys64\\ucrt64\\bin;${env:PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "Debug (lldb)",
+            // "program": "${workspaceFolder}/build/Debug/test_debugmate.exe",
             "program": "${workspaceFolder}/build_ninja/test_debugmate.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
