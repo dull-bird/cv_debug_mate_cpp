@@ -159,7 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (isPoint3f) {
           // If it's a vector of cv::Point3f, draw the point cloud
           console.log("==> Drawing Point Cloud");
-          await drawPointCloud(debugSession, variableInfo);
+          await drawPointCloud(debugSession, variableInfo, variableName);
         } else if (isMatType) {
           // If it's a cv::Mat, draw the image
           console.log("==> Drawing Mat Image");
@@ -237,7 +237,7 @@ function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
 }
 
 // Function to draw point cloud
-async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any) {
+async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any, variableName: string) {
   try {
     const usingLLDB = isUsingLLDB(debugSession);
     console.log("Drawing point cloud with debugger type:", debugSession.type);
@@ -303,9 +303,10 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
     }
 
     // Show the webview to visualize the points
+    const panelTitle = `View: ${variableInfo.type || 'std::vector<cv::Point3f>'} ${variableName}`;
     const panel = vscode.window.createWebviewPanel(
       "3DPointViewer",
-      "3D Point Viewer",
+      panelTitle,
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -779,9 +780,10 @@ async function drawMatImage(
     );
 
     // Show the webview to visualize the matrix as an image
+    const panelTitle = `View: cv::Mat ${variableName}`;
     const panel = vscode.window.createWebviewPanel(
       "MatImageViewer",
-      "Matrix Image Viewer",
+      panelTitle,
       vscode.ViewColumn.One,
       {
         enableScripts: true,
