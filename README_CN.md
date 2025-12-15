@@ -44,18 +44,15 @@
 
 ## 调试器支持
 
-| 调试器 | cv::Mat | 点云 | 备注 |
-|--------|---------|------|------|
-| **cppvsdbg** (Visual Studio 调试器) | ✅ 已测试 | ✅ 已测试 | Windows 完整支持 |
-| **cppdbg** (GDB/LLDB via cpptools) | ❓ 未测试 | ❓ 未测试 | 理论可行，未经测试 |
-| **lldb** (CodeLLDB + MSVC) | ✅ 已测试 | ❌ 不可用 | LLDB 无法解析 MSVC STL，vector size 始终为 0 |
-| **lldb** (CodeLLDB + GCC/Clang) | ❓ 未测试 | ❓ 未测试 | 使用 libstdc++/libc++ 可能可行，未经测试 |
+| 编译器| VS Code 插件 | cv::Mat | 点云 | 备注 |
+|-----|----|---------|------|------|
+| MSVC | C/C++ (cppvsdbg) | ✅ | ✅ | Windows 已测试 |
+| GCC | C/C++ (cppdbg) | ✅ | ✅ | Windows MinGW 环境已测试 |
+| Clang+MSVC | CodeLLDB | ✅ | ❌ | Windows 已测试。LLDB 无法解析 MSVC STL，vector size 始终返回 0 |
+| Clang | CodeLLDB | ✅ | ✅ | macOS 已测试 |
+| GDB | C/C++ (cppdbg) | ✅ | ✅ | Linux 支持已确认 |
 
 ### 已知限制
-
-- **CodeLLDB + MSVC**：使用 CodeLLDB 调试 MSVC 编译的代码时，点云可视化不可用，因为 LLDB 无法正确解析 MSVC 的 STL 实现（`std::vector` 的 size 始终返回 0）。但 `cv::Mat` 可视化正常工作。
-
-- **CodeLLDB + GCC/Clang**：如果使用 GCC 或 Clang 编译（使用 libstdc++ 或 libc++），点云可视化可能可行，但尚未测试。
 
 - **cppvsdbg 许可证**：如果您使用 **Cursor**、**Qoder** 等闭源 VS Code 衍生版本，可能需要使用 **CodeLLDB** 来调试 MSVC 编译的代码，因为这些环境中可能无法使用 cppvsdbg。请注意，由于 LLDB 对 MSVC STL 支持有限，此情况下点云可视化将不可用。
 
@@ -194,25 +191,25 @@ CV DebugMate C++ 利用 **VS Code 调试适配器协议（DAP）** 在活动调�
 ### 架构图
 
 ```
-用户操作（右键点击变量）
+     用户操作（右键点击变量）
          |
          v
-[扩展主机] ────────────> [调试适配器]
-         |                            |
-         |  1. 获取变量元数据         |
-         |  2. 求值表达式             |
-         |  3. 读取内存（DAP）        |
-         |<───────────────────────────|
+     [扩展主机] ────────────> [调试适配器]
+         |                           |
+         |  1. 获取变量元数据        |
+         |  2. 求值表达式            |
+         |  3. 读取内存（DAP）       |
+         |<──────────────────────────|
          |
          v
-[数据解析器]
-   - Mat: 提取 rows/cols/数据指针
-   - PointCloud: 解析 size，读取点
+    [数据解析器]
+     - Mat: 提取 rows/cols/数据指针
+     - PointCloud: 解析 size，读取点
          |
          v
-[Webview 面板]
-   - Canvas（Mat）
-   - Three.js（点云）
+    [Webview 面板]
+     - Canvas（Mat）
+     - Three.js（点云）
          |
          v
    用户看到可视化结果
@@ -227,6 +224,27 @@ CV DebugMate C++ 利用 **VS Code 调试适配器协议（DAP）** 在活动调�
 | Linux | cppdbg/lldb | evaluate() | ✅ 快速 | ⚠️ 取决于 STL |
 
 **注意**：LLDB + MSVC 组合对 STL 支持有限，导致 vector 解析不可靠。
+
+### 不同调试器的实现细节
+
+#### 1. cppvsdbg (Windows MSVC)
+- **Mat 可视化**：使用 `variablesReference` 获取元数据，然后通过求值 `mat.data` 获取指针
+- **点云可视化**：
+  - 快速路径：求值 `&vec[0]` 获取数据指针，然后使用 `readMemory` 一次性读取所有点
+  - 回退方案：使用 `variablesReference` 配合 `[More]` 扩展处理大型向量
+  
+#### 2. cppdbg (Linux/macOS GDB)
+- **Mat 可视化**：与 cppvsdbg 相同的方法
+- **点云可视化**：
+  - 快速路径：求值 `vec._M_impl._M_start`（GDB 的内部结构）获取数据指针，然后使用 `readMemory`
+  - 回退方案：与 cppvsdbg 相同
+  
+#### 3. lldb (CodeLLDB)
+- **Mat 可视化**：使用 `evaluate()` 获取完整类型信息，然后通过内存读取数据
+- **点云可视化**：
+  - 由于 LLDB 对 MSVC STL 支持有限，`vec.size()` 经常返回 0
+  - 必须使用 `variablesReference` 方案，遍历元素
+  - 对于大型点云，由于需要多次 DAP 请求，性能较慢
 
 ---
 

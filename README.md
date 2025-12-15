@@ -42,18 +42,15 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 
 ## Supported Debuggers
 
-| Debugger | cv::Mat | Point Cloud | Notes |
-|----------|---------|-------------|-------|
-| **cppvsdbg** (Visual Studio Debugger) | ✅ Tested | ✅ Tested | Full support on Windows |
-| **cppdbg** (GDB/LLDB via cpptools) | ❓ Untested | ❓ Untested | Should work, not tested |
-| **lldb** (CodeLLDB + MSVC) | ✅ Tested | ❌ Not working | LLDB cannot parse MSVC STL, vector size always returns 0 |
-| **lldb** (CodeLLDB + GCC/Clang) | ❓ Untested | ❓ Untested | May work with libstdc++/libc++, not tested |
+| Compiler| VS Code Extension | cv::Mat | Point Cloud | Notes |
+|-----|----|---------|-------------|-------|
+| MSVC | C/C++ (cppvsdbg) | ✅ | ✅ | Tested on Windows |
+|GCC | C/C++ (cppdbg) |✅ | ✅ | Tested on Windows MinGW Environment |
+| Clang+MSVC | CodeLLDB | ✅ | ❌ | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
+| Clang |  CodeLLDB | ✅ | ✅ | Tested on macOS |
+| GDB | C/C++ (cppdbg) | ✅ | ✅ | Linux support confirmed |
 
 ### Known Limitations
-
-- **CodeLLDB + MSVC**: When using CodeLLDB to debug MSVC-compiled code, point cloud visualization does not work because LLDB cannot correctly parse MSVC's STL implementation (`std::vector` size always returns 0). However, `cv::Mat` visualization works correctly.
-  
-- **CodeLLDB + GCC/Clang**: If you compile with GCC or Clang (using libstdc++ or libc++), point cloud visualization may work, but this has not been tested.
 
 - **cppvsdbg license**: If you are using closed-source VS Code forks like **Cursor**, **Qoder**, or similar IDEs, you may need to use **CodeLLDB** for debugging MSVC-compiled code, as cppvsdbg may not be available in these environments. Note that point cloud visualization will not work in this case due to LLDB's limited support for MSVC STL.
 
@@ -190,10 +187,10 @@ For **Point Clouds**:
 ### Architecture Diagram
 
 ```
-User Action (Right-click variable)
+    User Action (Right-click variable)
          |
          v
-[Extension Host] ────────────> [Debug Adapter]
+   [Extension Host] ────────────> [Debug Adapter]
          |                            |
          |  1. Get variable metadata  |
          |  2. Evaluate expressions   |
@@ -201,14 +198,14 @@ User Action (Right-click variable)
          |<───────────────────────────|
          |
          v
-[Data Parser]
-   - Mat: Extract rows/cols/data pointer
-   - PointCloud: Parse size, read points
+   [Data Parser]
+    - Mat: Extract rows/cols/data pointer
+    - PointCloud: Parse size, read points
          |
          v
-[Webview Panel]
-   - Canvas (Mat)
-   - Three.js (PointCloud)
+   [Webview Panel]
+    - Canvas (Mat)
+    - Three.js (PointCloud)
          |
          v
    User sees visualization
@@ -223,6 +220,27 @@ User Action (Right-click variable)
 | Linux | cppdbg/lldb | evaluate() | ✅ Fast | ⚠️ Depends on STL |
 
 **Note**: LLDB + MSVC combination has limited STL support, making vector parsing unreliable.
+
+### Implementation Details by Debugger
+
+#### 1. cppvsdbg (Windows MSVC)
+- **Mat Visualization**: Uses `variablesReference` to get metadata, then evaluates `mat.data` to get pointer
+- **Point Cloud Visualization**: 
+  - Fast path: Evaluates `&vec[0]` to get data pointer, then uses `readMemory` to read all points at once
+  - Fallback: Uses `variablesReference` with `[More]` expansion for large vectors
+  
+#### 2. cppdbg (Linux/macOS GDB)
+- **Mat Visualization**: Same approach as cppvsdbg
+- **Point Cloud Visualization**: 
+  - Fast path: Evaluates `vec._M_impl._M_start` (GDB's internal structure) to get data pointer, then uses `readMemory`
+  - Fallback: Same as cppvsdbg
+  
+#### 3. lldb (CodeLLDB)
+- **Mat Visualization**: Uses `evaluate()` to get full type information, then reads data via memory
+- **Point Cloud Visualization**: 
+  - Due to LLDB's limited support for MSVC STL, `vec.size()` often returns 0
+  - Must use `variablesReference` approach, iterating through elements
+  - Performance is slower for large point clouds due to multiple DAP requests
 
 ---
 
