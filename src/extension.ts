@@ -224,7 +224,7 @@ function isPoint3fVector(variableInfo: any): boolean {
   return isPoint3Vector(variableInfo).isPoint3;
 }
 
-// Function to check if the variable is a cv::Mat
+// Function to check if the variable is a cv::Mat or cv::Mat_<T>
 function isMat(variableInfo: any): boolean {
   console.log("Checking if variable is Mat");
   const type = variableInfo.type || "";
@@ -236,7 +236,9 @@ function isMat(variableInfo: any): boolean {
     type.includes("class cv::Mat") ||
     // cppdbg format
     type.includes("class cv::Mat") ||
-    // Generic format
+    // Template Mat types: cv::Mat_<T> (e.g., cv::Mat_<uchar>, cv::Mat_<cv::Vec3d>)
+    /cv::Mat_</.test(type) ||
+    // Generic format (matches cv::Mat but not cv::Mat_)
     /cv::Mat\b/.test(type);
   
   console.log("isMat result:", result);
@@ -980,6 +982,32 @@ async function getMatInfoFromVariables(
   let rows = 0, cols = 0, channels = 1, depth = 0, dataPtr = "";
   let flags = 0;
   
+  // Check if this is a cv::Mat_<T> with an internal cv::Mat member
+  // For cv::Mat_<T>, the actual Mat data is stored in an internal cv::Mat member
+  for (const v of varsResponse.variables) {
+    const name = v.name;
+    const value = v.value;
+    
+    // If we find a cv::Mat member (for cv::Mat_<T>), recursively get its info
+    if (name === "cv::Mat" || name.includes("cv::Mat") || (name === "Mat" && value.includes("rows"))) {
+      console.log(`Found internal Mat member: ${name}, recursively getting info...`);
+      if (v.variablesReference > 0) {
+        const innerMatInfo = await getMatInfoFromVariables(debugSession, v.variablesReference);
+        rows = innerMatInfo.rows;
+        cols = innerMatInfo.cols;
+        channels = innerMatInfo.channels;
+        depth = innerMatInfo.depth;
+        dataPtr = innerMatInfo.dataPtr;
+        console.log(`Got Mat info from internal Mat member: ${rows}x${cols}, ${channels} channels, depth=${depth}, dataPtr=${dataPtr}`);
+        // Return immediately if we got info from internal Mat
+        if (rows > 0 && cols > 0 && dataPtr) {
+          return { rows, cols, channels, depth, dataPtr };
+        }
+      }
+    }
+  }
+  
+  // If not a cv::Mat_<T> or recursive lookup failed, try direct members
   for (const v of varsResponse.variables) {
     const name = v.name;
     const value = v.value;

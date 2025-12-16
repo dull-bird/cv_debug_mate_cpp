@@ -52,7 +52,7 @@ try {
     
     # 显式指定编译器绝对路径，防止 CMake 乱找
     # -G Ninja: 使用 Ninja 生成器
-    & $MsysRoot\usr\bin\cmake.exe -G Ninja `
+    & $MsysRoot\clang64\bin\cmake.exe -G Ninja `
         "-DCMAKE_C_COMPILER=$($Compilers.C)" `
         "-DCMAKE_CXX_COMPILER=$($Compilers.CXX)" `
         "-DCMAKE_MAKE_PROGRAM=$($Compilers.Ninja)" `
