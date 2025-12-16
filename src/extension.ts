@@ -299,6 +299,36 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
       }
     );
     panel.webview.html = getWebviewContentForPointCloud(points);
+    
+    // Handle messages from webview (e.g., save PLY request)
+    panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === "savePLY") {
+          try {
+            const plyContent = generatePLYContent(points);
+            const uri = await vscode.window.showSaveDialog({
+              defaultUri: vscode.Uri.file(`${variableName}.ply`),
+              filters: {
+                "PLY Files": ["ply"],
+                "All Files": ["*"]
+              }
+            });
+            
+            if (uri) {
+              const encoder = new TextEncoder();
+              const data = encoder.encode(plyContent);
+              await vscode.workspace.fs.writeFile(uri, data);
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath}`);
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
+            console.error("Error saving PLY:", error);
+          }
+        }
+      },
+      undefined,
+      undefined
+    );
   } catch (error) {
     console.error("Error in drawPointCloud:", error);
     throw error;
@@ -1215,9 +1245,15 @@ function getWebviewContentForPointCloud(
                     right: 10px;
                     width: 120px;
                     height: 120px;
-                    background: rgba(0, 0, 0, 0.5);
+                    background: rgba(20, 20, 30, 0.9);
                     border-radius: 5px;
-                    border: 1px solid #444;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+                }
+                #axisView svg {
+                    width: 100%;
+                    height: 100%;
+                    display: block;
                 }
                 #colorbar {
                     position: absolute;
@@ -1271,6 +1307,7 @@ function getWebviewContentForPointCloud(
                 <button id="btnHeightY">Color by Y</button>
                 <button id="btnHeightX">Color by X</button>
                 <button id="btnResetView">Reset View</button>
+                <button id="btnSavePLY" style="margin-top: 8px; background: #28a745;">Save PLY</button>
             </div>
             <div id="axisView"></div>
             <div id="colorbar">
@@ -1299,69 +1336,115 @@ function getWebviewContentForPointCloud(
                 renderer.autoClear = false;
                 document.body.appendChild(renderer.domElement);
                 
-                // Axis view (inset)
-                const axisScene = new THREE.Scene();
-                const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-                axisCamera.position.set(0, 0, 3);
-                axisCamera.lookAt(0, 0, 0);
-                
+                // Axis view using SVG for crisp vector rendering
                 const axisContainer = document.getElementById('axisView');
-                const axisRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                axisRenderer.setSize(120, 120);
-                axisRenderer.setClearColor(0x000000, 0);
-                axisContainer.appendChild(axisRenderer.domElement);
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('viewBox', '0 0 120 120');
+                svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+                axisContainer.appendChild(svg);
                 
-                // Create axis arrows for inset view
-                const axisLength = 0.7;
-                const axisOrigin = new THREE.Vector3(0, 0, 0);
-                
-                // X axis (red) - right
-                const xAxisInset = new THREE.ArrowHelper(
-                    new THREE.Vector3(1, 0, 0), axisOrigin, axisLength, 0xff0000, 0.12, 0.06
-                );
-                axisScene.add(xAxisInset);
-                
-                // Y axis (green) - forward (negative Z in Three.js)
-                const yAxisInset = new THREE.ArrowHelper(
-                    new THREE.Vector3(0, 0, -1), axisOrigin, axisLength, 0x00ff00, 0.12, 0.06
-                );
-                axisScene.add(yAxisInset);
-                
-                // Z axis (blue) - up (Y in Three.js)
-                const zAxisInset = new THREE.ArrowHelper(
-                    new THREE.Vector3(0, 1, 0), axisOrigin, axisLength, 0x0000ff, 0.12, 0.06
-                );
-                axisScene.add(zAxisInset);
-                
-                // Add axis labels
-                function createTextSprite(text, color) {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 64;
-                    canvas.height = 64;
-                    const ctx = canvas.getContext('2d');
-                    ctx.fillStyle = color;
-                    ctx.font = 'bold 48px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(text, 32, 32);
-                    const texture = new THREE.CanvasTexture(canvas);
-                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-                    const sprite = new THREE.Sprite(spriteMaterial);
-                    sprite.scale.set(0.22, 0.22, 1);
-                    return sprite;
+                // Function to update axis arrows based on camera direction
+                function updateAxisView() {
+                    // Clear previous content
+                    svg.innerHTML = '';
+                    
+                    // Get camera basis vectors
+                    const cameraDir = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDir);
+                    const cameraUp = camera.up.clone();
+                    const cameraRight = new THREE.Vector3();
+                    cameraRight.crossVectors(cameraDir, cameraUp).normalize();
+                    const cameraUpCorrected = new THREE.Vector3();
+                    cameraUpCorrected.crossVectors(cameraRight, cameraDir).normalize();
+                    
+                    // Define axis directions in world space
+                    const worldX = new THREE.Vector3(1, 0, 0);
+                    const worldY = new THREE.Vector3(0, 0, -1); // Y is forward (negative Z in Three.js)
+                    const worldZ = new THREE.Vector3(0, 1, 0);
+                    
+                    // Project to 2D using camera basis
+                    // Project onto the plane perpendicular to camera direction
+                    function project3DTo2D(worldVec) {
+                        // Project onto camera right and up vectors
+                        const projRight = worldVec.dot(cameraRight);
+                        const projUp = worldVec.dot(cameraUpCorrected);
+                        return { x: projRight, y: projUp };
+                    }
+                    
+                    const centerX = 60, centerY = 60;
+                    const axisLength = 30;
+                    const arrowSize = 8;
+                    
+                    // Project axes
+                    const xProj = project3DTo2D(worldX);
+                    const yProj = project3DTo2D(worldY);
+                    const zProj = project3DTo2D(worldZ);
+                    
+                    // Normalize and scale
+                    const scale = axisLength;
+                    const xEnd = {
+                        x: centerX + xProj.x * scale,
+                        y: centerY - xProj.y * scale // Flip Y for SVG
+                    };
+                    const yEnd = {
+                        x: centerX + yProj.x * scale,
+                        y: centerY - yProj.y * scale
+                    };
+                    const zEnd = {
+                        x: centerX + zProj.x * scale,
+                        y: centerY - zProj.y * scale
+                    };
+                    
+                    // Draw arrows
+                    drawArrow(svg, centerX, centerY, xEnd.x, xEnd.y, '#ff3333', 'X');
+                    drawArrow(svg, centerX, centerY, yEnd.x, yEnd.y, '#33ff33', 'Y');
+                    drawArrow(svg, centerX, centerY, zEnd.x, zEnd.y, '#3333ff', 'Z');
                 }
                 
-                const labelX = createTextSprite('X', '#ff0000');
-                labelX.position.set(0.9, 0, 0);
-                axisScene.add(labelX);
+                // Function to draw an arrow with label
+                function drawArrow(svg, x1, y1, x2, y2, color, label) {
+                    // Draw line
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
+                    line.setAttribute('stroke', color);
+                    line.setAttribute('stroke-width', '2.5');
+                    line.setAttribute('stroke-linecap', 'round');
+                    svg.appendChild(line);
+                    
+                    // Draw arrowhead
+                    const angle = Math.atan2(y2 - y1, x2 - x1);
+                    const arrowLength = 6;
+                    const arrowWidth = 4;
+                    
+                    const arrowX1 = x2 - arrowLength * Math.cos(angle - Math.PI / 6);
+                    const arrowY1 = y2 - arrowLength * Math.sin(angle - Math.PI / 6);
+                    const arrowX2 = x2 - arrowLength * Math.cos(angle + Math.PI / 6);
+                    const arrowY2 = y2 - arrowLength * Math.sin(angle + Math.PI / 6);
+                    
+                    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                    arrow.setAttribute('points', x2 + ',' + y2 + ' ' + arrowX1 + ',' + arrowY1 + ' ' + arrowX2 + ',' + arrowY2);
+                    arrow.setAttribute('fill', color);
+                    svg.appendChild(arrow);
+                    
+                    // Draw label
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', x2 + (x2 - x1) * 0.15);
+                    text.setAttribute('y', y2 + (y2 - y1) * 0.15);
+                    text.setAttribute('fill', color);
+                    text.setAttribute('font-size', '14');
+                    text.setAttribute('font-weight', 'bold');
+                    text.setAttribute('font-family', 'Arial, sans-serif');
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('dominant-baseline', 'middle');
+                    text.textContent = label;
+                    svg.appendChild(text);
+                }
                 
-                const labelY = createTextSprite('Y', '#00ff00');
-                labelY.position.set(0, 0, -0.9);
-                axisScene.add(labelY);
-                
-                const labelZ = createTextSprite('Z', '#0000ff');
-                labelZ.position.set(0, 0.9, 0);
-                axisScene.add(labelZ);
+                // Initial render
+                updateAxisView();
 
                 // Calculate bounds
                 let minX = Infinity, maxX = -Infinity;
@@ -1459,6 +1542,31 @@ function getWebviewContentForPointCloud(
                     return { r, g, b };
                 }
                 
+                // Track current color mode
+                let currentColorMode = 'solid';
+                
+                // Function to update button active states
+                function updateButtonStates(activeMode) {
+                    const buttons = {
+                        'solid': document.getElementById('btnSolid'),
+                        'z': document.getElementById('btnHeightZ'),
+                        'y': document.getElementById('btnHeightY'),
+                        'x': document.getElementById('btnHeightX')
+                    };
+                    
+                    // Remove active class from all buttons
+                    Object.values(buttons).forEach(btn => {
+                        if (btn) btn.classList.remove('active');
+                    });
+                    
+                    // Add active class to the selected button
+                    if (buttons[activeMode]) {
+                        buttons[activeMode].classList.add('active');
+                    }
+                    
+                    currentColorMode = activeMode;
+                }
+                
                 function colorByAxis(axis) {
                     const colors = [];
                     let min, max;
@@ -1482,6 +1590,9 @@ function getWebviewContentForPointCloud(
                     document.getElementById('colorbar-max').textContent = max.toFixed(2);
                     document.getElementById('colorbar-mid').textContent = ((min + max) / 2).toFixed(2);
                     document.getElementById('colorbar-min').textContent = min.toFixed(2);
+                    
+                    // Update button state
+                    updateButtonStates(axis);
                 }
                 
                 function solidColor() {
@@ -1489,13 +1600,23 @@ function getWebviewContentForPointCloud(
                     material.color.setHex(0x00ffff);
                     material.needsUpdate = true;
                     document.getElementById('colorbar').style.display = 'none';
+                    
+                    // Update button state
+                    updateButtonStates('solid');
                 }
+                
+                // Initialize: set solid button as active
+                updateButtonStates('solid');
                 
                 document.getElementById('btnSolid').onclick = () => solidColor();
                 document.getElementById('btnHeightZ').onclick = () => colorByAxis('z');
                 document.getElementById('btnHeightY').onclick = () => colorByAxis('y');
                 document.getElementById('btnHeightX').onclick = () => colorByAxis('x');
                 document.getElementById('btnResetView').onclick = () => resetView();
+                document.getElementById('btnSavePLY').onclick = () => {
+                    const vscode = acquireVsCodeApi();
+                    vscode.postMessage({ command: 'savePLY' });
+                };
                 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
                 scene.add(ambientLight);
@@ -1510,15 +1631,11 @@ function getWebviewContentForPointCloud(
                     requestAnimationFrame(animate);
                     controls.update();
                     
-                    // Sync axis camera rotation with main camera
-                    axisCamera.position.copy(camera.position);
-                    axisCamera.position.sub(controls.target);
-                    axisCamera.position.normalize().multiplyScalar(3);
-                    axisCamera.lookAt(0, 0, 0);
+                    // Update SVG axis view
+                    updateAxisView();
                     
                     renderer.clear();
                     renderer.render(scene, camera);
-                    axisRenderer.render(axisScene, axisCamera);
                 }
                 animate();
             </script>
@@ -1527,6 +1644,25 @@ function getWebviewContentForPointCloud(
     `;
 }
 
+// Generate PLY file content from point cloud data
+function generatePLYContent(points: { x: number; y: number; z: number }[]): string {
+  let plyContent = `ply
+format ascii 1.0
+comment Generated by CV DebugMate C++
+element vertex ${points.length}
+property float x
+property float y
+property float z
+end_header
+`;
+
+  // Add vertex data
+  for (const point of points) {
+    plyContent += `${point.x} ${point.y} ${point.z}\n`;
+  }
+
+  return plyContent;
+}
 
   // You need to implement this function to generate a nonce
   function getNonce() {
