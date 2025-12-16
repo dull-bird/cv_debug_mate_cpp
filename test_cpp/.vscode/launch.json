@@ -34,10 +34,13 @@
             "request": "launch",
             "name": "Debug (lldb)",
             // "program": "${workspaceFolder}/build/Debug/test_debugmate.exe",
-            "program": "${workspaceFolder}/build_ninja/test_debugmate.exe",
+            "program": "${workspaceFolder}/build_clang_native/test_debugmate.exe",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "stopOnEntry": false
+            "stopOnEntry": false,
+            "env": {
+                "PATH": "C:\\msys64\\clang64\\bin;${env:PATH}"
+            },
         },
         {
             "type": "cppvsdbg",

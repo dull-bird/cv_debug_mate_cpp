@@ -231,81 +231,34 @@ function isUsingLLDB(debugSession: vscode.DebugSession): boolean {
   return debugSession.type === "lldb";
 }
 
-// Helper function to check if we're using cppdbg or cppvsdbg
+// Helper function to check if we're using cppdbg (GDB/MI)
 function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
-  return debugSession.type === "cppdbg" || debugSession.type === "cppvsdbg";
+  return debugSession.type === "cppdbg";
+}
+
+// Helper function to check if we're using MSVC (cppvsdbg)
+function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "cppvsdbg";
 }
 
 // Function to draw point cloud
 async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any, variableName: string) {
   try {
-    const usingLLDB = isUsingLLDB(debugSession);
-    const usingCppdbg = isUsingCppdbg(debugSession);
     console.log("Drawing point cloud with debugger type:", debugSession.type);
     console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
 
     let points: { x: number; y: number; z: number }[] = [];
 
-    // For cppvsdbg (MSVC), prefer readMemory approach first
-    if (usingCppdbg && variableInfo.evaluateName) {
-      console.log("Using cppvsdbg readMemory approach");
+    // Use readMemory approach (supports MSVC, LLDB, and GDB with multiple fallback strategies)
+    if (variableInfo.evaluateName) {
+      console.log("Trying readMemory approach");
       try {
-        points = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName);
+        points = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo);
         if (points.length > 0) {
-          console.log(`Loaded ${points.length} points via cppvsdbg readMemory`);
+          console.log(`Loaded ${points.length} points via readMemory`);
         }
       } catch (e) {
-        console.log("cppvsdbg readMemory failed:", e);
-      }
-    }
-
-    // Try using variables request if readMemory didn't work
-    if (points.length === 0 && variableInfo.variablesReference > 0) {
-      console.log("Using variables request for point cloud");
-      try {
-        points = await getPointCloudFromVariables(debugSession, variableInfo.variablesReference, variableInfo.result, variableInfo.evaluateName);
-      } catch (e) {
-        console.log("Variables request failed, trying evaluate:", e);
-      }
-    }
-    
-    // Fallback to evaluate for debuggers that support it (non-LLDB)
-    if (points.length === 0 && !usingLLDB && variableInfo.evaluateName) {
-      console.log("Trying evaluate fallback");
-      try {
-        const sizeResponse = await evaluateWithTimeout(
-          debugSession,
-          `${variableInfo.evaluateName}.size()`,
-          variableInfo.frameId || 0,
-          5000
-        );
-        const size = parseInt(sizeResponse.result);
-        console.log(`Point cloud size: ${size}`);
-
-        for (let i = 0; i < size; i++) {
-          const pointExpression = `${variableInfo.evaluateName}[${i}]`;
-
-          const pointResponse = await evaluateWithTimeout(
-            debugSession,
-            pointExpression,
-            variableInfo.frameId || 0,
-            5000
-          );
-
-          const matches = pointResponse.result.match(
-            /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
-          );
-
-          if (matches) {
-            points.push({
-              x: parseFloat(matches[1]),
-              y: parseFloat(matches[2]),
-              z: parseFloat(matches[3]),
-            });
-          }
-        }
-      } catch (e) {
-        console.log("Evaluate fallback also failed:", e);
+        console.log("readMemory approach failed:", e);
       }
     }
 
@@ -333,168 +286,250 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
   }
 }
 
+// Helper function to try getting data pointer using a list of expressions
+async function tryGetDataPointer(
+  debugSession: vscode.DebugSession,
+  evaluateName: string,
+  expressions: string[],
+  frameId: number,
+  context: string
+): Promise<string | null> {
+  console.log(`tryGetDataPointer: evaluateName="${evaluateName}", context="${context}", frameId=${frameId}`);
+  
+  for (const expr of expressions) {
+    try {
+      console.log(`Trying expression: ${expr}`);
+      const dataResponse = await debugSession.customRequest("evaluate", {
+        expression: expr,
+        frameId: frameId,
+        context: context
+      });
+      
+      console.log(`Response for "${expr}":`, dataResponse);
+      
+      // Try to extract pointer from result string
+      if (dataResponse && dataResponse.result) {
+        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
+        if (ptrMatch) {
+          console.log(`Successfully extracted pointer: ${ptrMatch[0]}`);
+          return ptrMatch[0];
+        }
+      }
+      
+      // Also check memoryReference field directly
+      if (dataResponse && dataResponse.memoryReference) {
+        console.log(`Found memoryReference: ${dataResponse.memoryReference}`);
+        return dataResponse.memoryReference;
+      }
+    } catch (e) {
+      console.log(`Expression "${expr}" failed:`, e);
+    }
+  }
+  
+  return null;
+}
+
 // Get point cloud data via readMemory (fast path for cppdbg/cppvsdbg)
 async function getPointCloudViaReadMemory(
   debugSession: vscode.DebugSession,
-  evaluateName: string
+  evaluateName: string,
+  variableInfo?: any
 ): Promise<{ x: number; y: number; z: number }[]> {
   const points: { x: number; y: number; z: number }[] = [];
-  const frameId = await getCurrentFrameId(debugSession);
+  // Use frameId from variableInfo if available, otherwise get current frame
+  const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+  const context = getEvaluateContext(debugSession);
   
-  // Get vector size
-  const sizeResponse = await debugSession.customRequest("evaluate", {
-    expression: `(int)${evaluateName}.size()`,
-    frameId: frameId,
-    context: "repl"
-  });
+  console.log(`getPointCloudViaReadMemory: evaluateName="${evaluateName}", frameId=${frameId}, context="${context}"`);
   
-  const size = parseInt(sizeResponse.result);
+  // Try to get vector size from variableInfo.result first (e.g., "size=8000")
+  let size = 0;
+  if (variableInfo && variableInfo.result) {
+    const sizeMatch = variableInfo.result.match(/size\s*=\s*(\d+)/);
+    if (sizeMatch) {
+      size = parseInt(sizeMatch[1]);
+      console.log(`Parsed vector size from variableInfo.result: ${size}`);
+    }
+  }
+  
+  // If not found in variableInfo, try to evaluate size() expression
+  if (size <= 0) {
+    try {
+      const sizeResponse = await debugSession.customRequest("evaluate", {
+        expression: `(int)${evaluateName}.size()`,
+        frameId: frameId,
+        context: context
+      });
+      
+      size = parseInt(sizeResponse.result);
+      if (!isNaN(size) && size > 0) {
+        console.log(`Got vector size from evaluate: ${size}`);
+      }
+    } catch (e) {
+      console.log("Failed to evaluate size() expression:", e);
+    }
+  }
+  
   if (isNaN(size) || size <= 0) {
     console.log("Could not get vector size or size is 0");
     return points;
   }
   console.log(`Vector size: ${size}`);
   
-  // Try multiple approaches to get data pointer
-  let dataPtr: string | null = null;
-  
   // Log debug info
   console.log(`Debug: Getting pointer for ${evaluateName}, debugger type: ${debugSession.type}`);
   
-  // Approach 1: Standard GDB way (_M_impl._M_start for std::vector)
-  if (!dataPtr) {
-    try {
-      console.log("Trying _M_start approach...");
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `(long long)${evaluateName}._M_impl._M_start`,
-        frameId: frameId,
-        context: "repl"
-      });
-      
-      console.log("Data pointer response (_M_start):", dataResponse);
-      
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
-        }
-      }
-      
-      // Also check memoryReference field directly
-      if (!dataPtr && dataResponse && dataResponse.memoryReference) {
-        dataPtr = dataResponse.memoryReference;
-      }
-      
-      console.log(`_M_start result: ${dataPtr}`);
-    } catch (e) {
-      console.log("_M_start approach failed:", e);
-    }
-  }
+  // Get data pointer based on compiler/debugger type
+  let dataPtr: string | null = null;
   
-  // Approach 2: MSVC way (different internal structure)
-  if (!dataPtr) {
-    try {
-      console.log("Trying &cloud[0] approach...");
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `(long long)&${evaluateName}[0]`,
-        frameId: frameId,
-        context: "repl"
-      });
-      
-      console.log("Data pointer response (&first):", dataResponse);
-      
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
+  if (isUsingMSVC(debugSession)) {
+    // MSVC (cppvsdbg) approaches
+    console.log("Using MSVC-specific approaches");
+    const msvcExpressions = [
+      `(long long)&${evaluateName}[0]`,
+      `reinterpret_cast<long long>(&${evaluateName}[0])`,
+      `(long long)${evaluateName}.data()`,
+      `reinterpret_cast<long long>(${evaluateName}.data())`,
+      `&(${evaluateName}.operator[](0))`
+    ];
+    dataPtr = await tryGetDataPointer(debugSession, evaluateName, msvcExpressions, frameId, context);
+    
+  } else if (isUsingLLDB(debugSession)) {
+    // LLDB approaches
+    // Note: In LLDB, evaluate may not work for member access in some contexts
+    // Try to get __begin_ through variables first, then fallback to evaluate
+    console.log("Using LLDB-specific approaches");
+    
+    // First, try to get data pointer through variables if we have variablesReference
+    if (variableInfo && variableInfo.variablesReference > 0) {
+      try {
+        console.log(`Trying to get data pointer through variables, variablesReference=${variableInfo.variablesReference}`);
+        const varsResponse = await debugSession.customRequest("variables", {
+          variablesReference: variableInfo.variablesReference
+        });
+        
+        // Log variable names only (not full objects to avoid truncation)
+        if (varsResponse.variables && varsResponse.variables.length > 0) {
+          const varNames = varsResponse.variables.slice(0, 10).map((v: any) => v.name).join(", ");
+          console.log(`Found ${varsResponse.variables.length} variables (first 10: ${varNames}...)`);
+          
+          // Strategy 1: Look for __begin_ in the variables
+          for (const v of varsResponse.variables) {
+            const varName = v.name;
+            if (varName === "__begin_" || varName.includes("__begin")) {
+              console.log(`Found __begin_ variable: name="${varName}", value="${v.value}", memoryReference="${v.memoryReference}"`);
+              
+              // Extract pointer from value
+              if (v.value) {
+                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
+                if (ptrMatch) {
+                  dataPtr = ptrMatch[0];
+                  console.log(`Extracted pointer from __begin_ variable: ${dataPtr}`);
+                  break;
+                }
+              }
+              
+              // Also check memoryReference
+              if (!dataPtr && v.memoryReference) {
+                dataPtr = v.memoryReference;
+                console.log(`Using memoryReference from __begin_ variable: ${dataPtr}`);
+                break;
+              }
+            }
+          }
+          
+          // Strategy 2: If __begin_ not found, try to get [0] element's memoryReference
+          // This works because [0] is the first element, and its address is the data pointer
+          if (!dataPtr) {
+            const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
+            if (firstElement) {
+              console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
+              
+              // Use memoryReference of [0] as data pointer
+              if (firstElement.memoryReference) {
+                dataPtr = firstElement.memoryReference;
+                console.log(`Using memoryReference from [0] element as data pointer: ${dataPtr}`);
+              } else if (firstElement.value) {
+                // Try to extract address from value (e.g., "{x=1.0, y=2.0, z=3.0}" might contain address)
+                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
+                if (ptrMatch) {
+                  dataPtr = ptrMatch[0];
+                  console.log(`Extracted pointer from [0] element value: ${dataPtr}`);
+                }
+              }
+              
+              // If [0] has variablesReference, try to get its sub-variables to find address
+              if (!dataPtr && firstElement.variablesReference > 0) {
+                try {
+                  const elemVars = await debugSession.customRequest("variables", {
+                    variablesReference: firstElement.variablesReference
+                  });
+                  console.log(`[0] has sub-variables, checking for address...`);
+                  // The address might be in a sub-variable or we can calculate it
+                  // For now, if we have the vector's memoryReference, we can try to calculate
+                  // But let's first check if any sub-variable has an address
+                  if (elemVars.variables) {
+                    for (const ev of elemVars.variables) {
+                      if (ev.memoryReference) {
+                        // This is the address of the first element
+                        dataPtr = ev.memoryReference;
+                        console.log(`Found memoryReference in [0] sub-variable: ${dataPtr}`);
+                        break;
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.log("Failed to get [0] sub-variables:", e);
+                }
+              }
+            }
+          }
         }
-      }
-      
-      // Also check memoryReference field directly
-      if (!dataPtr && dataResponse && dataResponse.memoryReference) {
-        dataPtr = dataResponse.memoryReference;
-      }
-      
-      console.log(`&cloud[0] result: ${dataPtr}`);
-    } catch (e) {
-      console.log("&first approach failed:", e);
-    }
-  }
-  
-  // Approach 3: Direct cast (may work for GDB)
-  if (!dataPtr) {
-    try {
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `(long long)${evaluateName}.data()`,
-        frameId: frameId,
-        context: "repl"
-      });
-      
-      console.log("Data pointer response (cast):", dataResponse);
-      
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
+        
+        if (!dataPtr) {
+          console.log("Could not get data pointer through variables");
         }
+      } catch (e) {
+        console.log("Failed to get data pointer through variables:", e);
       }
-      
-      // Also check memoryReference field directly
-      if (!dataPtr && dataResponse && dataResponse.memoryReference) {
-        dataPtr = dataResponse.memoryReference;
-      }
-    } catch (e) {
-      console.log("Cast approach failed:", e);
     }
-  }
-  
-  // Approach 4: Address-of operator (if data() returns reference)
-  if (!dataPtr) {
-    try {
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `&(${evaluateName}.operator[](0))`,
-        frameId: frameId,
-        context: "repl"
-      });
-      
-      console.log("Data pointer response (&first):", dataResponse);
-      
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
-        }
-      }
-      
-      // Also check memoryReference field directly
-      if (!dataPtr && dataResponse && dataResponse.memoryReference) {
-        dataPtr = dataResponse.memoryReference;
-      }
-    } catch (e) {
-      console.log("Address-of approach failed:", e);
+    
+    // If variables approach didn't work, try evaluate expressions
+    if (!dataPtr) {
+      const lldbExpressions = [
+        `${evaluateName}.__begin_`,                              // Get __begin_ value directly (returns pointer type)
+        `reinterpret_cast<long long>(${evaluateName}.__begin_)`, // Try C++ style cast
+        `${evaluateName}.data()`,                                // Try data() method
+        `reinterpret_cast<long long>(${evaluateName}.data())`,   // Try data() with C++ cast
+        `&${evaluateName}[0]`,                                    // Try address of first element
+        `reinterpret_cast<long long>(&${evaluateName}[0])`       // Try address with C++ cast
+      ];
+      dataPtr = await tryGetDataPointer(debugSession, evaluateName, lldbExpressions, frameId, context);
     }
-  }
-  
-  // Approach 3: Try reinterpret_cast (alternative)
-  if (!dataPtr) {
-    try {
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `reinterpret_cast<long long>(${evaluateName}.data())`,
-        frameId: frameId,
-        context: "repl"
-      });
-      
-      console.log("Data pointer response (reinterpret_cast):", dataResponse);
-      
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
-        }
-      }
-    } catch (e) {
-      console.log("reinterpret_cast approach failed:", e);
-    }
+    
+  } else if (isUsingCppdbg(debugSession)) {
+    // GDB (cppdbg) approaches
+    console.log("Using GDB-specific approaches");
+    const gdbExpressions = [
+      `(long long)${evaluateName}._M_impl._M_start`,
+      `reinterpret_cast<long long>(${evaluateName}._M_impl._M_start)`,
+      `(long long)${evaluateName}.data()`,
+      `reinterpret_cast<long long>(${evaluateName}.data())`,
+      `(long long)&${evaluateName}[0]`
+    ];
+    dataPtr = await tryGetDataPointer(debugSession, evaluateName, gdbExpressions, frameId, context);
+    
+  } else {
+    // Fallback: try all approaches
+    console.log("Unknown debugger type, trying all approaches");
+    const fallbackExpressions = [
+      `(long long)&${evaluateName}[0]`,
+      `(long long)${evaluateName}._M_impl._M_start`,
+      `(long long)${evaluateName}.__begin_`,
+      `(long long)${evaluateName}.data()`,
+      `reinterpret_cast<long long>(${evaluateName}.data())`
+    ];
+    dataPtr = await tryGetDataPointer(debugSession, evaluateName, fallbackExpressions, frameId, context);
   }
   
   if (!dataPtr) {
@@ -527,185 +562,6 @@ async function getPointCloudViaReadMemory(
     console.log(`Loaded ${points.length} points via readMemory`);
   }
   
-  return points;
-}
-
-// Get point cloud data from LLDB variables request
-async function getPointCloudFromVariables(
-  debugSession: vscode.DebugSession,
-  variablesReference: number,
-  resultString?: string,
-  evaluateName?: string
-): Promise<{ x: number; y: number; z: number }[]> {
-  const points: { x: number; y: number; z: number }[] = [];
-  
-  // Try to parse size from result string like "{ size=31675 }"
-  let totalSize = 0;
-  if (resultString) {
-    const sizeMatch = resultString.match(/size\s*=\s*(\d+)/);
-    if (sizeMatch) {
-      totalSize = parseInt(sizeMatch[1]);
-      console.log(`Parsed vector size from result: ${totalSize}`);
-    }
-  }
-  
-  // Force use readMemory if we have size and evaluateName
-  if (totalSize > 0 && evaluateName) {
-    try {
-      // Get data pointer via evaluate expression
-      const dataResponse = await debugSession.customRequest("evaluate", {
-        expression: `(void*)${evaluateName}.data()`,
-        frameId: await getCurrentFrameId(debugSession),
-        context: "watch"
-      });
-      
-      console.log("Data pointer response:", dataResponse);
-      
-      let dataPtr: string | null = null;
-      if (dataResponse && dataResponse.result) {
-        const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
-          dataPtr = ptrMatch[0];
-        }
-      }
-      
-      if (dataPtr) {
-        // Read all points at once: Point3f = 3 floats = 12 bytes per point
-        const bytesPerPoint = 12;
-        const totalBytes = totalSize * bytesPerPoint;
-        
-        console.log(`Reading ${totalSize} points (${totalBytes} bytes) from ${dataPtr}`);
-        
-        const memoryResponse = await debugSession.customRequest("readMemory", {
-          memoryReference: dataPtr,
-          count: totalBytes
-        });
-        
-        if (memoryResponse && memoryResponse.data) {
-          const buffer = Buffer.from(memoryResponse.data, 'base64');
-          
-          for (let i = 0; i < totalSize && i * 12 + 11 < buffer.length; i++) {
-            const offset = i * 12;
-            const x = buffer.readFloatLE(offset);
-            const y = buffer.readFloatLE(offset + 4);
-            const z = buffer.readFloatLE(offset + 8);
-            points.push({ x, y, z });
-          }
-          
-          console.log(`Loaded ${points.length} points via readMemory`);
-          return points;
-        }
-      } else {
-        console.log("Could not extract data pointer from response");
-      }
-    } catch (e) {
-      console.log("readMemory approach failed:", e);
-    }
-  }
-  
-  // Fallback: Use variables request with [More] node expansion
-  console.log("Using fallback: variables request with [More] expansion");
-  const queue: number[] = [variablesReference];
-  
-  while (queue.length > 0 && points.length < 100000) {
-    const currentRef = queue.shift()!;
-    
-    const vectorVars = await debugSession.customRequest("variables", {
-      variablesReference: currentRef
-    });
-    
-    if (!vectorVars.variables || vectorVars.variables.length === 0) {
-      continue;
-    }
-    
-    console.log(`Got ${vectorVars.variables.length} variables from ref ${currentRef}, total points so far: ${points.length}`);
-    
-    for (const v of vectorVars.variables) {
-      // Stop if we already have enough points based on size
-      if (totalSize > 0 && points.length >= totalSize) {
-        console.log(`Reached target size ${totalSize}, stopping`);
-        break;
-      }
-      
-      if (v.name.startsWith("__") || v.name === "size" || v.name === "capacity" || v.name === "[Raw View]") {
-        continue;
-      }
-      
-      if (v.name === "[More]" && v.variablesReference > 0) {
-        queue.push(v.variablesReference);
-        continue;
-      }
-      
-      // Handle GDB's array indexing format (e.g., [0], [1], ..., [999])
-      if (/^\[\d+\]$/.test(v.name) && v.variablesReference > 0) {
-        // For GDB, recursively get child variables
-        const pointVars = await debugSession.customRequest("variables", {
-          variablesReference: v.variablesReference
-        });
-        
-        let x = 0, y = 0, z = 0;
-        let foundX = false, foundY = false, foundZ = false;
-        for (const pv of pointVars.variables) {
-          if (pv.name === "x") {
-            x = parseFloat(pv.value) || 0;
-            foundX = true;
-          }
-          else if (pv.name === "y") {
-            y = parseFloat(pv.value) || 0;
-            foundY = true;
-          }
-          else if (pv.name === "z") {
-            z = parseFloat(pv.value) || 0;
-            foundZ = true;
-          }
-        }
-        // Only add if we found ALL THREE fields (x, y, z) - this is a valid Point3f
-        if (foundX && foundY && foundZ) {
-          points.push({ x, y, z });
-        }
-        continue;
-      }
-      
-      const matches = v.value.match(
-        /[{(]?\s*x\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*y\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*,?\s*z\s*[=:]\s*([-+]?[0-9]*\.?[0-9]+)\s*[})]?/
-      );
-      
-      if (matches) {
-        points.push({
-          x: parseFloat(matches[1]),
-          y: parseFloat(matches[2]),
-          z: parseFloat(matches[3]),
-        });
-      } else if (v.variablesReference > 0) {
-        const pointVars = await debugSession.customRequest("variables", {
-          variablesReference: v.variablesReference
-        });
-        
-        let x = 0, y = 0, z = 0;
-        let foundX = false, foundY = false, foundZ = false;
-        for (const pv of pointVars.variables) {
-          if (pv.name === "x") {
-            x = parseFloat(pv.value) || 0;
-            foundX = true;
-          }
-          else if (pv.name === "y") {
-            y = parseFloat(pv.value) || 0;
-            foundY = true;
-          }
-          else if (pv.name === "z") {
-            z = parseFloat(pv.value) || 0;
-            foundZ = true;
-          }
-        }
-        // Only add if we found ALL THREE fields (x, y, z) - this is a valid Point3f
-        if (foundX && foundY && foundZ) {
-          points.push({ x, y, z });
-        }
-      }
-    }
-  }
-  
-  console.log(`Total points loaded: ${points.length}`);
   return points;
 }
 
