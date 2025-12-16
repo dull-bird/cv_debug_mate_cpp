@@ -151,22 +151,23 @@ export function activate(context: vscode.ExtensionContext) {
 
         // Check the type of the variable
         console.log("--- Type Checking ---");
-        const isPoint3f = isPoint3fVector(variableInfo);
+        const point3Info = isPoint3Vector(variableInfo);
         const isMatType = isMat(variableInfo);
-        console.log("isPoint3fVector:", isPoint3f);
+        console.log("isPoint3Vector:", point3Info.isPoint3);
+        console.log("isDouble (Point3d):", point3Info.isDouble);
         console.log("isMat:", isMatType);
         
-        if (isPoint3f) {
-          // If it's a vector of cv::Point3f, draw the point cloud
+        if (point3Info.isPoint3) {
+          // If it's a vector of cv::Point3f or cv::Point3d, draw the point cloud
           console.log("==> Drawing Point Cloud");
-          await drawPointCloud(debugSession, variableInfo, variableName);
+          await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble);
         } else if (isMatType) {
           // If it's a cv::Mat, draw the image
           console.log("==> Drawing Mat Image");
           await drawMatImage(debugSession, variableInfo, frameId, variableName);
         } else {
           vscode.window.showErrorMessage(
-            "Variable is neither a vector of cv::Point3f nor a cv::Mat."
+            "Variable is neither a vector of cv::Point3f/cv::Point3d nor a cv::Mat."
           );
           console.log("ERROR: Variable type not recognized. Type:", variableInfo.type);
         }
@@ -183,28 +184,44 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(disposable);
 }
 
-// Function to check if the variable is a vector of cv::Point3f
-function isPoint3fVector(variableInfo: any): boolean {
-  console.log("Checking if variable is Point3f vector");
+// Function to check if the variable is a vector of cv::Point3f or cv::Point3d
+// Returns: { isPoint3: boolean, isDouble: boolean }
+// isDouble: true for Point3d (double), false for Point3f (float)
+function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble: boolean } {
+  console.log("Checking if variable is Point3 vector");
   const type = variableInfo.type || "";
   console.log("Variable type string:", type);
   
-  const result = 
-    type.includes("std::vector<cv::Point3f>") ||
-    type.includes("std::vector<cv::Point3_<float>") ||
+  // Check for Point3d (double) first
+  const isDouble = 
     type.includes("std::vector<cv::Point3d>") ||
     type.includes("std::vector<cv::Point3_<double>") ||
-    // LLDB format
-    type.includes("std::__1::vector<cv::Point3_<float>") ||
     type.includes("std::__1::vector<cv::Point3_<double>") ||
-    // cppdbg format
-    type.includes("class std::vector<class cv::Point3_<float>") ||
     type.includes("class std::vector<class cv::Point3_<double>") ||
-    // Generic format for both LLDB and VS
-    /std::.*vector\s*<\s*cv::Point3[fd]?\s*>/.test(type);
+    /std::.*vector\s*<\s*cv::Point3d\s*>/.test(type) ||
+    /std::.*vector\s*<\s*cv::Point3_<double>/.test(type);
   
-  console.log("isPoint3fVector result:", result);
-  return result;
+  // Check for Point3f (float) or generic Point3
+  const isFloat = 
+    type.includes("std::vector<cv::Point3f>") ||
+    type.includes("std::vector<cv::Point3_<float>") ||
+    type.includes("std::__1::vector<cv::Point3_<float>") ||
+    type.includes("class std::vector<class cv::Point3_<float>") ||
+    /std::.*vector\s*<\s*cv::Point3f\s*>/.test(type) ||
+    /std::.*vector\s*<\s*cv::Point3_<float>/.test(type);
+  
+  // Generic Point3 check (without type parameter)
+  const isGeneric = /std::.*vector\s*<\s*cv::Point3[fd]?\s*>/.test(type);
+  
+  const isPoint3 = isDouble || isFloat || isGeneric;
+  
+  console.log(`isPoint3Vector result: isPoint3=${isPoint3}, isDouble=${isDouble}`);
+  return { isPoint3, isDouble };
+}
+
+// Legacy function name for backward compatibility
+function isPoint3fVector(variableInfo: any): boolean {
+  return isPoint3Vector(variableInfo).isPoint3;
 }
 
 // Function to check if the variable is a cv::Mat
@@ -242,7 +259,7 @@ function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
 }
 
 // Function to draw point cloud
-async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any, variableName: string) {
+async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: any, variableName: string, isDouble: boolean = false) {
   try {
     console.log("Drawing point cloud with debugger type:", debugSession.type);
     console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
@@ -253,7 +270,7 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
     if (variableInfo.evaluateName) {
       console.log("Trying readMemory approach");
       try {
-        points = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo);
+        points = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo, isDouble);
         if (points.length > 0) {
           console.log(`Loaded ${points.length} points via readMemory`);
         }
@@ -333,7 +350,8 @@ async function tryGetDataPointer(
 async function getPointCloudViaReadMemory(
   debugSession: vscode.DebugSession,
   evaluateName: string,
-  variableInfo?: any
+  variableInfo?: any,
+  isDouble: boolean = false
 ): Promise<{ x: number; y: number; z: number }[]> {
   const points: { x: number; y: number; z: number }[] = [];
   // Use frameId from variableInfo if available, otherwise get current frame
@@ -537,11 +555,13 @@ async function getPointCloudViaReadMemory(
     return points;
   }
   
-  // Read all points at once: Point3f = 3 floats = 12 bytes per point
-  const bytesPerPoint = 12;
+  // Read all points at once
+  // Point3f = 3 floats = 12 bytes per point
+  // Point3d = 3 doubles = 24 bytes per point
+  const bytesPerPoint = isDouble ? 24 : 12;
   const totalBytes = size * bytesPerPoint;
   
-  console.log(`Reading ${size} points (${totalBytes} bytes) from ${dataPtr}`);
+  console.log(`Reading ${size} points (${totalBytes} bytes, ${isDouble ? 'Point3d' : 'Point3f'}) from ${dataPtr}`);
   
   const memoryResponse = await debugSession.customRequest("readMemory", {
     memoryReference: dataPtr,
@@ -551,12 +571,24 @@ async function getPointCloudViaReadMemory(
   if (memoryResponse && memoryResponse.data) {
     const buffer = Buffer.from(memoryResponse.data, 'base64');
     
-    for (let i = 0; i < size && i * 12 + 11 < buffer.length; i++) {
-      const offset = i * 12;
-      const x = buffer.readFloatLE(offset);
-      const y = buffer.readFloatLE(offset + 4);
-      const z = buffer.readFloatLE(offset + 8);
-      points.push({ x, y, z });
+    if (isDouble) {
+      // Point3d: 3 doubles = 24 bytes per point
+      for (let i = 0; i < size && i * 24 + 23 < buffer.length; i++) {
+        const offset = i * 24;
+        const x = buffer.readDoubleLE(offset);
+        const y = buffer.readDoubleLE(offset + 8);
+        const z = buffer.readDoubleLE(offset + 16);
+        points.push({ x, y, z });
+      }
+    } else {
+      // Point3f: 3 floats = 12 bytes per point
+      for (let i = 0; i < size && i * 12 + 11 < buffer.length; i++) {
+        const offset = i * 12;
+        const x = buffer.readFloatLE(offset);
+        const y = buffer.readFloatLE(offset + 4);
+        const z = buffer.readFloatLE(offset + 8);
+        points.push({ x, y, z });
+      }
     }
     
     console.log(`Loaded ${points.length} points via readMemory`);

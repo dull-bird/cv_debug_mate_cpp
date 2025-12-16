@@ -41,11 +41,18 @@ int main() {
   cv::Mat floatImg;
   img.convertTo(floatImg, CV_32FC3, 1.0 / 255.0);
 
+  cv::Mat_<uchar> grayImg_template;
+  grayImg.copyTo(grayImg_template);
+
+  cv::Mat_<cv::Vec3f> floatImg_template;
+  floatImg.copyTo(floatImg_template);
+
   // ============================================
   // Test 2: Create a point cloud
   // ============================================
 
   std::vector<cv::Point3f> cloud;
+  std::vector<cv::Point3d> cloud_d;
 
   // Generate a sphere point cloud
   const int numPoints = 5000;
@@ -62,6 +69,7 @@ int main() {
     float z = r * cos(phi);
 
     cloud.push_back(cv::Point3f(x, y, z));
+    cloud_d.push_back(cv::Point3d(x, y, z));
   }
 
   // Add a ground plane
@@ -70,6 +78,7 @@ int main() {
     float y = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 30.0f;
     float z = -radius - 1.0f; // Ground below the sphere
     cloud.push_back(cv::Point3f(x, y, z));
+    cloud_d.push_back(cv::Point3d(x, y, z));
   }
 
   // Add a vertical pillar
@@ -78,6 +87,7 @@ int main() {
     float y = 0.0f + (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 1.0f;
     float z = (static_cast<float>(rand()) / RAND_MAX) * 20.0f - 10.0f;
     cloud.push_back(cv::Point3f(x, y, z));
+    cloud_d.push_back(cv::Point3d(x, y, z));
   }
 
   std::cout << "Test data created:" << std::endl;
@@ -95,7 +105,8 @@ int main() {
 
   // ====== SET BREAKPOINT HERE ======
   int breakpoint_here = 0; // <-- Set breakpoint here, then right-click on img,
-                           // grayImg, floatImg, or cloud
+                           // grayImg, floatImg, or cloud_d in the
+                           // Variables pane to visualize.
   (void)breakpoint_here;
 
   return 0;
