@@ -219,11 +219,6 @@ function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble: boole
   return { isPoint3, isDouble };
 }
 
-// Legacy function name for backward compatibility
-function isPoint3fVector(variableInfo: any): boolean {
-  return isPoint3Vector(variableInfo).isPoint3;
-}
-
 // Function to check if the variable is a cv::Mat or cv::Mat_<T>
 function isMat(variableInfo: any): boolean {
   console.log("Checking if variable is Mat");
@@ -1728,6 +1723,7 @@ end_header
                   background: white;
               }
               button:hover { background: #f0f0f0; }
+              button.active { background: #e7f1ff; border-color: #7db5ff; }
               #container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
               canvas { position: absolute; top: 0; left: 0; }
               #grid-canvas { 
@@ -1737,12 +1733,20 @@ end_header
                   pointer-events: none;
                   z-index: 1;
               }
+              #text-canvas {
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  pointer-events: none;
+                  z-index: 2;
+              }
           </style>
       </head>
       <body>
           <div id="container">
               <canvas id="canvas"></canvas>
               <canvas id="grid-canvas"></canvas>
+              <canvas id="text-canvas"></canvas>
           </div>
           <div id="controls">
               <button id="zoomIn">Zoom In</button>
@@ -1750,6 +1754,7 @@ end_header
               <button id="reset">Reset</button>
               <button id="downloadPng">Save PNG</button>
               <button id="downloadTiff">Save TIFF</button>
+              <button id="togglePixelText" title="放大到一定程度后，在视野内显示每个像素的灰度/RGB数值">Pixel Values</button>
               <span id="zoomLevel">Zoom: 100%</span>
           </div>
           <div id="pixelInfo"></div>
@@ -1758,11 +1763,14 @@ end_header
                   const container = document.getElementById('container');
                   const canvas = document.getElementById('canvas');
                   const gridCanvas = document.getElementById('grid-canvas');
+                  const textCanvas = document.getElementById('text-canvas');
                   const ctx = canvas.getContext('2d');
                   const gridCtx = gridCanvas.getContext('2d');
+                  const textCtx = textCanvas.getContext('2d');
                   const pixelInfo = document.getElementById('pixelInfo');
                   const zoomLevelDisplay = document.getElementById('zoomLevel');
                   const controls = document.getElementById('controls');
+                  const togglePixelTextBtn = document.getElementById('togglePixelText');
                   
                   const rows = ${rows};
                   const cols = ${cols};
@@ -1775,6 +1783,17 @@ end_header
                   let startY = 0;
                   let offsetX = 0;
                   let offsetY = 0;
+                  let viewW = 0;
+                  let viewH = 0;
+                  let lastMouseX = 0;
+                  let lastMouseY = 0;
+                  let hasLastMouse = false;
+
+                  // Pixel-value overlay (performance-sensitive)
+                  const PIXEL_TEXT_MIN_SCALE = 16; // 像素块 >= 16px 时开始考虑显示像素值
+                  const MAX_PIXEL_TEXT_LABELS = 15000; // 视野内超过这个像素数就不画文字（防止卡顿）
+                  let pixelTextEnabled = true; // 可手动关掉
+                  let renderQueued = false;
 
                   // Make controls draggable
                   let controlsDragging = false;
@@ -1836,15 +1855,38 @@ end_header
 
                   function updateCanvasSize() {
                       const containerRect = container.getBoundingClientRect();
-                      canvas.width = containerRect.width;
-                      canvas.height = containerRect.height;
-                      gridCanvas.width = containerRect.width;
-                      gridCanvas.height = containerRect.height;
+                      const dpr = window.devicePixelRatio || 1;
+                      viewW = containerRect.width;
+                      viewH = containerRect.height;
+
+                      // Ensure crisp rendering on HiDPI screens by decoupling CSS size and backing store size
+                      canvas.style.width = viewW + 'px';
+                      canvas.style.height = viewH + 'px';
+                      gridCanvas.style.width = viewW + 'px';
+                      gridCanvas.style.height = viewH + 'px';
+                      textCanvas.style.width = viewW + 'px';
+                      textCanvas.style.height = viewH + 'px';
+
+                      canvas.width = Math.max(1, Math.floor(viewW * dpr));
+                      canvas.height = Math.max(1, Math.floor(viewH * dpr));
+                      gridCanvas.width = Math.max(1, Math.floor(viewW * dpr));
+                      gridCanvas.height = Math.max(1, Math.floor(viewH * dpr));
+                      textCanvas.width = Math.max(1, Math.floor(viewW * dpr));
+                      textCanvas.height = Math.max(1, Math.floor(viewH * dpr));
+
+                      // Draw in CSS pixels; transform maps to device pixels
+                      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                      gridCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                      textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                      // Keep overlays sharp
+                      gridCtx.imageSmoothingEnabled = false;
+                      textCtx.imageSmoothingEnabled = false;
                   }
 
                   function drawGrid() {
                       if (scale >= 10) {
-                          gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+                          gridCtx.clearRect(0, 0, viewW, viewH);
                           gridCtx.strokeStyle = 'rgba(128, 128, 128, 0.5)';
                           gridCtx.lineWidth = 0.5;
                           
@@ -1866,12 +1908,125 @@ end_header
                               gridCtx.stroke();
                           }
                       } else {
-                          gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+                          gridCtx.clearRect(0, 0, viewW, viewH);
+                      }
+                  }
+
+                  function drawPixelTextOverlay() {
+                      textCtx.clearRect(0, 0, viewW, viewH);
+
+                      if (!pixelTextEnabled) return;
+                      if (scale < PIXEL_TEXT_MIN_SCALE) return;
+
+                      // Compute visible image rect in pixel coordinates
+                      const left = Math.max(0, Math.floor((-offsetX) / scale));
+                      const top = Math.max(0, Math.floor((-offsetY) / scale));
+                      const right = Math.min(cols - 1, Math.ceil((viewW - offsetX) / scale) - 1);
+                      const bottom = Math.min(rows - 1, Math.ceil((viewH - offsetY) / scale) - 1);
+
+                      if (right < left || bottom < top) return;
+
+                      const visibleW = right - left + 1;
+                      const visibleH = bottom - top + 1;
+                      const visibleCount = visibleW * visibleH;
+                      if (visibleCount > MAX_PIXEL_TEXT_LABELS) return;
+
+                      // Fixed font size for predictability; avoid any overflow via measurement + clipping
+                      const fontSize = 8; // px
+                      const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+                      const lineHeight = 10; // px (slightly larger than fontSize for readability)
+                      const pad = 2; // px padding inside each cell
+                      textCtx.font = fontSize + 'px ' + fontFamily;
+                      textCtx.textAlign = 'center';
+                      textCtx.textBaseline = 'middle';
+                      // Stroke width in CSS pixels (keep it crisp)
+                      textCtx.lineWidth = 2;
+                      textCtx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+                      textCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+
+                      function canFitTextInCell(lines, cellInnerW, cellInnerH) {
+                          if (cellInnerW <= 0 || cellInnerH <= 0) return false;
+                          if (lines.length * lineHeight > cellInnerH) return false;
+                          // Check max line width
+                          let maxW = 0;
+                          for (const s of lines) {
+                              const w = textCtx.measureText(s).width;
+                              if (w > maxW) maxW = w;
+                          }
+                          return maxW <= cellInnerW;
+                      }
+
+                      for (let y = top; y <= bottom; y++) {
+                          const screenY = y * scale + offsetY + scale / 2;
+                          if (screenY < -scale || screenY > viewH + scale) continue;
+
+                          for (let x = left; x <= right; x++) {
+                              const screenX = x * scale + offsetX + scale / 2;
+                              if (screenX < -scale || screenX > viewW + scale) continue;
+
+                              const idx = (y * cols + x) * channels;
+                              let label = '';
+                              if (channels === 1) {
+                                  label = String(data[idx]);
+                              } else if (channels === 3) {
+                                  const r = data[idx];
+                                  const g = data[idx + 1];
+                                  const b = data[idx + 2];
+
+                                  const cellX = x * scale + offsetX;
+                                  const cellY = y * scale + offsetY;
+                                  const cellInnerW = Math.max(0, scale - pad * 2);
+                                  const cellInnerH = Math.max(0, scale - pad * 2);
+                                  const l1 = 'R:' + String(r);
+                                  const l2 = 'G:' + String(g);
+                                  const l3 = 'B:' + String(b);
+                                  const lines = [l1, l2, l3];
+                                  if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
+
+                                  textCtx.save();
+                                  textCtx.beginPath();
+                                  textCtx.rect(cellX + pad, cellY + pad, cellInnerW, cellInnerH);
+                                  textCtx.clip();
+
+                                  // Center the 3 lines vertically within the cell
+                                  const totalH = lines.length * lineHeight;
+                                  const topY = (cellY + pad) + (cellInnerH - totalH) / 2 + lineHeight / 2;
+                                  const baseY = topY;
+                                  textCtx.strokeText(l1, screenX, baseY);
+                                  textCtx.fillText(l1, screenX, baseY);
+                                  textCtx.strokeText(l2, screenX, baseY + lineHeight);
+                                  textCtx.fillText(l2, screenX, baseY + lineHeight);
+                                  textCtx.strokeText(l3, screenX, baseY + lineHeight * 2);
+                                  textCtx.fillText(l3, screenX, baseY + lineHeight * 2);
+                                  textCtx.restore();
+                                  continue;
+                              } else {
+                                  continue;
+                              }
+
+                              // Grayscale: overflow check + per-cell clip
+                              if (channels === 1) {
+                                  const cellX = x * scale + offsetX;
+                                  const cellY = y * scale + offsetY;
+                                  const cellInnerW = Math.max(0, scale - pad * 2);
+                                  const cellInnerH = Math.max(0, scale - pad * 2);
+                                  const lines = [label];
+                                  if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
+
+                                  textCtx.save();
+                                  textCtx.beginPath();
+                                  textCtx.rect(cellX + pad, cellY + pad, cellInnerW, cellInnerH);
+                                  textCtx.clip();
+                                  textCtx.strokeText(label, screenX, screenY);
+                                  textCtx.fillText(label, screenX, screenY);
+                                  textCtx.restore();
+                              }
+                          }
                       }
                   }
 
                   function draw() {
-                      ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      ctx.clearRect(0, 0, viewW, viewH);
                       
                       // Calculate scaled dimensions
                       const scaledWidth = cols * scale;
@@ -1886,31 +2041,72 @@ end_header
                       
                       // Draw grid when zoomed in
                       drawGrid();
+                      drawPixelTextOverlay();
                       
                       // Update zoom level display
                       zoomLevelDisplay.textContent = \`Zoom: \${Math.round(scale * 100)}%\`;
                   }
 
+                  function requestRender() {
+                      if (renderQueued) return;
+                      renderQueued = true;
+                      requestAnimationFrame(() => {
+                          renderQueued = false;
+                          draw();
+                      });
+                  }
+
                   function setZoom(newScale) {
                       scale = Math.max(0.1, Math.min(50, newScale)); // Increased max zoom to 50x
-                      draw();
+                      requestRender();
+                  }
+
+                  // Zoom around a screen point (mouse cursor), keeping the image coord under cursor stable
+                  function setZoomAt(screenX, screenY, newScale) {
+                      const prevScale = scale;
+                      const nextScale = Math.max(0.1, Math.min(50, newScale));
+                      if (nextScale === prevScale) return;
+
+                      // Image coordinates under cursor before zoom
+                      const imgX = (screenX - offsetX) / prevScale;
+                      const imgY = (screenY - offsetY) / prevScale;
+
+                      scale = nextScale;
+
+                      // Adjust offsets so the same image coord stays under cursor
+                      offsetX = screenX - imgX * nextScale;
+                      offsetY = screenY - imgY * nextScale;
+
+                      requestRender();
                   }
 
                   // Event Listeners
                   document.getElementById('zoomIn').addEventListener('click', () => {
-                      setZoom(scale * 1.5); // Increased zoom factor
+                      const cx = hasLastMouse ? lastMouseX : viewW / 2;
+                      const cy = hasLastMouse ? lastMouseY : viewH / 2;
+                      setZoomAt(cx, cy, scale * 1.5); // Increased zoom factor
                   });
 
                   document.getElementById('zoomOut').addEventListener('click', () => {
-                      setZoom(scale / 1.5);
+                      const cx = hasLastMouse ? lastMouseX : viewW / 2;
+                      const cy = hasLastMouse ? lastMouseY : viewH / 2;
+                      setZoomAt(cx, cy, scale / 1.5);
                   });
 
                   document.getElementById('reset').addEventListener('click', () => {
                       scale = 1;
                       offsetX = 0;
                       offsetY = 0;
-                      draw();
+                      requestRender();
                   });
+
+                  // Toggle pixel text overlay
+                  togglePixelTextBtn.addEventListener('click', () => {
+                      pixelTextEnabled = !pixelTextEnabled;
+                      togglePixelTextBtn.classList.toggle('active', pixelTextEnabled);
+                      requestRender();
+                  });
+                  togglePixelTextBtn.classList.toggle('active', pixelTextEnabled);
 
                   // Download PNG
                   document.getElementById('downloadPng').addEventListener('click', () => {
@@ -2061,7 +2257,10 @@ end_header
                   canvas.addEventListener('wheel', (e) => {
                       e.preventDefault();
                       const zoomFactor = e.deltaY > 0 ? 0.8 : 1.25; // Adjusted zoom speed
-                      setZoom(scale * zoomFactor);
+                      const rect = canvas.getBoundingClientRect();
+                      const mouseX = e.clientX - rect.left;
+                      const mouseY = e.clientY - rect.top;
+                      setZoomAt(mouseX, mouseY, scale * zoomFactor);
                   });
 
                   canvas.addEventListener('mousedown', (e) => {
@@ -2073,16 +2272,20 @@ end_header
                   });
 
                   canvas.addEventListener('mousemove', (e) => {
-                      if (isDragging) {
-                          offsetX = e.clientX - startX;
-                          offsetY = e.clientY - startY;
-                          draw();
-                      }
-
-                      // Update pixel info
                       const rect = canvas.getBoundingClientRect();
                       const mouseX = e.clientX - rect.left;
                       const mouseY = e.clientY - rect.top;
+                      lastMouseX = mouseX;
+                      lastMouseY = mouseY;
+                      hasLastMouse = true;
+
+                      if (isDragging) {
+                          offsetX = e.clientX - startX;
+                          offsetY = e.clientY - startY;
+                          requestRender();
+                      }
+
+                      // Update pixel info
                       
                       // Convert mouse coordinates to image coordinates
                       const imageX = Math.floor((mouseX - offsetX) / scale);
@@ -2118,12 +2321,12 @@ end_header
 
                   window.addEventListener('resize', () => {
                       updateCanvasSize();
-                      draw();
+                      requestRender();
                   });
 
                   // Initialize
                   updateCanvasSize();
-                  draw();
+                  requestRender();
               })();
           </script>
       </body>
