@@ -1713,6 +1713,7 @@ end_header
                   padding: 10px; 
                   border-radius: 5px;
                   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                  z-index: 1000;
               }
               button { 
                   margin-right: 5px; 
@@ -1935,7 +1936,8 @@ end_header
                       const fontSize = 8; // px
                       const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
                       const lineHeight = 10; // px (slightly larger than fontSize for readability)
-                      const pad = 2; // px padding inside each cell
+                      const padGray = 2; // px padding inside each cell (grayscale)
+                      const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
                       textCtx.font = fontSize + 'px ' + fontFamily;
                       textCtx.textAlign = 'center';
                       textCtx.textBaseline = 'middle';
@@ -1967,7 +1969,8 @@ end_header
                               const idx = (y * cols + x) * channels;
                               let label = '';
                               if (channels === 1) {
-                                  label = String(data[idx]);
+                                  // Fixed-width (space padded) numeric to make per-cell overflow checks consistent
+                                  label = String(data[idx]).padStart(3, ' ');
                               } else if (channels === 3) {
                                   const r = data[idx];
                                   const g = data[idx + 1];
@@ -1975,22 +1978,23 @@ end_header
 
                                   const cellX = x * scale + offsetX;
                                   const cellY = y * scale + offsetY;
-                                  const cellInnerW = Math.max(0, scale - pad * 2);
-                                  const cellInnerH = Math.max(0, scale - pad * 2);
-                                  const l1 = 'R:' + String(r);
-                                  const l2 = 'G:' + String(g);
-                                  const l3 = 'B:' + String(b);
+                                  const cellInnerW = Math.max(0, scale - padRgb * 2);
+                                  const cellInnerH = Math.max(0, scale - padRgb * 2);
+                                  // Fixed-width (space padded) numeric to make per-cell overflow checks consistent
+                                  const l1 = 'R:' + String(r).padStart(3, ' ');
+                                  const l2 = 'G:' + String(g).padStart(3, ' ');
+                                  const l3 = 'B:' + String(b).padStart(3, ' ');
                                   const lines = [l1, l2, l3];
                                   if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
 
                                   textCtx.save();
                                   textCtx.beginPath();
-                                  textCtx.rect(cellX + pad, cellY + pad, cellInnerW, cellInnerH);
+                                  textCtx.rect(cellX + padRgb, cellY + padRgb, cellInnerW, cellInnerH);
                                   textCtx.clip();
 
                                   // Center the 3 lines vertically within the cell
                                   const totalH = lines.length * lineHeight;
-                                  const topY = (cellY + pad) + (cellInnerH - totalH) / 2 + lineHeight / 2;
+                                  const topY = (cellY + padRgb) + (cellInnerH - totalH) / 2 + lineHeight / 2;
                                   const baseY = topY;
                                   textCtx.strokeText(l1, screenX, baseY);
                                   textCtx.fillText(l1, screenX, baseY);
@@ -2008,14 +2012,14 @@ end_header
                               if (channels === 1) {
                                   const cellX = x * scale + offsetX;
                                   const cellY = y * scale + offsetY;
-                                  const cellInnerW = Math.max(0, scale - pad * 2);
-                                  const cellInnerH = Math.max(0, scale - pad * 2);
+                                  const cellInnerW = Math.max(0, scale - padGray * 2);
+                                  const cellInnerH = Math.max(0, scale - padGray * 2);
                                   const lines = [label];
                                   if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
 
                                   textCtx.save();
                                   textCtx.beginPath();
-                                  textCtx.rect(cellX + pad, cellY + pad, cellInnerW, cellInnerH);
+                                  textCtx.rect(cellX + padGray, cellY + padGray, cellInnerW, cellInnerH);
                                   textCtx.clip();
                                   textCtx.strokeText(label, screenX, screenY);
                                   textCtx.fillText(label, screenX, screenY);
