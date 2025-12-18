@@ -1766,8 +1766,7 @@ end_header
               <label style="margin-left: 6px; font-size: 12px;">
                   Value:
                   <select id="valueFormat">
-                      <option value="auto" selected>Auto</option>
-                      <option value="fixed3">Fixed(3)</option>
+                      <option value="fixed3" selected>Fixed(3)</option>
                       <option value="fixed6">Fixed(6)</option>
                       <option value="sci2">Sci(2)</option>
                   </select>
@@ -1775,11 +1774,10 @@ end_header
               <label style="margin-left: 6px; font-size: 12px;">
                   Scale:
                   <select id="uiScale">
-                      <option value="auto" selected>Auto</option>
-                      <option value="1.0">1.0</option>
-                      <option value="1.2">1.2</option>
-                      <option value="1.4">1.4</option>
-                      <option value="1.6">1.6</option>
+                      <option value="1" selected>1</option>
+                      <option value="1.25">1.25</option>
+                      <option value="1.5">1.5</option>
+                      <option value="2">2</option>
                   </select>
               </label>
               <span id="zoomLevel">Zoom: 100%</span>
@@ -1809,8 +1807,8 @@ end_header
                   const data = ${imageData};
                   const rawData = data;
                   let renderMode = 'byte';
-                  let valueFormat = 'auto';
-                  let uiScaleMode = 'auto';
+                  let valueFormat = 'fixed3';
+                  let uiScaleMode = '1';
                   let uiScale = 1;
                   let cachedMinMax = null; // {min:number, max:number}
                   
@@ -1945,29 +1943,22 @@ end_header
                       requestRender();
                   });
 
+                  // Init value format (no Auto)
+                  valueFormatSelect.value = 'fixed3';
                   valueFormatSelect.addEventListener('change', () => {
                       valueFormat = valueFormatSelect.value;
                       requestRender();
                   });
 
-                  function clamp(v, lo, hi) {
-                      return Math.max(lo, Math.min(hi, v));
-                  }
-
-                  function computeAutoUiScale() {
-                      const dpr = window.devicePixelRatio || 1;
-                      // Gentle scaling: consistent feel across monitors without exploding on 4K
-                      return clamp(Math.sqrt(dpr), 1, 1.6);
-                  }
-
                   function updateUiScale() {
                       uiScaleMode = uiScaleSelect.value;
-                      if (uiScaleMode === 'auto') uiScale = computeAutoUiScale();
-                      else uiScale = clamp(parseFloat(uiScaleMode), 1, 1.6);
+                      const v = parseFloat(uiScaleMode);
+                      // Allowed values: 1 / 1.25 / 1.5 / 2
+                      uiScale = (isFinite(v) ? v : 1);
                   }
 
                   // Init UI scale
-                  uiScaleSelect.value = 'auto';
+                  uiScaleSelect.value = '1';
                   updateUiScale();
                   uiScaleSelect.addEventListener('change', () => {
                       updateUiScale();
@@ -1979,13 +1970,7 @@ end_header
                       if (valueFormat === 'fixed3') return v.toFixed(3);
                       if (valueFormat === 'fixed6') return v.toFixed(6);
                       if (valueFormat === 'sci2') return v.toExponential(2);
-                      // auto
-                      const a = Math.abs(v);
-                      if (a !== 0 && (a >= 1000 || a < 0.001)) return v.toExponential(2);
-                      // Trim trailing zeros for readability
-                      let s = v.toFixed(3);
-                      s = s.replace(/\.?0+$/, '');
-                      return s;
+                      return v.toFixed(3);
                   }
 
                   function formatValue(v) {
@@ -2030,7 +2015,7 @@ end_header
                       if (scale >= 10) {
                           gridCtx.clearRect(0, 0, viewW, viewH);
                           gridCtx.strokeStyle = 'rgba(128, 128, 128, 0.5)';
-                          gridCtx.lineWidth = 0.5;
+                          gridCtx.lineWidth = 1;
                           
                           // Draw vertical lines
                           for (let x = 0; x <= cols; x++) {
@@ -2075,8 +2060,8 @@ end_header
                       const visibleCount = visibleW * visibleH;
                       if (visibleCount > MAX_PIXEL_TEXT_LABELS) return;
 
-                       // Font size adapts to screen (HiDPI) via uiScale; still guarded by overflow checks + clip
-                       const fontSize = Math.max(8, Math.min(13, Math.round(8 * uiScale))); // px
+                       // Font size controlled by user-selected Scale; still guarded by overflow checks + clip
+                       const fontSize = Math.max(8, Math.min(16, Math.round(8 * uiScale))); // px
                       const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
                        const lineHeight = fontSize; // keep tight for RGB 3-line fit
                       const padGray = 2; // px padding inside each cell (grayscale)
@@ -2466,8 +2451,6 @@ end_header
 
                   window.addEventListener('resize', () => {
                       updateCanvasSize();
-                      // Recompute auto UI scale when moving between monitors / DPI changes
-                      if (uiScaleMode === 'auto') updateUiScale();
                       requestRender();
                   });
 
