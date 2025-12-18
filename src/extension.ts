@@ -772,12 +772,14 @@ function convertBytesToValues(bytes: number[], depth: number, count: number): nu
                 (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
         break;
       case 5: // CV_32F
+        // Keep raw float value; scaling/normalization is handled in the webview UI.
         const floatArr = new Float32Array(new Uint8Array(bytes.slice(offset, offset + 4)).buffer);
-        value = Math.round(floatArr[0] * 255);
+        value = floatArr[0];
         break;
       case 6: // CV_64F
+        // Keep raw double value; scaling/normalization is handled in the webview UI.
         const doubleArr = new Float64Array(new Uint8Array(bytes.slice(offset, offset + 8)).buffer);
-        value = Math.round(doubleArr[0] * 255);
+        value = doubleArr[0];
         break;
       default:
         value = bytes[offset];
@@ -793,11 +795,7 @@ function parseNumericResult(result: string, depth: number): number {
   let value: number;
   if (depth === 5 || depth === 6) {
     value = parseFloat(result);
-    if (!isNaN(value)) {
-      value = Math.round(value * 255);
-    } else {
-      value = 0;
-    }
+    if (isNaN(value)) value = 0;
   } else {
     value = parseInt(result);
     if (isNaN(value)) {
@@ -1756,6 +1754,24 @@ end_header
               <button id="downloadPng">Save PNG</button>
               <button id="downloadTiff">Save TIFF</button>
               <button id="togglePixelText" title="放大到一定程度后，在视野内显示每个像素的灰度/RGB数值">Pixel Values</button>
+              <label style="margin-left: 6px; font-size: 12px;">
+                  Render:
+                  <select id="renderMode">
+                      <option value="byte" selected>Byte (0-255)</option>
+                      <option value="norm01">Float 0~1 → 0~255</option>
+                      <option value="minmax">Min/Max Normalize</option>
+                      <option value="clamp255">Clamp → 0~255</option>
+                  </select>
+              </label>
+              <label style="margin-left: 6px; font-size: 12px;">
+                  Value:
+                  <select id="valueFormat">
+                      <option value="auto" selected>Auto</option>
+                      <option value="fixed3">Fixed(3)</option>
+                      <option value="fixed6">Fixed(6)</option>
+                      <option value="sci2">Sci(2)</option>
+                  </select>
+              </label>
               <span id="zoomLevel">Zoom: 100%</span>
           </div>
           <div id="pixelInfo"></div>
@@ -1772,11 +1788,18 @@ end_header
                   const zoomLevelDisplay = document.getElementById('zoomLevel');
                   const controls = document.getElementById('controls');
                   const togglePixelTextBtn = document.getElementById('togglePixelText');
+                  const renderModeSelect = document.getElementById('renderMode');
+                  const valueFormatSelect = document.getElementById('valueFormat');
                   
                   const rows = ${rows};
                   const cols = ${cols};
                   const channels = ${channels};
+                  const depth = ${depth};
                   const data = ${imageData};
+                  const rawData = data;
+                  let renderMode = 'byte';
+                  let valueFormat = 'auto';
+                  let cachedMinMax = null; // {min:number, max:number}
                   
                   let scale = 1;
                   let isDragging = false;
@@ -1828,31 +1851,112 @@ end_header
                   const offscreenCtx = offscreenCanvas.getContext('2d');
                   const imgData = offscreenCtx.createImageData(cols, rows);
 
-                  // Fill image data
-                  for (let i = 0; i < rows; i++) {
-                      for (let j = 0; j < cols; j++) {
-                          const idx = (i * cols + j) * channels;
-                          const pixelIdx = (i * cols + j) * 4;
+                  function clampByte(v) {
+                      if (!isFinite(v)) return 0;
+                      if (v < 0) return 0;
+                      if (v > 255) return 255;
+                      return v | 0;
+                  }
 
-                          if (channels === 1) {
-                              // Grayscale
-                              const value = data[idx];
-                              imgData.data[pixelIdx] = value;
-                              imgData.data[pixelIdx + 1] = value;
-                              imgData.data[pixelIdx + 2] = value;
-                              imgData.data[pixelIdx + 3] = 255;
-                          } else if (channels === 3) {
-                              // RGB
-                              imgData.data[pixelIdx] = data[idx];
-                              imgData.data[pixelIdx + 1] = data[idx + 1];
-                              imgData.data[pixelIdx + 2] = data[idx + 2];
-                              imgData.data[pixelIdx + 3] = 255;
+                  function getMinMax() {
+                      if (cachedMinMax) return cachedMinMax;
+                      let min = Infinity;
+                      let max = -Infinity;
+                      for (let i = 0; i < rawData.length; i++) {
+                          const v = rawData[i];
+                          if (!isFinite(v)) continue;
+                          if (v < min) min = v;
+                          if (v > max) max = v;
+                      }
+                      if (min === Infinity || max === -Infinity) {
+                          min = 0; max = 1;
+                      }
+                      cachedMinMax = { min, max };
+                      return cachedMinMax;
+                  }
+
+                  function mapToByte(v) {
+                      if (renderMode === 'norm01') {
+                          return clampByte(v * 255);
+                      }
+                      if (renderMode === 'minmax') {
+                          const mm = getMinMax();
+                          const denom = (mm.max - mm.min) || 1;
+                          return clampByte(((v - mm.min) / denom) * 255);
+                      }
+                      if (renderMode === 'clamp255') {
+                          return clampByte(v);
+                      }
+                      // 'byte' default: assume already 0..255-ish (but still clamp)
+                      return clampByte(v);
+                  }
+
+                  function updateOffscreenFromRaw() {
+                      // Fill image data based on selected render mode
+                      cachedMinMax = null;
+                      if (renderMode === 'minmax') getMinMax();
+
+                      for (let i = 0; i < rows; i++) {
+                          for (let j = 0; j < cols; j++) {
+                              const idx = (i * cols + j) * channels;
+                              const pixelIdx = (i * cols + j) * 4;
+
+                              if (channels === 1) {
+                                  const value = mapToByte(rawData[idx]);
+                                  imgData.data[pixelIdx] = value;
+                                  imgData.data[pixelIdx + 1] = value;
+                                  imgData.data[pixelIdx + 2] = value;
+                                  imgData.data[pixelIdx + 3] = 255;
+                              } else if (channels === 3) {
+                                  imgData.data[pixelIdx] = mapToByte(rawData[idx]);
+                                  imgData.data[pixelIdx + 1] = mapToByte(rawData[idx + 1]);
+                                  imgData.data[pixelIdx + 2] = mapToByte(rawData[idx + 2]);
+                                  imgData.data[pixelIdx + 3] = 255;
+                              }
                           }
                       }
+                      offscreenCtx.putImageData(imgData, 0, 0);
                   }
                   
                   // Put the image data on the offscreen canvas
-                  offscreenCtx.putImageData(imgData, 0, 0);
+                  // Auto pick a better default for float/double
+                  if (depth === 5 || depth === 6) {
+                      renderMode = 'minmax';
+                  }
+                  renderModeSelect.value = renderMode;
+                  updateOffscreenFromRaw();
+
+                  renderModeSelect.addEventListener('change', () => {
+                      renderMode = renderModeSelect.value;
+                      updateOffscreenFromRaw();
+                      requestRender();
+                  });
+
+                  valueFormatSelect.addEventListener('change', () => {
+                      valueFormat = valueFormatSelect.value;
+                      requestRender();
+                  });
+
+                  function formatFloat(v) {
+                      if (!isFinite(v)) return 'NaN';
+                      if (valueFormat === 'fixed3') return v.toFixed(3);
+                      if (valueFormat === 'fixed6') return v.toFixed(6);
+                      if (valueFormat === 'sci2') return v.toExponential(2);
+                      // auto
+                      const a = Math.abs(v);
+                      if (a !== 0 && (a >= 1000 || a < 0.001)) return v.toExponential(2);
+                      // Trim trailing zeros for readability
+                      let s = v.toFixed(3);
+                      s = s.replace(/\.?0+$/, '');
+                      return s;
+                  }
+
+                  function formatValue(v) {
+                      // Float/double: show raw values nicely; ints remain integer
+                      if (depth === 5 || depth === 6) return formatFloat(v);
+                      // For integer-like, keep 3-char alignment with spaces as requested
+                      return String(v | 0).padStart(3, ' ');
+                  }
 
                   function updateCanvasSize() {
                       const containerRect = container.getBoundingClientRect();
@@ -1916,8 +2020,10 @@ end_header
                   function drawPixelTextOverlay() {
                       textCtx.clearRect(0, 0, viewW, viewH);
 
-                      if (!pixelTextEnabled) return;
-                      if (scale < PIXEL_TEXT_MIN_SCALE) return;
+                       if (!pixelTextEnabled) return;
+                       // RGB shows 3 lines, needs a higher minimum scale than grayscale
+                       const minScaleForText = (channels === 3) ? 26 : PIXEL_TEXT_MIN_SCALE;
+                       if (scale < minScaleForText) return;
 
                       // Compute visible image rect in pixel coordinates
                       const left = Math.max(0, Math.floor((-offsetX) / scale));
@@ -1935,7 +2041,8 @@ end_header
                       // Fixed font size for predictability; avoid any overflow via measurement + clipping
                       const fontSize = 8; // px
                       const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-                      const lineHeight = 10; // px (slightly larger than fontSize for readability)
+                       // Smaller line height so 3-channel (3 lines) can appear at more reasonable zoom levels
+                       const lineHeight = 8; // px
                       const padGray = 2; // px padding inside each cell (grayscale)
                       const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
                       textCtx.font = fontSize + 'px ' + fontFamily;
@@ -1969,21 +2076,19 @@ end_header
                               const idx = (y * cols + x) * channels;
                               let label = '';
                               if (channels === 1) {
-                                  // Fixed-width (space padded) numeric to make per-cell overflow checks consistent
-                                  label = String(data[idx]).padStart(3, ' ');
+                                  label = formatValue(rawData[idx]);
                               } else if (channels === 3) {
-                                  const r = data[idx];
-                                  const g = data[idx + 1];
-                                  const b = data[idx + 2];
+                                  const r = rawData[idx];
+                                  const g = rawData[idx + 1];
+                                  const b = rawData[idx + 2];
 
                                   const cellX = x * scale + offsetX;
                                   const cellY = y * scale + offsetY;
                                   const cellInnerW = Math.max(0, scale - padRgb * 2);
                                   const cellInnerH = Math.max(0, scale - padRgb * 2);
-                                  // Fixed-width (space padded) numeric to make per-cell overflow checks consistent
-                                  const l1 = 'R:' + String(r).padStart(3, ' ');
-                                  const l2 = 'G:' + String(g).padStart(3, ' ');
-                                  const l3 = 'B:' + String(b).padStart(3, ' ');
+                                  const l1 = 'R:' + formatValue(r);
+                                  const l2 = 'G:' + formatValue(g);
+                                  const l3 = 'B:' + formatValue(b);
                                   const lines = [l1, l2, l3];
                                   if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
 
@@ -2300,13 +2405,13 @@ end_header
                           let pixelInfoText = \`Position: (\${imageX}, \${imageY}) | \`;
 
                           if (channels === 1) {
-                              const value = data[idx];
-                              pixelInfoText += \`Grayscale: \${value}\`;
+                               const value = rawData[idx];
+                               pixelInfoText += \`Grayscale: \${formatValue(value)}\`;
                           } else if (channels === 3) {
-                              const r = data[idx];
-                              const g = data[idx + 1];
-                              const b = data[idx + 2];
-                              pixelInfoText += \`RGB: (\${r}, \${g}, \${b})\`;
+                               const r = rawData[idx];
+                               const g = rawData[idx + 1];
+                               const b = rawData[idx + 2];
+                               pixelInfoText += \`RGB: (\${formatValue(r)}, \${formatValue(g)}, \${formatValue(b)})\`;
                           }
 
                           pixelInfo.textContent = pixelInfoText;
