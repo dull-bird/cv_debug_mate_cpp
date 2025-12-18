@@ -1774,6 +1774,7 @@ end_header
               <label style="margin-left: 6px; font-size: 12px;">
                   Scale:
                   <select id="uiScale">
+                      <option value="auto">Auto</option>
                       <option value="1" selected>1</option>
                       <option value="1.25">1.25</option>
                       <option value="1.5">1.5</option>
@@ -1808,7 +1809,7 @@ end_header
                   const rawData = data;
                   let renderMode = 'byte';
                   let valueFormat = 'fixed3';
-                  let uiScaleMode = '1';
+                  let uiScaleMode = 'auto';
                   let uiScale = 1;
                   let cachedMinMax = null; // {min:number, max:number}
                   
@@ -1950,15 +1951,29 @@ end_header
                       requestRender();
                   });
 
+                  function clamp(v, lo, hi) {
+                      return Math.max(lo, Math.min(hi, v));
+                  }
+
+                  function computeAutoUiScale() {
+                      const dpr = window.devicePixelRatio || 1;
+                      // Gentle scaling: consistent feel across monitors without exploding on 4K
+                      return clamp(Math.sqrt(dpr), 1, 2);
+                  }
+
                   function updateUiScale() {
                       uiScaleMode = uiScaleSelect.value;
+                      if (uiScaleMode === 'auto') {
+                          uiScale = computeAutoUiScale();
+                          return;
+                      }
                       const v = parseFloat(uiScaleMode);
                       // Allowed values: 1 / 1.25 / 1.5 / 2
                       uiScale = (isFinite(v) ? v : 1);
                   }
 
                   // Init UI scale
-                  uiScaleSelect.value = '1';
+                  uiScaleSelect.value = 'auto';
                   updateUiScale();
                   uiScaleSelect.addEventListener('change', () => {
                       updateUiScale();
@@ -2451,6 +2466,7 @@ end_header
 
                   window.addEventListener('resize', () => {
                       updateCanvasSize();
+                      if (uiScaleMode === 'auto') updateUiScale();
                       requestRender();
                   });
 

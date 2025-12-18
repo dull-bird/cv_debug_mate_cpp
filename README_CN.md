@@ -96,6 +96,8 @@
 | 保存 PNG | 点击"Save PNG" |
 | 保存 TIFF | 点击"Save TIFF" |
 
+以及其他设置选项。
+
 ### 3D 点云查看器
 | 操作 | 控制方式 |
 |------|----------|
@@ -103,148 +105,25 @@
 | 缩放 | 滚动滚轮 |
 | 颜色模式 | 点击按钮切换（纯色/按 Z/Y/X 轴着色） |
 | 点大小 | 输入框调整 |
+| 保存 Ply | 点击"Save PLY" |
 
 ---
 
 ## 实现原理
 
-### 概述
+CV DebugMate C++ 通过 **VS Code 调试适配器协议（DAP）** 从调试会话中读取 OpenCV 数据，再用 **Webview**（Canvas / Three.js）进行可视化渲染。
 
-CV DebugMate C++ 利用 **VS Code 调试适配器协议（DAP）** 在活动调试会话期间提取和可视化 OpenCV 数据结构。该扩展充当调试器和自定义可视化 UI 之间的桥梁。
+### 数据流（简化版）
+- **1）识别类型**：根据调试器提供的类型信息（必要时通过 `evaluate()`）识别 `cv::Mat` / `std::vector<cv::Point3f/Point3d>`。
+- **2）读取元数据**：`cv::Mat` 读取 `rows/cols/channels/depth` 等信息（通过 `variables`/`variablesReference`）。
+- **3）读取内存**：拿到数据指针（如 `mat.data`、`&vec[0]` 或不同调试器的内部表达式），用 DAP 的 **`readMemory`** 一次性读取连续内存。
+- **4）解析并渲染**：
+  - Mat：解码原始字节/原始浮点 → Canvas 渲染（缩放/平移/网格/像素值）。
+  - 点云：解析 XYZ → Three.js 渲染与交互。
 
-### 核心概念
-
-#### 1. 调试适配器协议（Debug Adapter Protocol, DAP）
-- **定义**：VS Code 与调试器之间通信的标准化协议
-- **作用**：提供 API 用于检查变量、求值表达式、读取内存等调试操作
-- **支持的调试器**：兼容任何符合 DAP 标准的调试器（cppvsdbg、cppdbg、CodeLLDB）
-
-#### 2. 变量检查流水线
-
-**步骤 1：右键菜单触发**
-- 用户在变量/监视面板中右键点击变量（`cv::Mat` 或 `std::vector<cv::Point3f>`）
-- 扩展接收变量的元数据（名称、类型、值、variablesReference）
-
-**步骤 2：类型检测**
-- Windows（MSVC）：类型信息可直接从调试器获取
-- macOS/Linux（LLDB）：扩展调用 `evaluate()` 请求获取完整类型信息
-- 正则表达式匹配识别支持的类型：`cv::Mat`、`std::vector<cv::Point3f>` 等
-
-**步骤 3：数据提取**
-
-对于 **cv::Mat**：
-```
-1. 通过 DAP variables 请求提取元数据：
-   - rows, cols（图像尺寸）
-   - channels（1=灰度图，3=BGR，4=BGRA）
-   - depth（CV_8U, CV_32F 等）
-   - step（每行字节数）
-   
-2. 获取数据指针地址：
-   - 求值表达式：mat.data
-   - 解析内存地址（例如：0x12345678）
-   
-3. 读取原始图像数据：
-   - 使用 DAP readMemory() 请求
-   - 计算总字节数：rows × step
-   - 数据以 Base64 编码缓冲区形式返回
-   
-4. 解码并渲染：
-   - 解码 Base64 → 原始字节
-   - 根据 depth/channels 解析数据
-   - 渲染到 HTML5 Canvas
-```
-
-对于 **点云**：
-```
-1. 从调试信息解析 vector 大小：
-   - 从值字符串提取："{ size=1234 }"
-   
-2. 尝试快速路径（readMemory）：
-   - 获取数据指针：vec.data()
-   - 一次性读取所有点：size × 12 字节（3 个 float）
-   - 解析二进制数据：[x1,y1,z1, x2,y2,z2, ...]
-   
-3. 回退路径（variables 请求）：
-   - 如果 readMemory 失败，遍历 vector 元素
-   - 通过 variablesReference 展开 [0], [1], [2], ...
-   - 解析每个 Point3f 的 x, y, z 字段
-   - 达到目标 size 时停止
-   
-4. 验证点数据：
-   - 仅接受同时具有 x, y, z 三个字段的对象
-   - 遵守 size 限制，避免虚假的点
-   
-5. 使用 Three.js 渲染：
-   - 创建包含点位置的 BufferGeometry
-   - 应用颜色映射（纯色/按轴着色）
-   - 交互式 3D 控制
-```
-
-#### 3. Webview 渲染
-- 扩展创建 VS Code Webview 面板
-- 注入包含可视化 UI 的 HTML/JS/CSS
-- 图像：HTML5 Canvas，支持平移/缩放控制
-- 点云：Three.js WebGL 渲染器
-- 数据通过消息传递从扩展 → webview
-
-### 架构图
-
-```
-     用户操作（右键点击变量）
-         |
-         v
-     [扩展主机] ────────────> [调试适配器]
-         |                           |
-         |  1. 获取变量元数据        |
-         |  2. 求值表达式            |
-         |  3. 读取内存（DAP）       |
-         |<──────────────────────────|
-         |
-         v
-    [数据解析器]
-     - Mat: 提取 rows/cols/数据指针
-     - PointCloud: 解析 size，读取点
-         |
-         v
-    [Webview 面板]
-     - Canvas（Mat）
-     - Three.js（点云）
-         |
-         v
-   用户看到可视化结果
-```
-
-### 平台差异
-
-| 平台 | 调试器 | 类型检测 | 内存读取 | 点云支持 |
-|------|--------|----------|----------|----------|
-| Windows | cppvsdbg | 直接获取 | ✅ 快速 | ✅ 完整支持 |
-| macOS | CodeLLDB | evaluate() | ✅ 快速 | ✅ 完整支持 |
-| Linux | cppdbg/lldb | evaluate() | ✅ 快速 | ⚠️ 取决于 STL |
-
-**注意**：LLDB + MSVC 组合对 STL 支持有限，导致 vector 解析不可靠。
-
-### 不同调试器的实现细节
-
-#### 1. cppvsdbg (Windows MSVC)
-- **Mat 可视化**：使用 `variablesReference` 获取元数据，然后通过求值 `mat.data` 获取指针
-- **点云可视化**：
-  - 快速路径：求值 `&vec[0]` 获取数据指针，然后使用 `readMemory` 一次性读取所有点
-  - 回退方案：使用 `variablesReference` 配合 `[More]` 扩展处理大型向量
-  
-#### 2. cppdbg (Linux/macOS GDB)
-- **Mat 可视化**：与 cppvsdbg 相同的方法
-- **点云可视化**：
-  - 快速路径：求值 `vec._M_impl._M_start`（GDB 的内部结构）获取数据指针，然后使用 `readMemory`
-  - 回退方案：与 cppvsdbg 相同
-  
-#### 3. lldb (CodeLLDB)
-- **Mat 可视化**：使用 `evaluate()` 获取完整类型信息，然后通过内存读取数据
-- **点云可视化**：
-  - 由于 LLDB 对 MSVC STL 支持有限，`vec.size()` 经常返回 0
-  - 必须使用 `variablesReference` 方案，遍历元素
-  - 对于大型点云，由于需要多次 DAP 请求，性能较慢
+### 说明 / 限制
+- **LLDB + MSVC STL** 支持有限，`vector` 相关信息可能不可靠（例如 size=0），点云功能可能不可用或更慢。
+- 浮点 `cv::Mat` 会以 **原始浮点值** 传入 Webview，并在 UI 中选择映射方式（如 min/max 归一化）后再显示。
 
 ---
 
