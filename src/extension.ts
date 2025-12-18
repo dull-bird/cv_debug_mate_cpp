@@ -672,7 +672,7 @@ async function readMatDataFast(
   dataSize: number,
   depth: number,
   progress: vscode.Progress<{ message?: string; increment?: number }>
-): Promise<number[]> {
+): Promise<{ base64: string }> {
   const bytesPerElement = getBytesPerElement(depth);
   const totalBytes = dataSize * bytesPerElement;
   
@@ -699,7 +699,7 @@ async function readMatDataFast(
   
   if (!dataPtr) {
     vscode.window.showErrorMessage("Cannot get data pointer from Mat");
-    return new Array(dataSize).fill(0);
+    return { base64: "" };
   }
   
   console.log(`Data pointer: ${dataPtr}, reading ${totalBytes} bytes in ONE request`);
@@ -714,33 +714,19 @@ async function readMatDataFast(
     
     if (memoryResponse && memoryResponse.data) {
       console.log(`Read complete: ${memoryResponse.data.length} base64 chars`);
-      progress.report({ message: "Decoding data..." });
-      
-      const buffer = Buffer.from(memoryResponse.data, 'base64');
-      console.log(`Decoded ${buffer.length} bytes`);
-      
-      // Convert buffer to array
-      const allData: number[] = new Array(buffer.length);
-      for (let i = 0; i < buffer.length; i++) {
-        allData[i] = buffer[i];
-      }
-      
-      // Convert bytes to values based on depth
-      if (depth !== 0) {
-        return convertBytesToValues(allData, depth, dataSize);
-      }
-      
-      return allData.slice(0, dataSize);
+      // NOTE: For very large images, expanding to number[] and JSON-stringifying is expensive.
+      // Pass the raw base64 buffer to the webview and decode there with TypedArrays.
+      return { base64: memoryResponse.data };
     } else {
       vscode.window.showErrorMessage("readMemory returned no data");
-      return new Array(dataSize).fill(0);
+      return { base64: "" };
     }
   } catch (e: any) {
     console.log("readMemory error:", e.message || e);
     vscode.window.showErrorMessage(
       `readMemory failed: ${e.message || e}. Please use cppvsdbg or lldb.`
     );
-    return new Array(dataSize).fill(0);
+    return { base64: "" };
   }
 }
 
@@ -930,7 +916,7 @@ async function drawMatImage(
     console.log(`Total data size: ${dataSize} elements`);
 
     // Read data with progress indicator
-    const data = await vscode.window.withProgress(
+    const dataResult = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
         title: "Loading OpenCV Mat",
@@ -978,7 +964,7 @@ async function drawMatImage(
       cols,
       channels,
       depth,
-      data
+      dataResult
     );
   } catch (error) {
     console.error("Error drawing Mat image:", error);
@@ -1112,7 +1098,7 @@ async function readMatDataForLLDB(
   dataSize: number,
   depth: number,
   progress: vscode.Progress<{ message?: string; increment?: number }>
-): Promise<number[]> {
+): Promise<{ base64: string }> {
   const bytesPerElement = getBytesPerElement(depth);
   const totalBytes = dataSize * bytesPerElement;
   
@@ -1121,7 +1107,7 @@ async function readMatDataForLLDB(
   if (!dataPtr || dataPtr === "") {
     console.log("LLDB: No data pointer available");
     vscode.window.showErrorMessage("Cannot read Mat data: data pointer is null");
-    return new Array(dataSize).fill(0);
+    return { base64: "" };
   }
   
   console.log(`LLDB: Reading ${totalBytes} bytes in ONE request`);
@@ -1136,39 +1122,17 @@ async function readMatDataForLLDB(
     
     if (memoryResponse && memoryResponse.data) {
       console.log(`LLDB: Read complete: ${memoryResponse.data.length} base64 chars`);
-      progress.report({ message: "Decoding data..." });
-      
-      const buffer = Buffer.from(memoryResponse.data, 'base64');
-      console.log(`LLDB: Decoded ${buffer.length} bytes`);
-      
-      // Convert buffer to array
-      const allData: number[] = new Array(buffer.length);
-      for (let i = 0; i < buffer.length; i++) {
-        allData[i] = buffer[i];
-      }
-      
-      // Convert bytes to values based on depth
-      if (depth !== 0) {
-        return convertBytesToValues(allData, depth, dataSize);
-      }
-      
-      return allData.slice(0, dataSize);
+      return { base64: memoryResponse.data };
     } else {
       vscode.window.showErrorMessage("LLDB readMemory returned no data");
-      return new Array(dataSize).fill(0);
+      return { base64: "" };
     }
   } catch (e: any) {
     console.log("LLDB readMemory error:", e.message || e);
     vscode.window.showWarningMessage(
       `LLDB readMemory failed: ${e.message || e}. Creating placeholder image.`
     );
-    
-    // Create a gradient placeholder
-    const allData: number[] = new Array(dataSize);
-    for (let i = 0; i < dataSize; i++) {
-      allData[i] = i % 256;
-    }
-    return allData;
+    return { base64: "" };
   }
 }
 
@@ -1674,9 +1638,9 @@ end_header
     cols: number,
     channels: number,
     depth: number,
-    data: number[]
+    data: { base64: string }
   ): string {
-    const imageData = JSON.stringify(data);
+    const imageBase64 = JSON.stringify(data?.base64 || "");
     const nonce = getNonce();
   
     return `
@@ -1694,6 +1658,7 @@ end_header
                   top: 10px; 
                   left: 10px; 
                   background: rgba(255,255,255,0.9); 
+                  color: #111;
                   padding: 10px; 
                   border-radius: 5px;
                   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
@@ -1720,9 +1685,43 @@ end_header
                   border: 1px solid #ccc;
                   border-radius: 3px;
                   background: white;
+                  color: #111;
               }
               button:hover { background: #f0f0f0; }
               button.active { background: #e7f1ff; border-color: #7db5ff; }
+              #controls {
+                  display: flex;
+                  gap: 8px;
+                  align-items: center;
+                  flex-wrap: wrap;
+              }
+              #controls label { color: #111; font-weight: 400; }
+              #controls select, #controls option {
+                  color: #111 !important;
+                  background: #fff !important;
+                  -webkit-text-fill-color: #111;
+              }
+              #controls select {
+                  border: 1px solid #777;
+                  border-radius: 3px;
+                  padding: 1px 4px;
+                  appearance: auto;
+                  -webkit-appearance: menulist;
+                  forced-color-adjust: none;
+              }
+              .ctrl-group {
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 6px;
+              }
+              #zoomGroup {
+                  margin-left: auto; /* keep zoom on the far right */
+              }
+              #zoomLevel {
+                  display: inline-block;
+                  min-width: 110px; /* avoid layout shifting when zoom percentage changes */
+                  text-align: right;
+              }
               #container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
               canvas { position: absolute; top: 0; left: 0; }
               #grid-canvas { 
@@ -1748,40 +1747,57 @@ end_header
               <canvas id="text-canvas"></canvas>
           </div>
           <div id="controls">
-              <button id="zoomIn">Zoom In</button>
-              <button id="zoomOut">Zoom Out</button>
-              <button id="reset">Reset</button>
-              <button id="downloadPng">Save PNG</button>
-              <button id="downloadTiff">Save TIFF</button>
-              <button id="togglePixelText" title="放大到一定程度后，在视野内显示每个像素的灰度/RGB数值">Pixel Values</button>
-              <label style="margin-left: 6px; font-size: 12px;">
-                  Render:
-                  <select id="renderMode">
-                      <option value="byte" selected>Byte (0-255)</option>
-                      <option value="norm01">Float 0~1 → 0~255</option>
-                      <option value="minmax">Min/Max Normalize</option>
-                      <option value="clamp255">Clamp → 0~255</option>
-                  </select>
-              </label>
-              <label style="margin-left: 6px; font-size: 12px;">
-                  Value:
-                  <select id="valueFormat">
-                      <option value="fixed3" selected>Fixed(3)</option>
-                      <option value="fixed6">Fixed(6)</option>
-                      <option value="sci2">Sci(2)</option>
-                  </select>
-              </label>
-              <label style="margin-left: 6px; font-size: 12px;">
-                  Scale:
-                  <select id="uiScale">
-                      <option value="auto">Auto</option>
-                      <option value="1" selected>1</option>
-                      <option value="1.25">1.25</option>
-                      <option value="1.5">1.5</option>
-                      <option value="2">2</option>
-                  </select>
-              </label>
-              <span id="zoomLevel">Zoom: 100%</span>
+              <span class="ctrl-group" id="zoomGroup">
+                  <button id="zoomIn">Zoom In</button>
+                  <button id="zoomOut">Zoom Out</button>
+                  <button id="reset">Reset</button>
+                  <span id="zoomLevel">Zoom: 100%</span>
+              </span>
+
+              <span class="ctrl-group" id="saveGroup">
+                  <label style="font-size: 12px;">
+                      Save:
+                      <select id="saveFormat">
+                          <option value="png" selected>PNG</option>
+                          <option value="tiff">TIFF</option>
+                      </select>
+                  </label>
+                  <button id="saveImage">Save</button>
+              </span>
+
+              <span class="ctrl-group" id="pixelGroup">
+                  <button id="togglePixelText" title="放大到一定程度后，在视野内显示每个像素的灰度/RGB数值">Pixel Values</button>
+              </span>
+
+              <span class="ctrl-group" id="renderGroup">
+                  <label style="font-size: 12px;">
+                      Render:
+                      <select id="renderMode">
+                          <option value="byte" selected>Byte [0, 255]</option>
+                          <option value="norm01">Float * 255 → Byte</option>
+                          <option value="minmax">[min, max] → [0, 255]</option>
+                          <option value="clamp255">Clamp → [0, 255]</option>
+                      </select>
+                  </label>
+                  <label style="font-size: 12px;">
+                      Value:
+                      <select id="valueFormat">
+                          <option value="fixed3" selected>Fixed(3)</option>
+                          <option value="fixed6">Fixed(6)</option>
+                          <option value="sci2">Sci(2)</option>
+                      </select>
+                  </label>
+                  <label style="font-size: 12px;">
+                      Scale:
+                      <select id="uiScale">
+                          <option value="auto">Auto</option>
+                          <option value="1" selected>1</option>
+                          <option value="1.25">1.25</option>
+                          <option value="1.5">1.5</option>
+                          <option value="2">2</option>
+                      </select>
+                  </label>
+              </span>
           </div>
           <div id="pixelInfo"></div>
           <script nonce="${nonce}">
@@ -1797,6 +1813,8 @@ end_header
                   const zoomLevelDisplay = document.getElementById('zoomLevel');
                   const controls = document.getElementById('controls');
                   const togglePixelTextBtn = document.getElementById('togglePixelText');
+                  const saveFormatSelect = document.getElementById('saveFormat');
+                  const saveImageBtn = document.getElementById('saveImage');
                   const renderModeSelect = document.getElementById('renderMode');
                   const valueFormatSelect = document.getElementById('valueFormat');
                   const uiScaleSelect = document.getElementById('uiScale');
@@ -1805,8 +1823,34 @@ end_header
                   const cols = ${cols};
                   const channels = ${channels};
                   const depth = ${depth};
-                  const data = ${imageData};
-                  const rawData = data;
+                  const base64Data = ${imageBase64};
+
+                  function base64ToUint8Array(b64) {
+                      if (!b64) return new Uint8Array(0);
+                      const binary = atob(b64);
+                      const len = binary.length;
+                      const bytes = new Uint8Array(len);
+                      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+                      return bytes;
+                  }
+
+                  const rawBytes = base64ToUint8Array(base64Data);
+
+                  function bytesToTypedArray(bytes, depth) {
+                      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                      switch (depth) {
+                          case 0: return new Uint8Array(buf);    // CV_8U
+                          case 1: return new Int8Array(buf);     // CV_8S
+                          case 2: return new Uint16Array(buf);   // CV_16U
+                          case 3: return new Int16Array(buf);    // CV_16S
+                          case 4: return new Int32Array(buf);    // CV_32S
+                          case 5: return new Float32Array(buf);  // CV_32F
+                          case 6: return new Float64Array(buf);  // CV_64F
+                          default: return new Uint8Array(buf);
+                      }
+                  }
+
+                  const rawData = bytesToTypedArray(rawBytes, depth);
                   let renderMode = 'byte';
                   let valueFormat = 'fixed3';
                   let uiScaleMode = 'auto';
@@ -2253,18 +2297,19 @@ end_header
                   });
                   togglePixelTextBtn.classList.toggle('active', pixelTextEnabled);
 
-                  // Download PNG
-                  document.getElementById('downloadPng').addEventListener('click', () => {
-                      const link = document.createElement('a');
-                      link.download = 'image.png';
-                      link.href = offscreenCanvas.toDataURL('image/png');
-                      link.click();
-                  });
+                  // Save (PNG/TIFF)
+                  saveImageBtn.addEventListener('click', () => {
+                      const fmt = saveFormatSelect.value;
+                      if (fmt === 'png') {
+                          const link = document.createElement('a');
+                          link.download = 'image.png';
+                          link.href = offscreenCanvas.toDataURL('image/png');
+                          link.click();
+                          return;
+                      }
 
-                  // Download TIFF (with raw data for float support)
-                  document.getElementById('downloadTiff').addEventListener('click', () => {
-                      // Create TIFF file
-                      const tiffData = createTiff(cols, rows, channels, data, ${depth});
+                      // TIFF (with raw data for float support)
+                      const tiffData = createTiff(cols, rows, channels, rawData, depth);
                       const blob = new Blob([tiffData], { type: 'image/tiff' });
                       const link = document.createElement('a');
                       link.download = 'image.tiff';
