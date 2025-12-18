@@ -1772,6 +1772,16 @@ end_header
                       <option value="sci2">Sci(2)</option>
                   </select>
               </label>
+              <label style="margin-left: 6px; font-size: 12px;">
+                  Scale:
+                  <select id="uiScale">
+                      <option value="auto" selected>Auto</option>
+                      <option value="1.0">1.0</option>
+                      <option value="1.2">1.2</option>
+                      <option value="1.4">1.4</option>
+                      <option value="1.6">1.6</option>
+                  </select>
+              </label>
               <span id="zoomLevel">Zoom: 100%</span>
           </div>
           <div id="pixelInfo"></div>
@@ -1790,6 +1800,7 @@ end_header
                   const togglePixelTextBtn = document.getElementById('togglePixelText');
                   const renderModeSelect = document.getElementById('renderMode');
                   const valueFormatSelect = document.getElementById('valueFormat');
+                  const uiScaleSelect = document.getElementById('uiScale');
                   
                   const rows = ${rows};
                   const cols = ${cols};
@@ -1799,6 +1810,8 @@ end_header
                   const rawData = data;
                   let renderMode = 'byte';
                   let valueFormat = 'auto';
+                  let uiScaleMode = 'auto';
+                  let uiScale = 1;
                   let cachedMinMax = null; // {min:number, max:number}
                   
                   let scale = 1;
@@ -1937,6 +1950,30 @@ end_header
                       requestRender();
                   });
 
+                  function clamp(v, lo, hi) {
+                      return Math.max(lo, Math.min(hi, v));
+                  }
+
+                  function computeAutoUiScale() {
+                      const dpr = window.devicePixelRatio || 1;
+                      // Gentle scaling: consistent feel across monitors without exploding on 4K
+                      return clamp(Math.sqrt(dpr), 1, 1.6);
+                  }
+
+                  function updateUiScale() {
+                      uiScaleMode = uiScaleSelect.value;
+                      if (uiScaleMode === 'auto') uiScale = computeAutoUiScale();
+                      else uiScale = clamp(parseFloat(uiScaleMode), 1, 1.6);
+                  }
+
+                  // Init UI scale
+                  uiScaleSelect.value = 'auto';
+                  updateUiScale();
+                  uiScaleSelect.addEventListener('change', () => {
+                      updateUiScale();
+                      requestRender();
+                  });
+
                   function formatFloat(v) {
                       if (!isFinite(v)) return 'NaN';
                       if (valueFormat === 'fixed3') return v.toFixed(3);
@@ -2038,11 +2075,10 @@ end_header
                       const visibleCount = visibleW * visibleH;
                       if (visibleCount > MAX_PIXEL_TEXT_LABELS) return;
 
-                      // Fixed font size for predictability; avoid any overflow via measurement + clipping
-                      const fontSize = 8; // px
+                       // Font size adapts to screen (HiDPI) via uiScale; still guarded by overflow checks + clip
+                       const fontSize = Math.max(8, Math.min(13, Math.round(8 * uiScale))); // px
                       const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-                       // Smaller line height so 3-channel (3 lines) can appear at more reasonable zoom levels
-                       const lineHeight = 8; // px
+                       const lineHeight = fontSize; // keep tight for RGB 3-line fit
                       const padGray = 2; // px padding inside each cell (grayscale)
                       const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
                       textCtx.font = fontSize + 'px ' + fontFamily;
@@ -2166,14 +2202,14 @@ end_header
                   }
 
                   function setZoom(newScale) {
-                      scale = Math.max(0.1, Math.min(50, newScale)); // Increased max zoom to 50x
+                      scale = Math.max(0.05, Math.min(100, newScale)); // Increased max zoom to 100x
                       requestRender();
                   }
 
                   // Zoom around a screen point (mouse cursor), keeping the image coord under cursor stable
                   function setZoomAt(screenX, screenY, newScale) {
                       const prevScale = scale;
-                      const nextScale = Math.max(0.1, Math.min(50, newScale));
+                      const nextScale = Math.max(0.05, Math.min(100, newScale));
                       if (nextScale === prevScale) return;
 
                       // Image coordinates under cursor before zoom
@@ -2430,6 +2466,8 @@ end_header
 
                   window.addEventListener('resize', () => {
                       updateCanvasSize();
+                      // Recompute auto UI scale when moving between monitors / DPI changes
+                      if (uiScaleMode === 'auto') updateUiScale();
                       requestRender();
                   });
 
