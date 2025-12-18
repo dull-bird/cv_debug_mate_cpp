@@ -1696,31 +1696,73 @@ end_header
                   flex-wrap: wrap;
               }
               #controls label { color: #111; font-weight: 400; }
-              #controls select, #controls option {
-                  color: #111 !important;
-                  background: #fff !important;
-                  -webkit-text-fill-color: #111;
-              }
-              #controls select {
-                  border: 1px solid #777;
-                  border-radius: 3px;
-                  padding: 1px 4px;
-                  appearance: auto;
-                  -webkit-appearance: menulist;
-                  forced-color-adjust: none;
-              }
               .ctrl-group {
                   display: inline-flex;
                   align-items: center;
                   gap: 6px;
               }
+              /* Custom dropdown (avoid native <select> rendering glitches in WebView) */
+              .dd {
+                  position: relative;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 6px;
+              }
+              .dd-btn {
+                  height: 24px;
+                  padding: 1px 8px;
+                  border: 1px solid #777;
+                  border-radius: 3px;
+                  background: #fff;
+                  color: #111;
+                  cursor: pointer;
+                  font-size: 12px;
+                  line-height: 20px;
+                  white-space: nowrap;
+                  box-sizing: border-box;
+              }
+              .dd-btn:focus {
+                  outline: 2px solid rgba(74, 158, 255, 0.6);
+                  outline-offset: 1px;
+              }
+              .dd-menu {
+                  position: absolute;
+                  top: calc(100% + 4px);
+                  left: 0;
+                  max-width: 320px;
+                  background: #fff;
+                  border: 1px solid #777;
+                  border-radius: 6px;
+                  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+                  padding: 4px;
+                  z-index: 2000;
+                  display: none;
+                  box-sizing: border-box;
+              }
+              .dd.open .dd-menu { display: block; }
+              .dd-item {
+                  width: 100%;
+                  text-align: left;
+                  border: 0;
+                  background: transparent;
+                  color: #111;
+                  padding: 6px 8px;
+                  border-radius: 4px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  line-height: 16px;
+              }
+              .dd-item:hover { background: rgba(74, 158, 255, 0.12); }
+              .dd-item[aria-checked="true"] { background: rgba(74, 158, 255, 0.18); }
               #zoomGroup {
                   margin-left: auto; /* keep zoom on the far right */
               }
               #zoomLevel {
                   display: inline-block;
-                  min-width: 110px; /* avoid layout shifting when zoom percentage changes */
+                  min-width: 10ch; /* 5 digits + '%' + 4 spaces (monospace, stable width) */
                   text-align: right;
+                  white-space: pre; /* preserve padding spaces */
+                  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
               }
               #container { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
               canvas { position: absolute; top: 0; left: 0; }
@@ -1751,17 +1793,15 @@ end_header
                   <button id="zoomIn">Zoom In</button>
                   <button id="zoomOut">Zoom Out</button>
                   <button id="reset">Reset</button>
-                  <span id="zoomLevel">Zoom: 100%</span>
+                  <span id="zoomLevel">100%    </span>
               </span>
 
               <span class="ctrl-group" id="saveGroup">
-                  <label style="font-size: 12px;">
-                      Save:
-                      <select id="saveFormat">
-                          <option value="png" selected>PNG</option>
-                          <option value="tiff">TIFF</option>
-                      </select>
-                  </label>
+                  <span class="dd" id="ddSaveFormat">
+                      <label style="font-size: 12px;">Save:</label>
+                      <button class="dd-btn" id="btnSaveFormat" type="button">PNG</button>
+                      <div class="dd-menu" role="menu" aria-label="Save format menu"></div>
+                  </span>
                   <button id="saveImage">Save</button>
               </span>
 
@@ -1770,33 +1810,21 @@ end_header
               </span>
 
               <span class="ctrl-group" id="renderGroup">
-                  <label style="font-size: 12px;">
-                      Render:
-                      <select id="renderMode">
-                          <option value="byte" selected>Byte [0, 255]</option>
-                          <option value="norm01">Float * 255 → Byte</option>
-                          <option value="minmax">[min, max] → [0, 255]</option>
-                          <option value="clamp255">Clamp → [0, 255]</option>
-                      </select>
-                  </label>
-                  <label style="font-size: 12px;">
-                      Value:
-                      <select id="valueFormat">
-                          <option value="fixed3" selected>Fixed(3)</option>
-                          <option value="fixed6">Fixed(6)</option>
-                          <option value="sci2">Sci(2)</option>
-                      </select>
-                  </label>
-                  <label style="font-size: 12px;">
-                      Scale:
-                      <select id="uiScale">
-                          <option value="auto">Auto</option>
-                          <option value="1" selected>1</option>
-                          <option value="1.25">1.25</option>
-                          <option value="1.5">1.5</option>
-                          <option value="2">2</option>
-                      </select>
-                  </label>
+                  <span class="dd" id="ddRenderMode">
+                      <label style="font-size: 12px;">Render:</label>
+                      <button class="dd-btn" id="btnRenderMode" type="button">Byte [0, 255]</button>
+                      <div class="dd-menu" role="menu" aria-label="Render mode menu"></div>
+                  </span>
+                  <span class="dd" id="ddValueFormat">
+                      <label style="font-size: 12px;">Value:</label>
+                      <button class="dd-btn" id="btnValueFormat" type="button">Fixed(3)</button>
+                      <div class="dd-menu" role="menu" aria-label="Value format menu"></div>
+                  </span>
+                  <span class="dd" id="ddUiScale">
+                      <label style="font-size: 12px;">Scale:</label>
+                      <button class="dd-btn" id="btnUiScale" type="button">Auto</button>
+                      <div class="dd-menu" role="menu" aria-label="UI scale menu"></div>
+                  </span>
               </span>
           </div>
           <div id="pixelInfo"></div>
@@ -1813,11 +1841,15 @@ end_header
                   const zoomLevelDisplay = document.getElementById('zoomLevel');
                   const controls = document.getElementById('controls');
                   const togglePixelTextBtn = document.getElementById('togglePixelText');
-                  const saveFormatSelect = document.getElementById('saveFormat');
                   const saveImageBtn = document.getElementById('saveImage');
-                  const renderModeSelect = document.getElementById('renderMode');
-                  const valueFormatSelect = document.getElementById('valueFormat');
-                  const uiScaleSelect = document.getElementById('uiScale');
+                  const btnSaveFormat = document.getElementById('btnSaveFormat');
+                  const btnRenderMode = document.getElementById('btnRenderMode');
+                  const btnValueFormat = document.getElementById('btnValueFormat');
+                  const btnUiScale = document.getElementById('btnUiScale');
+                  const ddSaveFormat = document.getElementById('ddSaveFormat');
+                  const ddRenderMode = document.getElementById('ddRenderMode');
+                  const ddValueFormat = document.getElementById('ddValueFormat');
+                  const ddUiScale = document.getElementById('ddUiScale');
                   
                   const rows = ${rows};
                   const cols = ${cols};
@@ -1851,6 +1883,7 @@ end_header
                   }
 
                   const rawData = bytesToTypedArray(rawBytes, depth);
+                  let saveFormat = 'png';
                   let renderMode = 'byte';
                   let valueFormat = 'fixed3';
                   let uiScaleMode = 'auto';
@@ -1975,25 +2008,159 @@ end_header
                   }
                   
                   // Put the image data on the offscreen canvas
+                  function closeAllDropdowns() {
+                      ddSaveFormat.classList.remove('open');
+                      ddRenderMode.classList.remove('open');
+                      ddValueFormat.classList.remove('open');
+                      ddUiScale.classList.remove('open');
+                  }
+
+                  // Measure text width once (used to make dropdown buttons/menus stable-width)
+                  const __measureSpan = document.createElement('span');
+                  __measureSpan.style.position = 'fixed';
+                  __measureSpan.style.left = '-99999px';
+                  __measureSpan.style.top = '-99999px';
+                  __measureSpan.style.visibility = 'hidden';
+                  __measureSpan.style.whiteSpace = 'nowrap';
+                  __measureSpan.style.fontSize = '12px';
+                  __measureSpan.style.fontFamily = 'Arial, sans-serif';
+                  document.body.appendChild(__measureSpan);
+
+                  function measureTextPx(text, fontCss) {
+                      __measureSpan.style.font = fontCss;
+                      __measureSpan.textContent = text;
+                      return __measureSpan.getBoundingClientRect().width;
+                  }
+
+                  document.addEventListener('click', (e) => {
+                      // Close dropdowns when clicking anywhere outside the currently open dropdown(s)
+                      // (including other toolbar areas, canvas, empty space, etc.)
+                      const openDd = document.querySelector('.dd.open');
+                      if (!openDd) return;
+                      const inOpenDd = e.target.closest && e.target.closest('.dd.open');
+                      if (!inOpenDd) closeAllDropdowns();
+                  });
+
+                  document.addEventListener('keydown', (e) => {
+                      if (e.key === 'Escape') closeAllDropdowns();
+                  });
+
+                  function initDropdown(ddEl, btnEl, options, getValue, setValue) {
+                      const menu = ddEl.querySelector('.dd-menu');
+                      const fontCss = '12px Arial, sans-serif';
+
+                      function updateStableWidth() {
+                          // Button width = longest option label + padding + small caret space
+                          let maxW = 0;
+                          for (const opt of options) {
+                              const w = measureTextPx(opt.label, fontCss);
+                              if (w > maxW) maxW = w;
+                          }
+                          // 8px left + 8px right padding + ~18px extra
+                          const target = Math.ceil(maxW + 34);
+                          btnEl.style.width = target + 'px';
+                          // Menu width follows the *actual* rendered button width (including borders)
+                          const btnW = Math.ceil(btnEl.getBoundingClientRect().width);
+                          menu.style.width = btnW + 'px';
+                          menu.style.minWidth = btnW + 'px';
+                          // Align menu under the button (dd contains a label + button)
+                          menu.style.left = btnEl.offsetLeft + 'px';
+                      }
+
+                      function renderMenu() {
+                          const cur = getValue();
+                          menu.innerHTML = '';
+                          for (const opt of options) {
+                              const item = document.createElement('button');
+                              item.type = 'button';
+                              item.className = 'dd-item';
+                              item.textContent = opt.label;
+                              item.setAttribute('role', 'menuitemradio');
+                              item.setAttribute('aria-checked', String(opt.value === cur));
+                              item.addEventListener('click', () => {
+                                  setValue(opt.value);
+                                  btnEl.textContent = opt.label;
+                                  ddEl.classList.remove('open');
+                              });
+                              menu.appendChild(item);
+                          }
+                      }
+
+                      btnEl.addEventListener('click', () => {
+                          const isOpen = ddEl.classList.contains('open');
+                          closeAllDropdowns();
+                          if (!isOpen) {
+                              renderMenu();
+                              updateStableWidth();
+                              ddEl.classList.add('open');
+                          }
+                      });
+
+                      // Initialize width once up-front
+                      updateStableWidth();
+                  }
+
+                  // Init dropdowns
+                  initDropdown(
+                      ddSaveFormat,
+                      btnSaveFormat,
+                      [
+                          { value: 'png', label: 'PNG' },
+                          { value: 'tiff', label: 'TIFF' },
+                      ],
+                      () => saveFormat,
+                      (v) => { saveFormat = v; }
+                  );
+                  initDropdown(
+                      ddRenderMode,
+                      btnRenderMode,
+                      [
+                          { value: 'byte', label: 'Byte [0, 255]' },
+                          { value: 'norm01', label: 'Float * 255 → Byte' },
+                          { value: 'minmax', label: '[min, max] → [0, 255]' },
+                          { value: 'clamp255', label: 'Clamp → [0, 255]' },
+                      ],
+                      () => renderMode,
+                      (v) => { renderMode = v; updateOffscreenFromRaw(); requestRender(); }
+                  );
+                  initDropdown(
+                      ddValueFormat,
+                      btnValueFormat,
+                      [
+                          { value: 'fixed3', label: 'Fixed(3)' },
+                          { value: 'fixed6', label: 'Fixed(6)' },
+                          { value: 'sci2', label: 'Sci(2)' },
+                      ],
+                      () => valueFormat,
+                      (v) => { valueFormat = v; requestRender(); }
+                  );
+                  initDropdown(
+                      ddUiScale,
+                      btnUiScale,
+                      [
+                          { value: 'auto', label: 'Auto' },
+                          { value: '1', label: '1' },
+                          { value: '1.25', label: '1.25' },
+                          { value: '1.5', label: '1.5' },
+                          { value: '2', label: '2' },
+                      ],
+                      () => uiScaleMode,
+                      (v) => { uiScaleMode = v; updateUiScale(); requestRender(); }
+                  );
+
+                  // Defaults
+                  btnSaveFormat.textContent = 'PNG';
+                  btnValueFormat.textContent = 'Fixed(3)';
+                  btnUiScale.textContent = 'Auto';
+
                   // Auto pick a better default for float/double
                   if (depth === 5 || depth === 6) {
-                      renderMode = 'minmax';
+                      renderMode = 'norm01';
+                      btnRenderMode.textContent = 'Float * 255 → Byte';
+                  } else {
+                      btnRenderMode.textContent = 'Byte [0, 255]';
                   }
-                  renderModeSelect.value = renderMode;
                   updateOffscreenFromRaw();
-
-                  renderModeSelect.addEventListener('change', () => {
-                      renderMode = renderModeSelect.value;
-                      updateOffscreenFromRaw();
-                      requestRender();
-                  });
-
-                  // Init value format (no Auto)
-                  valueFormatSelect.value = 'fixed3';
-                  valueFormatSelect.addEventListener('change', () => {
-                      valueFormat = valueFormatSelect.value;
-                      requestRender();
-                  });
 
                   function clamp(v, lo, hi) {
                       return Math.max(lo, Math.min(hi, v));
@@ -2006,7 +2173,6 @@ end_header
                   }
 
                   function updateUiScale() {
-                      uiScaleMode = uiScaleSelect.value;
                       if (uiScaleMode === 'auto') {
                           uiScale = computeAutoUiScale();
                           return;
@@ -2016,13 +2182,7 @@ end_header
                       uiScale = (isFinite(v) ? v : 1);
                   }
 
-                  // Init UI scale
-                  uiScaleSelect.value = 'auto';
                   updateUiScale();
-                  uiScaleSelect.addEventListener('change', () => {
-                      updateUiScale();
-                      requestRender();
-                  });
 
                   function formatFloat(v) {
                       if (!isFinite(v)) return 'NaN';
@@ -2233,7 +2393,10 @@ end_header
                       drawPixelTextOverlay();
                       
                       // Update zoom level display
-                      zoomLevelDisplay.textContent = \`Zoom: \${Math.round(scale * 100)}%\`;
+                      // Fixed-width zoom display: min 1 digit, max 5 digits, padded to 5 with spaces + 4 trailing spaces
+                      const pct = Math.max(0, Math.round(scale * 100));
+                      const pctStr = String(pct).slice(0, 5).padStart(5, ' ');
+                      zoomLevelDisplay.textContent = pctStr + '%    ';
                   }
 
                   function requestRender() {
@@ -2299,7 +2462,7 @@ end_header
 
                   // Save (PNG/TIFF)
                   saveImageBtn.addEventListener('click', () => {
-                      const fmt = saveFormatSelect.value;
+                      const fmt = saveFormat;
                       if (fmt === 'png') {
                           const link = document.createElement('a');
                           link.download = 'image.png';
