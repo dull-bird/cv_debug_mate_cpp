@@ -588,16 +588,11 @@ async function getPointCloudViaReadMemory(
   const bytesPerPoint = isDouble ? 24 : 12;
   const totalBytes = size * bytesPerPoint;
   
-  console.log(`Reading ${size} points (${totalBytes} bytes, ${isDouble ? 'Point3d' : 'Point3f'}) from ${dataPtr}`);
+  console.log(`Reading ${size} points (${totalBytes} bytes, ${isDouble ? "Point3d" : "Point3f"}) from ${dataPtr}`);
   
-  const memoryResponse = await debugSession.customRequest("readMemory", {
-    memoryReference: dataPtr,
-    count: totalBytes
-  });
+  const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
   
-  if (memoryResponse && memoryResponse.data) {
-    const buffer = Buffer.from(memoryResponse.data, 'base64');
-    
+  if (buffer) {
     if (isDouble) {
       // Point3d: 3 doubles = 24 bytes per point
       for (let i = 0; i < size && i * 24 + 23 < buffer.length; i++) {
@@ -664,6 +659,65 @@ function getBytesPerElement(depth: number): number {
   }
 }
 
+/**
+ * Helper function to read memory in chunks to avoid debugger limitations.
+ * Each chunk is 16MB by default.
+ */
+async function readMemoryChunked(
+  debugSession: vscode.DebugSession,
+  memoryReference: string,
+  totalBytes: number,
+  progress?: vscode.Progress<{ message?: string; increment?: number }>
+): Promise<Buffer | null> {
+  const CHUNK_SIZE = 16 * 1024 * 1024; // 16MB
+  const chunks: any[] = [];
+  let bytesRead = 0;
+
+  console.log(`Starting chunked read: totalBytes=${totalBytes}, memoryReference=${memoryReference}`);
+
+  while (bytesRead < totalBytes) {
+    const count = Math.min(CHUNK_SIZE, totalBytes - bytesRead);
+    try {
+      const memoryResponse = await debugSession.customRequest("readMemory", {
+        memoryReference: memoryReference,
+        offset: bytesRead,
+        count: count
+      });
+
+      if (memoryResponse && memoryResponse.data) {
+        const chunkBuffer = Buffer.from(memoryResponse.data, "base64");
+        chunks.push(chunkBuffer);
+        
+        const actualRead = chunkBuffer.length;
+        bytesRead += actualRead;
+        
+        if (progress) {
+          const percent = Math.round((bytesRead / totalBytes) * 100);
+          progress.report({ 
+            message: `Reading memory: ${percent}% (${Math.round(bytesRead / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)`,
+            increment: (actualRead / totalBytes) * 100
+          });
+        }
+
+        if (actualRead < count && bytesRead < totalBytes) {
+          console.log(`Read fewer bytes than requested: ${actualRead} < ${count}. Might be end of memory.`);
+          break;
+        }
+      } else {
+        console.error(`readMemory returned no data for chunk at offset ${bytesRead}`);
+        break;
+      }
+    } catch (e: any) {
+      console.error(`Error reading memory chunk at offset ${bytesRead}:`, e.message || e);
+      if (chunks.length > 0) break;
+      throw e;
+    }
+  }
+
+  if (chunks.length === 0) return null;
+  return Buffer.concat(chunks);
+}
+
 // Read Mat data using single readMemory call (fastest)
 async function readMatDataFast(
   debugSession: vscode.DebugSession,
@@ -702,21 +756,18 @@ async function readMatDataFast(
     return { base64: "" };
   }
   
-  console.log(`Data pointer: ${dataPtr}, reading ${totalBytes} bytes in ONE request`);
+  console.log(`Data pointer: ${dataPtr}, reading ${totalBytes} bytes in chunked requests`);
   progress.report({ message: `Reading ${totalBytes} bytes...` });
   
-  // Single readMemory call for ALL data
+  // Chunked readMemory calls for ALL data
   try {
-    const memoryResponse = await debugSession.customRequest("readMemory", {
-      memoryReference: dataPtr,
-      count: totalBytes
-    });
+    const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes, progress);
     
-    if (memoryResponse && memoryResponse.data) {
-      console.log(`Read complete: ${memoryResponse.data.length} base64 chars`);
+    if (buffer) {
+      console.log(`Read complete: ${buffer.length} bytes`);
       // NOTE: For very large images, expanding to number[] and JSON-stringifying is expensive.
       // Pass the raw base64 buffer to the webview and decode there with TypedArrays.
-      return { base64: memoryResponse.data };
+      return { base64: buffer.toString("base64") };
     } else {
       vscode.window.showErrorMessage("readMemory returned no data");
       return { base64: "" };
@@ -1110,19 +1161,16 @@ async function readMatDataForLLDB(
     return { base64: "" };
   }
   
-  console.log(`LLDB: Reading ${totalBytes} bytes in ONE request`);
+  console.log(`LLDB: Reading ${totalBytes} bytes in chunked requests`);
   progress.report({ message: `Reading ${totalBytes} bytes...` });
   
-  // Single readMemory call for ALL data
+  // Chunked readMemory calls for ALL data
   try {
-    const memoryResponse = await debugSession.customRequest("readMemory", {
-      memoryReference: dataPtr,
-      count: totalBytes
-    });
+    const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes, progress);
     
-    if (memoryResponse && memoryResponse.data) {
-      console.log(`LLDB: Read complete: ${memoryResponse.data.length} base64 chars`);
-      return { base64: memoryResponse.data };
+    if (buffer) {
+      console.log(`LLDB: Read complete: ${buffer.length} bytes`);
+      return { base64: buffer.toString("base64") };
     } else {
       vscode.window.showErrorMessage("LLDB readMemory returned no data");
       return { base64: "" };

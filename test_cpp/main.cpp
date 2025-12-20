@@ -11,7 +11,7 @@ int main() {
   // ============================================
 
   // Create a 640x480 color image with gradient
-  cv::Mat img(480, 640, CV_8UC3);
+  cv::Mat img(4000, 6000, CV_8UC3);
 
   for (int y = 0; y < img.rows; y++) {
     for (int x = 0; x < img.cols; x++) {
@@ -39,7 +39,7 @@ int main() {
 
   // Create a floating point image
   cv::Mat floatImg;
-  img.convertTo(floatImg, CV_32FC3, 1.0 / 255.0);
+  img.convertTo(floatImg, CV_32FC3, 1.0 / 255.0 / 2);
 
   cv::Mat_<uchar> grayImg_template;
   grayImg.copyTo(grayImg_template);
