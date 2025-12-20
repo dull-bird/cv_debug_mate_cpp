@@ -11,7 +11,7 @@ int main() {
   // ============================================
 
   // Create a 640x480 color image with gradient
-  cv::Mat img(4000, 6000, CV_8UC3);
+  cv::Mat img(4000, 600, CV_8UC3);
 
   for (int y = 0; y < img.rows; y++) {
     for (int x = 0; x < img.cols; x++) {
@@ -99,7 +99,7 @@ int main() {
             << " float image" << std::endl;
   std::cout << "  - cloud: " << cloud.size() << " points" << std::endl;
   std::cout << std::endl;
-  std::coutP
+  std::cout
       << "Set a breakpoint on the next line and use CV DebugMate to visualize!"
       << std::endl;
 

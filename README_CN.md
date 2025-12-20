@@ -13,24 +13,50 @@
 ### 🖼️ Mat 图像可视化
 - 在调试时直接在 VS Code 中查看 `cv::Mat` 图像
 - 支持灰度图、RGB 图像和多通道图像
-- 支持多种数据类型：`CV_8U`、`CV_32F`、`CV_64F` 等
-- 鼠标滚轮缩放
+- 支持多种数据类型：`CV_8U`、`CV_8S`、`CV_16U`、`CV_16S`、`CV_32S`、`CV_32F`、`CV_64F`
+- **智能渲染模式**：
+  - `Byte [0, 255]`：直接字节映射
+  - `Float * 255 → Byte`：将 [0, 1] 浮点数映射到字节
+  - `[min, max] → [0, 255]`：根据数据范围自动归一化
+  - `Clamp → [0, 255]`：饱和映射
+- **灵活的数值格式**：支持以 Fixed(3)、Fixed(6) 或 科学计数法显示像素值
+- **UI 缩放**：针对高 DPI 屏幕的可调缩放比例（Auto, 1x, 1.25x, 1.5x, 2x）
+- 鼠标滚轮缩放（支持高达 100 倍放大）
 - 拖动平移
 - 鼠标悬停显示像素值
 - 放大时显示网格
 
 ### 📊 点云可视化
-- 将 `std::vector<cv::Point3f>` 显示为 3D 点云
-- 鼠标交互式 3D 旋转
+- 将 `std::vector<cv::Point3f>` 和 `std::vector<cv::Point3d>` 显示为 3D 点云
+- **颜色映射**：可按 X、Y 或 Z 轴坐标对点云进行着色
+- **点大小可调**：微调点的可见度
+- 鼠标交互式 3D 旋转、平移和缩放
 - 基于 Three.js 渲染
-- 按高度/轴向颜色映射
-- 可调节点大小
 
 ### 💾 导出选项
 - **保存 PNG**：将图像导出为 PNG 文件
-- **保存 TIFF**：将图像导出为 TIFF 文件（支持浮点数据）
+- **保存 TIFF**：将图像导出为 TIFF 文件（支持原始浮点数据）
+- **保存 PLY**：将点云导出为 PLY 格式，便于外部工具查看
 
 ---
+
+## 项目结构
+
+为了更好的可维护性，项目已进行模块化拆分：
+
+```text
+src/
+  ├── extension.ts              # 插件入口与命令注册
+  ├── utils/
+  │   ├── debugger.ts           # 调试器交互 (readMemory, evaluate)
+  │   └── opencv.ts             # OpenCV 类型检测与工具函数
+  ├── pointCloud/
+  │   ├── pointCloudProvider.ts # 点云数据提取逻辑
+  │   └── pointCloudWebview.ts  # Webview 内容与 Three.js 渲染
+  └── matImage/
+      ├── matProvider.ts        # cv::Mat 数据提取逻辑
+      └── matWebview.ts         # Webview 内容与 Canvas 渲染
+```
 
 ## 截图
 

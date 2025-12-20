@@ -13,22 +13,50 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 ### 🖼️ Mat Visualization
 - View `cv::Mat` images directly in VS Code during debugging
 - Support for grayscale, RGB, and multi-channel images
-- Support for various data types: `CV_8U`, `CV_32F`, `CV_64F`, etc.
-- Zoom in/out with mouse wheel
+- Support for various data types: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
+- **Smart Rendering Modes**:
+  - `Byte [0, 255]`: Direct byte mapping
+  - `Float * 255 → Byte`: Map [0, 1] floats to bytes
+  - `[min, max] → [0, 255]`: Auto-normalize based on data range
+  - `Clamp → [0, 255]`: Saturated mapping
+- **Flexible Value Formatting**: Display pixel values as Fixed(3), Fixed(6), or Scientific notation
+- **UI Scaling**: Adjustable scale for high-DPI monitors (Auto, 1x, 1.25x, 1.5x, 2x)
+- Zoom in/out with mouse wheel (up to 100x)
 - Pan by dragging
 - Pixel value display on hover
 - Grid overlay when zoomed in
 
 ### 📊 Point Cloud Visualization  
-- View `std::vector<cv::Point3f>` as 3D point clouds
-- Interactive 3D rotation with mouse
+- View `std::vector<cv::Point3f>` and `std::vector<cv::Point3d>` as 3D point clouds
+- **Color Mapping**: Colorize points by X, Y, or Z coordinates
+- **Adjustable Point Size**: Fine-tune point visibility
+- Interactive 3D rotation, pan, and zoom
 - Powered by Three.js
 
 ### 💾 Export Options
 - **Save PNG**: Export image as PNG file
-- **Save TIFF**: Export image as TIFF file (supports floating-point data)
+- **Save TIFF**: Export image as TIFF file (supports raw floating-point data)
+- **Save PLY**: Export point cloud data to PLY format for external tools
 
 ---
+
+## Project Structure
+
+The project is modularized for better maintainability:
+
+```text
+src/
+  ├── extension.ts              # Entry point & command registration
+  ├── utils/
+  │   ├── debugger.ts           # DAP interactions (readMemory, evaluate)
+  │   └── opencv.ts             # OpenCV type detection & helpers
+  ├── pointCloud/
+  │   ├── pointCloudProvider.ts # Data extraction for point clouds
+  │   └── pointCloudWebview.ts  # Webview content & Three.js logic
+  └── matImage/
+      ├── matProvider.ts        # Data extraction for cv::Mat
+      └── matWebview.ts         # Webview content & Canvas logic
+```
 
 ## Screenshots
 
