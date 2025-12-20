@@ -291,6 +291,7 @@ async function drawPointCloud(debugSession: vscode.DebugSession, variableInfo: a
       vscode.ViewColumn.One,
       {
         enableScripts: true,
+        retainContextWhenHidden: true,
       }
     );
     panel.webview.html = getWebviewContentForPointCloud(points);
@@ -669,7 +670,7 @@ async function readMemoryChunked(
   totalBytes: number,
   progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<Buffer | null> {
-  const CHUNK_SIZE = 16 * 1024 * 1024; // 16MB
+  const CHUNK_SIZE = 32 * 1024 * 1024; // 64MB
   const chunks: any[] = [];
   let bytesRead = 0;
 
@@ -1007,6 +1008,7 @@ async function drawMatImage(
       vscode.ViewColumn.One,
       {
         enableScripts: true,
+        retainContextWhenHidden: true,
       }
     );
     panel.webview.html = getWebviewContentForMat(
@@ -1018,33 +1020,18 @@ async function drawMatImage(
       { base64: "" } // Don't embed data directly, send via message
     );
 
-    // Send data in chunks to avoid memory issues
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+    // Send complete data at once to webview (webview has its own memory space)
     const totalData = dataResult.base64;
     const totalLength = totalData.length;
-    let sentBytes = 0;
 
-    console.log(`Sending ${totalLength} base64 chars in chunks to webview`);
+    console.log(`Sending ${totalLength} base64 chars to webview at once`);
 
-    while (sentBytes < totalLength) {
-      const chunkSize = Math.min(CHUNK_SIZE, totalLength - sentBytes);
-      const chunk = totalData.substr(sentBytes, chunkSize);
-      const isLast = sentBytes + chunkSize >= totalLength;
+    await panel.webview.postMessage({
+      command: 'completeData',
+      data: totalData
+    });
 
-      await panel.webview.postMessage({
-        command: 'dataChunk',
-        chunk: chunk,
-        offset: sentBytes,
-        isLast: isLast
-      });
-
-      sentBytes += chunkSize;
-
-      // Allow some time for the webview to process
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-
-    console.log('All data chunks sent to webview');
+    console.log('Complete data sent to webview');
   } catch (error) {
     console.error("Error drawing Mat image:", error);
     throw error;
@@ -1932,29 +1919,20 @@ end_header
                   const channels = ${channels};
                   const depth = ${depth};
 
-                  // Data will be received in chunks
-                  let receivedChunks = [];
-                  let totalDataLength = 0;
+                  // Data will be received as complete data
                   let base64Data = '';
 
-                  // Listen for data chunks from extension
+                  // Listen for complete data from extension
                   const vscode = acquireVsCodeApi();
                   window.addEventListener('message', event => {
                       const message = event.data;
-                      if (message.command === 'dataChunk') {
-                          receivedChunks.push(message.chunk);
-                          totalDataLength += message.chunk.length;
+                      if (message.command === 'completeData') {
+                          base64Data = message.data;
 
-                          if (message.isLast) {
-                              // All chunks received, reconstruct the data
-                              base64Data = receivedChunks.join('');
-                              receivedChunks = []; // Free memory
+                          console.log('Received complete data: ' + base64Data.length + ' chars');
 
-                              console.log('Received complete data: ' + totalDataLength + ' chars');
-
-                              // Now initialize the image viewer
-                              initializeImageViewer();
-                          }
+                          // Now initialize the image viewer
+                          initializeImageViewer();
                       }
                   });
 

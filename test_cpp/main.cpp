@@ -99,7 +99,7 @@ int main() {
             << " float image" << std::endl;
   std::cout << "  - cloud: " << cloud.size() << " points" << std::endl;
   std::cout << std::endl;
-  std::cout
+  std::coutP
       << "Set a breakpoint on the next line and use CV DebugMate to visualize!"
       << std::endl;
 
