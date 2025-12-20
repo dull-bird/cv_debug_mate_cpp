@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as os from "os";
 
 // Get the appropriate evaluate context for the debugger type
 function getEvaluateContext(debugSession: vscode.DebugSession): string {
@@ -670,53 +671,72 @@ async function readMemoryChunked(
   totalBytes: number,
   progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<Buffer | null> {
-  const CHUNK_SIZE = 32 * 1024 * 1024; // 64MB
-  const chunks: any[] = [];
-  let bytesRead = 0;
+  const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB per chunk
+  
+  // Adaptive concurrency based on CPU cores, but keep it within 2-8 range 
+  // to avoid overwhelming the debugger IPC channel.
+  const cpuCount = os.cpus().length || 4;
+  const CONCURRENCY = Math.min(8, Math.max(2, cpuCount));
+  
+  const numChunks = Math.ceil(totalBytes / CHUNK_SIZE);
+  const chunks = new Array<Buffer | null>(numChunks).fill(null);
+  
+  console.log(`Starting parallel chunked read: totalBytes=${totalBytes}, chunks=${numChunks}, concurrency=${CONCURRENCY}`);
 
-  console.log(`Starting chunked read: totalBytes=${totalBytes}, memoryReference=${memoryReference}`);
+  let nextChunkIndex = 0;
+  let totalReadBytes = 0;
+  let failed = false;
 
-  while (bytesRead < totalBytes) {
-    const count = Math.min(CHUNK_SIZE, totalBytes - bytesRead);
-    try {
-      const memoryResponse = await debugSession.customRequest("readMemory", {
-        memoryReference: memoryReference,
-        offset: bytesRead,
-        count: count
-      });
+  const worker = async () => {
+    while (nextChunkIndex < numChunks && !failed) {
+      const myIndex = nextChunkIndex++;
+      const offset = myIndex * CHUNK_SIZE;
+      const count = Math.min(CHUNK_SIZE, totalBytes - offset);
 
-      if (memoryResponse && memoryResponse.data) {
-        const chunkBuffer = Buffer.from(memoryResponse.data, "base64");
-        chunks.push(chunkBuffer);
-        
-        const actualRead = chunkBuffer.length;
-        bytesRead += actualRead;
-        
-        if (progress) {
-          const percent = Math.round((bytesRead / totalBytes) * 100);
-          progress.report({ 
-            message: `Reading memory: ${percent}% (${Math.round(bytesRead / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)`,
-            increment: (actualRead / totalBytes) * 100
-          });
+      try {
+        const memoryResponse = await debugSession.customRequest("readMemory", {
+          memoryReference: memoryReference,
+          offset: offset,
+          count: count
+        });
+
+        if (memoryResponse && memoryResponse.data && !failed) {
+          const buffer = Buffer.from(memoryResponse.data, "base64");
+          chunks[myIndex] = buffer;
+          totalReadBytes += buffer.length;
+
+          if (progress) {
+            const percent = Math.round((totalReadBytes / totalBytes) * 100);
+            progress.report({
+              message: `Reading memory: ${percent}% (${Math.round(totalReadBytes / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)`,
+              increment: (buffer.length / totalBytes) * 100
+            });
+          }
+        } else if (!failed) {
+          console.error(`readMemory returned no data for chunk ${myIndex}`);
+          failed = true;
         }
-
-        if (actualRead < count && bytesRead < totalBytes) {
-          console.log(`Read fewer bytes than requested: ${actualRead} < ${count}. Might be end of memory.`);
-          break;
-        }
-      } else {
-        console.error(`readMemory returned no data for chunk at offset ${bytesRead}`);
-        break;
+      } catch (e: any) {
+        console.error(`Error reading memory chunk ${myIndex}:`, e.message || e);
+        failed = true;
       }
-    } catch (e: any) {
-      console.error(`Error reading memory chunk at offset ${bytesRead}:`, e.message || e);
-      if (chunks.length > 0) break;
-      throw e;
     }
+  };
+
+  // Start workers
+  const workers = Array(CONCURRENCY).fill(null).map(() => worker());
+  await Promise.all(workers);
+
+  if (failed || chunks.some(c => c === null)) {
+    // If some chunks failed but we have some data, try to return what we have
+    const validChunks = chunks.filter((c): c is Buffer => c !== null);
+    if (validChunks.length === 0) {
+      return null;
+    }
+    return Buffer.concat(validChunks as any[]);
   }
 
-  if (chunks.length === 0) return null;
-  return Buffer.concat(chunks);
+  return Buffer.concat(chunks as any[]);
 }
 
 // Read Mat data using single readMemory call (fastest)
