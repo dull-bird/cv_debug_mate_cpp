@@ -821,7 +821,9 @@ function convertBytesToValues(bytes: number[], depth: number, count: number): nu
         break;
       case 3: // CV_16S
         value = bytes[offset] | (bytes[offset + 1] << 8);
-        if (value > 32767) value -= 65536;
+        if (value > 32767) {
+          value -= 65536;
+        }
         break;
       case 4: // CV_32S
         value = bytes[offset] | (bytes[offset + 1] << 8) | 
@@ -851,7 +853,9 @@ function parseNumericResult(result: string, depth: number): number {
   let value: number;
   if (depth === 5 || depth === 6) {
     value = parseFloat(result);
-    if (isNaN(value)) value = 0;
+    if (isNaN(value)) {
+      value = 0;
+    }
   } else {
     value = parseInt(result);
     if (isNaN(value)) {
@@ -902,7 +906,9 @@ async function drawMatImage(
               break;
             }
           }
-          if (foundVariable) break;
+          if (foundVariable) {
+            break;
+          }
         }
         
         if (foundVariable && foundVariable.variablesReference > 0) {
@@ -2438,18 +2444,21 @@ end_header
                       const visibleCount = visibleW * visibleH;
                       if (visibleCount > MAX_PIXEL_TEXT_LABELS) return;
 
-                       // Font size controlled by user-selected Scale; still guarded by overflow checks + clip
-                       const fontSize = Math.max(8, Math.min(16, Math.round(8 * uiScale))); // px
-                      const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-                       const lineHeight = fontSize; // keep tight for RGB 3-line fit
-                      const padGray = 2; // px padding inside each cell (grayscale)
-                      const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
-                      textCtx.font = fontSize + 'px ' + fontFamily;
+                       // Adaptive font size based on current zoom (scale) and UI scale
+                       // For grayscale, we want it larger; for RGB (3 lines), we need it smaller to fit.
+                       const baseSize = (channels === 3) ? (scale / 7) : (scale / 4);
+                       const fontSize = Math.max(8, Math.min(48, Math.round(baseSize * uiScale)));
+                       const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+                       const lineHeight = Math.max(fontSize, Math.round(fontSize * 1.1)); 
+                       
+                       const padGray = 2; // px padding inside each cell (grayscale)
+                       const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
+                       textCtx.font = fontSize + 'px ' + fontFamily;
                       textCtx.textAlign = 'center';
                       textCtx.textBaseline = 'middle';
-                      // Stroke width in CSS pixels (keep it crisp)
-                      textCtx.lineWidth = 2;
-                      textCtx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+                      // Adaptive stroke width based on font size
+                      textCtx.lineWidth = Math.max(1, fontSize / 5);
+                      textCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
                       textCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
 
                       function canFitTextInCell(lines, cellInnerW, cellInnerH) {
