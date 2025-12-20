@@ -1015,8 +1015,36 @@ async function drawMatImage(
       cols,
       channels,
       depth,
-      dataResult
+      { base64: "" } // Don't embed data directly, send via message
     );
+
+    // Send data in chunks to avoid memory issues
+    const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+    const totalData = dataResult.base64;
+    const totalLength = totalData.length;
+    let sentBytes = 0;
+
+    console.log(`Sending ${totalLength} base64 chars in chunks to webview`);
+
+    while (sentBytes < totalLength) {
+      const chunkSize = Math.min(CHUNK_SIZE, totalLength - sentBytes);
+      const chunk = totalData.substr(sentBytes, chunkSize);
+      const isLast = sentBytes + chunkSize >= totalLength;
+
+      await panel.webview.postMessage({
+        command: 'dataChunk',
+        chunk: chunk,
+        offset: sentBytes,
+        isLast: isLast
+      });
+
+      sentBytes += chunkSize;
+
+      // Allow some time for the webview to process
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    console.log('All data chunks sent to webview');
   } catch (error) {
     console.error("Error drawing Mat image:", error);
     throw error;
@@ -1903,7 +1931,32 @@ end_header
                   const cols = ${cols};
                   const channels = ${channels};
                   const depth = ${depth};
-                  const base64Data = ${imageBase64};
+
+                  // Data will be received in chunks
+                  let receivedChunks = [];
+                  let totalDataLength = 0;
+                  let base64Data = '';
+
+                  // Listen for data chunks from extension
+                  const vscode = acquireVsCodeApi();
+                  window.addEventListener('message', event => {
+                      const message = event.data;
+                      if (message.command === 'dataChunk') {
+                          receivedChunks.push(message.chunk);
+                          totalDataLength += message.chunk.length;
+
+                          if (message.isLast) {
+                              // All chunks received, reconstruct the data
+                              base64Data = receivedChunks.join('');
+                              receivedChunks = []; // Free memory
+
+                              console.log('Received complete data: ' + totalDataLength + ' chars');
+
+                              // Now initialize the image viewer
+                              initializeImageViewer();
+                          }
+                      }
+                  });
 
                   function base64ToUint8Array(b64) {
                       if (!b64) return new Uint8Array(0);
@@ -1914,7 +1967,8 @@ end_header
                       return bytes;
                   }
 
-                  const rawBytes = base64ToUint8Array(base64Data);
+                  function initializeImageViewer() {
+                      const rawBytes = base64ToUint8Array(base64Data);
 
                   function bytesToTypedArray(bytes, depth) {
                       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -2729,6 +2783,7 @@ end_header
                   // Initialize
                   updateCanvasSize();
                   requestRender();
+                  }
               })();
           </script>
       </body>
