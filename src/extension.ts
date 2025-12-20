@@ -727,7 +727,7 @@ async function readMatDataFast(
   dataSize: number,
   depth: number,
   progress: vscode.Progress<{ message?: string; increment?: number }>
-): Promise<{ base64: string }> {
+): Promise<{ buffer: Buffer | null }> {
   const bytesPerElement = getBytesPerElement(depth);
   const totalBytes = dataSize * bytesPerElement;
   
@@ -754,7 +754,7 @@ async function readMatDataFast(
   
   if (!dataPtr) {
     vscode.window.showErrorMessage("Cannot get data pointer from Mat");
-    return { base64: "" };
+    return { buffer: null };
   }
   
   console.log(`Data pointer: ${dataPtr}, reading ${totalBytes} bytes in chunked requests`);
@@ -766,19 +766,17 @@ async function readMatDataFast(
     
     if (buffer) {
       console.log(`Read complete: ${buffer.length} bytes`);
-      // NOTE: For very large images, expanding to number[] and JSON-stringifying is expensive.
-      // Pass the raw base64 buffer to the webview and decode there with TypedArrays.
-      return { base64: buffer.toString("base64") };
+      return { buffer };
     } else {
       vscode.window.showErrorMessage("readMemory returned no data");
-      return { base64: "" };
+      return { buffer: null };
     }
   } catch (e: any) {
     console.log("readMemory error:", e.message || e);
     vscode.window.showErrorMessage(
       `readMemory failed: ${e.message || e}. Please use cppvsdbg or lldb.`
     );
-    return { base64: "" };
+    return { buffer: null };
   }
 }
 
@@ -1021,14 +1019,17 @@ async function drawMatImage(
     );
 
     // Send complete data at once to webview (webview has its own memory space)
-    const totalData = dataResult.base64;
-    const totalLength = totalData.length;
+    const buffer = dataResult.buffer;
+    if (!buffer) {
+        throw new Error("Failed to read Mat data");
+    }
+    const totalLength = buffer.length;
 
-    console.log(`Sending ${totalLength} base64 chars to webview at once`);
+    console.log(`Sending ${totalLength} bytes to webview at once`);
 
     await panel.webview.postMessage({
       command: 'completeData',
-      data: totalData
+      data: new Uint8Array(buffer)
     });
 
     console.log('Complete data sent to webview');
@@ -1164,7 +1165,7 @@ async function readMatDataForLLDB(
   dataSize: number,
   depth: number,
   progress: vscode.Progress<{ message?: string; increment?: number }>
-): Promise<{ base64: string }> {
+): Promise<{ buffer: Buffer | null }> {
   const bytesPerElement = getBytesPerElement(depth);
   const totalBytes = dataSize * bytesPerElement;
   
@@ -1173,7 +1174,7 @@ async function readMatDataForLLDB(
   if (!dataPtr || dataPtr === "") {
     console.log("LLDB: No data pointer available");
     vscode.window.showErrorMessage("Cannot read Mat data: data pointer is null");
-    return { base64: "" };
+    return { buffer: null };
   }
   
   console.log(`LLDB: Reading ${totalBytes} bytes in chunked requests`);
@@ -1185,17 +1186,17 @@ async function readMatDataForLLDB(
     
     if (buffer) {
       console.log(`LLDB: Read complete: ${buffer.length} bytes`);
-      return { base64: buffer.toString("base64") };
+      return { buffer };
     } else {
       vscode.window.showErrorMessage("LLDB readMemory returned no data");
-      return { base64: "" };
+      return { buffer: null };
     }
   } catch (e: any) {
     console.log("LLDB readMemory error:", e.message || e);
     vscode.window.showWarningMessage(
       `LLDB readMemory failed: ${e.message || e}. Creating placeholder image.`
     );
-    return { base64: "" };
+    return { buffer: null };
   }
 }
 
@@ -1758,7 +1759,7 @@ end_header
                   align-items: center;
                   flex-wrap: wrap;
               }
-              #controls label { color: #111; font-weight: 400; }
+              #controls label { color: #111; font-weight: 400; font-size: 12px; }
               .ctrl-group {
                   display: inline-flex;
                   align-items: center;
@@ -1843,9 +1844,44 @@ end_header
                   pointer-events: none;
                   z-index: 2;
               }
+              #loading {
+                  position: absolute;
+                  top: 50%;
+                  left: 50%;
+                  transform: translate(-50%, -50%);
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  background: rgba(0,0,0,0.7);
+                  color: white;
+                  padding: 20px;
+                  border-radius: 10px;
+                  z-index: 2000;
+              }
+              .spinner {
+                  border: 4px solid rgba(255, 255, 255, 0.3);
+                  border-radius: 50%;
+                  border-top: 4px solid #4a9eff;
+                  width: 40px;
+                  height: 40px;
+                  animation: spin 1s linear infinite;
+                  margin-bottom: 10px;
+              }
+              .hidden {
+                  display: none !important;
+              }
+              @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+              }
           </style>
       </head>
       <body>
+          <div id="loading">
+              <div class="spinner"></div>
+              <div id="loading-text">Loading Data...</div>
+          </div>
           <div id="container">
               <canvas id="canvas"></canvas>
               <canvas id="grid-canvas"></canvas>
@@ -1861,7 +1897,7 @@ end_header
 
               <span class="ctrl-group" id="saveGroup">
                   <span class="dd" id="ddSaveFormat">
-                      <label style="font-size: 12px;">Save:</label>
+                      <label>Save:</label>
                       <button class="dd-btn" id="btnSaveFormat" type="button">PNG</button>
                       <div class="dd-menu" role="menu" aria-label="Save format menu"></div>
                   </span>
@@ -1874,17 +1910,17 @@ end_header
 
               <span class="ctrl-group" id="renderGroup">
                   <span class="dd" id="ddRenderMode">
-                      <label style="font-size: 12px;">Render:</label>
+                      <label>Render:</label>
                       <button class="dd-btn" id="btnRenderMode" type="button">Byte [0, 255]</button>
                       <div class="dd-menu" role="menu" aria-label="Render mode menu"></div>
                   </span>
                   <span class="dd" id="ddValueFormat">
-                      <label style="font-size: 12px;">Value:</label>
+                      <label>Value:</label>
                       <button class="dd-btn" id="btnValueFormat" type="button">Fixed(3)</button>
                       <div class="dd-menu" role="menu" aria-label="Value format menu"></div>
                   </span>
                   <span class="dd" id="ddUiScale">
-                      <label style="font-size: 12px;">Scale:</label>
+                      <label>Scale:</label>
                       <button class="dd-btn" id="btnUiScale" type="button">Auto</button>
                       <div class="dd-menu" role="menu" aria-label="UI scale menu"></div>
                   </span>
@@ -1913,56 +1949,54 @@ end_header
                   const ddRenderMode = document.getElementById('ddRenderMode');
                   const ddValueFormat = document.getElementById('ddValueFormat');
                   const ddUiScale = document.getElementById('ddUiScale');
+                  const loadingOverlay = document.getElementById('loading');
+                  const loadingText = document.getElementById('loading-text');
                   
                   const rows = ${rows};
                   const cols = ${cols};
                   const channels = ${channels};
                   const depth = ${depth};
 
-                  // Data will be received as complete data
-                  let base64Data = '';
-
                   // Listen for complete data from extension
                   const vscode = acquireVsCodeApi();
                   window.addEventListener('message', event => {
                       const message = event.data;
                       if (message.command === 'completeData') {
-                          base64Data = message.data;
-
-                          console.log('Received complete data: ' + base64Data.length + ' chars');
-
-                          // Now initialize the image viewer
-                          initializeImageViewer();
+                          const rawBytes = message.data; // This is a Uint8Array
+                          console.log('Received binary data: ' + rawBytes.length + ' bytes');
+                          
+                          loadingText.innerText = 'Initializing viewer...';
+                          
+                          // Use setTimeout to allow UI to update
+                          setTimeout(() => {
+                              try {
+                                  initializeImageViewer(rawBytes);
+                                  loadingOverlay.classList.add('hidden');
+                              } catch (e) {
+                                  console.error('Initialization failed:', e);
+                                  loadingText.innerText = 'Initialization failed: ' + e.message;
+                              }
+                          }, 10);
                       }
                   });
 
-                  function base64ToUint8Array(b64) {
-                      if (!b64) return new Uint8Array(0);
-                      const binary = atob(b64);
-                      const len = binary.length;
-                      const bytes = new Uint8Array(len);
-                      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-                      return bytes;
-                  }
-
-                  function initializeImageViewer() {
-                      const rawBytes = base64ToUint8Array(base64Data);
-
                   function bytesToTypedArray(bytes, depth) {
-                      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                      const buf = bytes.buffer;
+                      const offset = bytes.byteOffset;
+                      const length = bytes.byteLength;
                       switch (depth) {
-                          case 0: return new Uint8Array(buf);    // CV_8U
-                          case 1: return new Int8Array(buf);     // CV_8S
-                          case 2: return new Uint16Array(buf);   // CV_16U
-                          case 3: return new Int16Array(buf);    // CV_16S
-                          case 4: return new Int32Array(buf);    // CV_32S
-                          case 5: return new Float32Array(buf);  // CV_32F
-                          case 6: return new Float64Array(buf);  // CV_64F
-                          default: return new Uint8Array(buf);
+                          case 0: return new Uint8Array(buf, offset, length);    // CV_8U
+                          case 1: return new Int8Array(buf, offset, length);     // CV_8S
+                          case 2: return new Uint16Array(buf, offset, length / 2);   // CV_16U
+                          case 3: return new Int16Array(buf, offset, length / 2);    // CV_16S
+                          case 4: return new Int32Array(buf, offset, length / 4);    // CV_32S
+                          case 5: return new Float32Array(buf, offset, length / 4);  // CV_32F
+                          case 6: return new Float64Array(buf, offset, length / 8);  // CV_64F
+                          default: return new Uint8Array(buf, offset, length);
                       }
                   }
 
-                  const rawData = bytesToTypedArray(rawBytes, depth);
+                  let rawData = null;
                   let saveFormat = 'png';
                   let renderMode = 'byte';
                   let valueFormat = 'fixed3';
@@ -2020,8 +2054,14 @@ end_header
                   const offscreenCtx = offscreenCanvas.getContext('2d');
                   const imgData = offscreenCtx.createImageData(cols, rows);
 
+                  function initializeImageViewer(rawBytes) {
+                      rawData = bytesToTypedArray(rawBytes, depth);
+                      updateOffscreenFromRaw();
+                      resetView();
+                      requestRender();
+                  }
+
                   function clampByte(v) {
-                      if (!isFinite(v)) return 0;
                       if (v < 0) return 0;
                       if (v > 255) return 255;
                       return v | 0;
@@ -2031,9 +2071,9 @@ end_header
                       if (cachedMinMax) return cachedMinMax;
                       let min = Infinity;
                       let max = -Infinity;
-                      for (let i = 0; i < rawData.length; i++) {
+                      const len = rawData.length;
+                      for (let i = 0; i < len; i++) {
                           const v = rawData[i];
-                          if (!isFinite(v)) continue;
                           if (v < min) min = v;
                           if (v > max) max = v;
                       }
@@ -2056,32 +2096,52 @@ end_header
                       if (renderMode === 'clamp255') {
                           return clampByte(v);
                       }
-                      // 'byte' default: assume already 0..255-ish (but still clamp)
+                      // 'byte' default
                       return clampByte(v);
                   }
 
                   function updateOffscreenFromRaw() {
+                      if (!rawData) return;
                       // Fill image data based on selected render mode
                       cachedMinMax = null;
                       if (renderMode === 'minmax') getMinMax();
 
-                      for (let i = 0; i < rows; i++) {
-                          for (let j = 0; j < cols; j++) {
-                              const idx = (i * cols + j) * channels;
-                              const pixelIdx = (i * cols + j) * 4;
-
-                              if (channels === 1) {
-                                  const value = mapToByte(rawData[idx]);
-                                  imgData.data[pixelIdx] = value;
-                                  imgData.data[pixelIdx + 1] = value;
-                                  imgData.data[pixelIdx + 2] = value;
-                                  imgData.data[pixelIdx + 3] = 255;
-                              } else if (channels === 3) {
-                                  imgData.data[pixelIdx] = mapToByte(rawData[idx]);
-                                  imgData.data[pixelIdx + 1] = mapToByte(rawData[idx + 1]);
-                                  imgData.data[pixelIdx + 2] = mapToByte(rawData[idx + 2]);
-                                  imgData.data[pixelIdx + 3] = 255;
+                      const data = imgData.data;
+                      const len = rows * cols;
+                      
+                      if (depth === 0 && renderMode === 'byte') {
+                          // Fast path for CV_8U + byte mode
+                          if (channels === 1) {
+                              for (let i = 0; i < len; i++) {
+                                  const val = rawData[i];
+                                  const outIdx = i << 2;
+                                  data[outIdx] = data[outIdx + 1] = data[outIdx + 2] = val;
+                                  data[outIdx + 3] = 255;
                               }
+                          } else if (channels === 3) {
+                              for (let i = 0; i < len; i++) {
+                                  const inIdx = i * 3;
+                                  const outIdx = i << 2;
+                                  data[outIdx] = rawData[inIdx];
+                                  data[outIdx + 1] = rawData[inIdx + 1];
+                                  data[outIdx + 2] = rawData[inIdx + 2];
+                                  data[outIdx + 3] = 255;
+                              }
+                          }
+                      } else {
+                          // General path
+                          for (let i = 0; i < len; i++) {
+                              const outIdx = i << 2;
+                              if (channels === 1) {
+                                  const value = mapToByte(rawData[i]);
+                                  data[outIdx] = data[outIdx + 1] = data[outIdx + 2] = value;
+                              } else {
+                                  const inIdx = i * channels;
+                                  data[outIdx] = mapToByte(rawData[inIdx]);
+                                  data[outIdx + 1] = mapToByte(rawData[inIdx + 1]);
+                                  data[outIdx + 2] = mapToByte(rawData[inIdx + 2]);
+                              }
+                              data[outIdx + 3] = 255;
                           }
                       }
                       offscreenCtx.putImageData(imgData, 0, 0);
@@ -2240,7 +2300,6 @@ end_header
                   } else {
                       btnRenderMode.textContent = 'Byte [0, 255]';
                   }
-                  updateOffscreenFromRaw();
 
                   function clamp(v, lo, hi) {
                       return Math.max(lo, Math.min(hi, v));
@@ -2512,6 +2571,13 @@ end_header
                       requestRender();
                   }
 
+                  function resetView() {
+                      scale = 1;
+                      offsetX = 0;
+                      offsetY = 0;
+                      requestRender();
+                  }
+
                   // Event Listeners
                   document.getElementById('zoomIn').addEventListener('click', () => {
                       const cx = hasLastMouse ? lastMouseX : viewW / 2;
@@ -2526,10 +2592,7 @@ end_header
                   });
 
                   document.getElementById('reset').addEventListener('click', () => {
-                      scale = 1;
-                      offsetX = 0;
-                      offsetY = 0;
-                      requestRender();
+                      resetView();
                   });
 
                   // Toggle pixel text overlay
@@ -2761,7 +2824,6 @@ end_header
                   // Initialize
                   updateCanvasSize();
                   requestRender();
-                  }
               })();
           </script>
       </body>
