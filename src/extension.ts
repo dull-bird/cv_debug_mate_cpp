@@ -98,31 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
       const frameId = stackTraceResponse.stackFrames[0].id;
       console.log("Using frameId:", frameId);
 
-      // Generate a state token to avoid redundant refreshes
-      const stateToken = `${debugSession.id}-${threadId}-${frameId}`;
-
       // Pre-check if panel is fresh to avoid expensive evaluation and memory reading
-      if (PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken) ||
-          PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
-        console.log("Panel is fresh, just revealing it.");
-        const viewType = isMat(variable) ? "MatImageViewer" : "3DPointViewer";
-        PanelManager.getOrCreatePanel(viewType, `View: ${variableName}`, debugSession.id, variableName);
-        return;
-      }
-
-      console.log("--- Variable Info ---");
-      console.log("variable.name:", variable?.name);
-      console.log("variable.value:", variable?.value);
-      console.log("variable.type:", variable?.type);
-      console.log("variable.evaluateName:", variable?.evaluateName);
-      console.log("variable.variablesReference:", variable?.variablesReference);
-
-      if (!variable || (!variable.name && !variable.evaluateName)) {
-        vscode.window.showErrorMessage("No variable selected.");
-        console.log("ERROR: No variable selected");
-        return;
-      }
-
       const isLLDB = debugSession.type === "lldb";
       let variableInfo: any;
       
@@ -158,15 +134,32 @@ export function activate(context: vscode.ExtensionContext) {
         variableInfo.evaluateName = variableName;
       }
 
+      // Generate a more robust state token based on the evaluated value
+      // This is much more stable than frameId on Mac/Clang (CodeLLDB)
+      const valueSummary = variableInfo.result || "";
+      const stateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
+
+      if (PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken) ||
+          PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+        console.log("Panel is fresh, just revealing it.");
+        const viewType = isMat(variable) ? "MatImageViewer" : "3DPointViewer";
+        PanelManager.getOrCreatePanel(viewType, `View: ${variableName}`, debugSession.id, variableName);
+        return;
+      }
+
+      console.log("--- Variable Info ---");
+
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
       
+      const finalStateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
+
       if (point3Info.isPoint3) {
         await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble);
-        PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, stateToken);
+        PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, finalStateToken);
       } else if (isMatType) {
         await drawMatImage(debugSession, variableInfo, frameId, variableName);
-        PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+        PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, finalStateToken);
       } else {
         vscode.window.showErrorMessage(
           "Variable is neither a vector of cv::Point3f/cv::Point3d nor a cv::Mat."
