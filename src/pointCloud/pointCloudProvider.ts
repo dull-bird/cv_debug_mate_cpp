@@ -9,6 +9,7 @@ import {
   readMemoryChunked 
 } from "../utils/debugger";
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
+import { PanelManager } from "../utils/panelManager";
 
 // Function to draw point cloud
 export async function drawPointCloud(
@@ -45,19 +46,22 @@ export async function drawPointCloud(
 
     // Show the webview to visualize the points
     const panelTitle = `View: point cloud ${variableName}`;
-    const panel = vscode.window.createWebviewPanel(
+    const panel = PanelManager.getOrCreatePanel(
       "3DPointViewer",
       panelTitle,
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      }
+      debugSession.id,
+      variableName
     );
+    
     panel.webview.html = getWebviewContentForPointCloud(points);
     
+    // Dispose previous listener if it exists to avoid multiple listeners on reused panel
+    if ((panel as any)._messageListener) {
+      (panel as any)._messageListener.dispose();
+    }
+
     // Handle messages from webview (e.g., save PLY request)
-    panel.webview.onDidReceiveMessage(
+    (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === "savePLY") {
           try {

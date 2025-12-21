@@ -33,8 +33,26 @@
             {
                 "command": "extension.viewVariable",
                 "title": "View by CV DebugMate"
+            },
+            {
+                "command": "cv-debugmate.refreshVariables",
+                "title": "Refresh",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "cv-debugmate.viewVariable",
+                "title": "View Variable",
+                "icon": "$(eye)"
             }
         ],
+        "views": {
+            "debug": [
+                {
+                    "id": "cv-debugmate-variables",
+                    "name": "CV DebugMate"
+                }
+            ]
+        },
         "menus": {
             "debug/variables/context": [
                 {
@@ -46,6 +64,20 @@
                 {
                     "command": "extension.viewVariable",
                     "when": "debugType == 'cppvsdbg' || debugType == 'cppdbg' || debugType == 'lldb'"
+                }
+            ],
+            "view/title": [
+                {
+                    "command": "cv-debugmate.refreshVariables",
+                    "when": "view == cv-debugmate-variables",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "cv-debugmate.viewVariable",
+                    "when": "view == cv-debugmate-variables",
+                    "group": "inline"
                 }
             ]
         }

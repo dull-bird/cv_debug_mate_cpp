@@ -6,6 +6,7 @@ import {
 } from "../utils/debugger";
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
+import { PanelManager } from "../utils/panelManager";
 
 // Function to draw the cv::Mat image
 export async function drawMatImage(
@@ -168,15 +169,13 @@ export async function drawMatImage(
 
     // Show the webview to visualize the matrix as an image
     const panelTitle = `View: cv::Mat ${variableName}`;
-    const panel = vscode.window.createWebviewPanel(
+    const panel = PanelManager.getOrCreatePanel(
       "MatImageViewer",
       panelTitle,
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-      }
+      debugSession.id,
+      variableName
     );
+    
     panel.webview.html = getWebviewContentForMat(
       panel.webview,
       rows,
