@@ -116,11 +116,13 @@ src/
 
 ## Supported Types
 
-### cv::Mat
+### Image
+-  `cv::Mat` & `cv::Mat_<T>`
 - Grayscale images (1 channel)
 - Color images (3 channels, BGR)
 - RGBA images (4 channels)
 - Depth types: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
+- Support for template matrix types like `cv::Mat_<uchar>`, `cv::Mat_<cv::Vec3b>`, etc.
 
 ### Point Clouds
 - `std::vector<cv::Point3f>`

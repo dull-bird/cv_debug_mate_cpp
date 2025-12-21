@@ -116,11 +116,13 @@ src/
 
 ## 支持的类型
 
-### cv::Mat
+### 图像
+- `cv::Mat` & `cv::Mat_<T>`
 - 灰度图像（单通道）
 - 彩色图像（3 通道，BGR）
 - RGBA 图像（4 通道）
 - 数据类型：`CV_8U`、`CV_8S`、`CV_16U`、`CV_16S`、`CV_32S`、`CV_32F`、`CV_64F`
+- 支持模板矩阵类型，如 `cv::Mat_<uchar>`、`cv::Mat_<cv::Vec3b>` 等
 
 ### 点云
 - `std::vector<cv::Point3f>`
