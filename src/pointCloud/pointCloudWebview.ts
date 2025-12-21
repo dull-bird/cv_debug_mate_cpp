@@ -121,6 +121,13 @@ export function getWebviewContentForPointCloud(
                     <label>Point Size:</label>
                     <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
                 </div>
+                <div style="margin-bottom: 8px;">
+                    <label>PLY Format:</label>
+                    <select id="plyFormatSelect" style="background: #333; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; padding: 2px;">
+                        <option value="binary" selected>Binary</option>
+                        <option value="ascii">ASCII</option>
+                    </select>
+                </div>
                 <button id="btnSolid">Solid Color</button>
                 <button id="btnHeightZ">Color by Z</button>
                 <button id="btnHeightY">Color by Y</button>
@@ -399,7 +406,8 @@ export function getWebviewContentForPointCloud(
                 const vscode = acquireVsCodeApi();
 
                 document.getElementById('btnSavePLY').onclick = () => {
-                    vscode.postMessage({ command: 'savePLY' });
+                    const format = document.getElementById('plyFormatSelect').value;
+                    vscode.postMessage({ command: 'savePLY', format: format });
                 };
 
                 let isSyncing = false;
@@ -483,9 +491,20 @@ export function getWebviewContentForPointCloud(
     `;
 }
 
-// Function to generate PLY file content in binary format
-export function generatePLYContent(points: { x: number; y: number; z: number }[]): Uint8Array {
-  const header = `ply
+// Function to generate PLY file content
+export function generatePLYContent(points: { x: number; y: number; z: number }[], format: 'binary' | 'ascii' = 'binary'): Uint8Array {
+  if (format === 'ascii') {
+    let header = `ply
+format ascii 1.0
+element vertex ${points.length}
+property float x
+property float y
+property float z
+end_header\n`;
+    let body = points.map(p => `${p.x} ${p.y} ${p.z}`).join("\n");
+    return new TextEncoder().encode(header + body);
+  } else {
+    const header = `ply
 format binary_little_endian 1.0
 element vertex ${points.length}
 property float x
@@ -493,20 +512,21 @@ property float y
 property float z
 end_header\n`;
 
-  const headerBytes = new TextEncoder().encode(header);
-  const bodyBytes = new Uint8Array(points.length * 12); // 3 floats * 4 bytes
-  const view = new DataView(bodyBytes.buffer);
+    const headerBytes = new TextEncoder().encode(header);
+    const bodyBytes = new Uint8Array(points.length * 12); // 3 floats * 4 bytes
+    const view = new DataView(bodyBytes.buffer);
 
-  for (let i = 0; i < points.length; i++) {
-    const offset = i * 12;
-    view.setFloat32(offset, points[i].x, true);     // x
-    view.setFloat32(offset + 4, points[i].y, true); // y
-    view.setFloat32(offset + 8, points[i].z, true); // z
+    for (let i = 0; i < points.length; i++) {
+      const offset = i * 12;
+      view.setFloat32(offset, points[i].x, true);     // x
+      view.setFloat32(offset + 4, points[i].y, true); // y
+      view.setFloat32(offset + 8, points[i].z, true); // z
+    }
+
+    const combined = new Uint8Array(headerBytes.length + bodyBytes.length);
+    combined.set(headerBytes);
+    combined.set(bodyBytes, headerBytes.length);
+    
+    return combined;
   }
-
-  const combined = new Uint8Array(headerBytes.length + bodyBytes.length);
-  combined.set(headerBytes);
-  combined.set(bodyBytes, headerBytes.length);
-  
-  return combined;
 }
