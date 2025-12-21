@@ -39,6 +39,8 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 - **Type Identification**: Distinct icons for images (Mat) and 3D data (Point Cloud).
 - **One-Click Viewing**: Quick-action buttons to open visualization tabs without using context menus.
 
+![CV DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
+
 ### 🔗 View Synchronization & Pairing
 - **Sync Groups**: Pair multiple variables together to synchronize their view state (zoom, pan, 3D rotation).
 - **Color-Coded Groups**: Visual group identification via color-coded icons and group labels (`Group 1`, `Group 2`, etc.).

@@ -39,6 +39,8 @@
 - **类型识别图标**：为图像 (Mat) 和 3D 数据 (点云) 提供直观的区分图标。
 - **一键查看**：通过行内快捷按钮直接打开可视化标签页，无需右键菜单。
 
+![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
+
 ### 🔗 视图同步与配对
 - **同步组 (Sync Groups)**：将多个变量进行配对，实现视角的实时联动（缩放、平移、3D 旋转）。
 - **颜色编码识别**：通过不同颜色的图标和组标签（`Group 1`, `Group 2` 等）直观区分不同的同步组。
