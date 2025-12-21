@@ -68,7 +68,7 @@ export async function drawPointCloud(
       async (message) => {
         if (message.command === "savePLY") {
           try {
-            const plyContent = generatePLYContent(points);
+            const plyData = generatePLYContent(points);
             const uri = await vscode.window.showSaveDialog({
               defaultUri: vscode.Uri.file(`${variableName}.ply`),
               filters: {
@@ -78,10 +78,8 @@ export async function drawPointCloud(
             });
             
             if (uri) {
-              const encoder = new TextEncoder();
-              const data = encoder.encode(plyContent);
-              await vscode.workspace.fs.writeFile(uri, data);
-              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath}`);
+              await vscode.workspace.fs.writeFile(uri, plyData);
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (Binary format)`);
             }
           } catch (error) {
             vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);

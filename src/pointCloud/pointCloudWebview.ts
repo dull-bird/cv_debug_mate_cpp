@@ -483,16 +483,30 @@ export function getWebviewContentForPointCloud(
     `;
 }
 
-// Function to generate PLY file content
-export function generatePLYContent(points: { x: number; y: number; z: number }[]): string {
-  let header = `ply
-format ascii 1.0
+// Function to generate PLY file content in binary format
+export function generatePLYContent(points: { x: number; y: number; z: number }[]): Uint8Array {
+  const header = `ply
+format binary_little_endian 1.0
 element vertex ${points.length}
 property float x
 property float y
 property float z
-end_header
-`;
-  let body = points.map(p => `${p.x} ${p.y} ${p.z}`).join("\n");
-  return header + body;
+end_header\n`;
+
+  const headerBytes = new TextEncoder().encode(header);
+  const bodyBytes = new Uint8Array(points.length * 12); // 3 floats * 4 bytes
+  const view = new DataView(bodyBytes.buffer);
+
+  for (let i = 0; i < points.length; i++) {
+    const offset = i * 12;
+    view.setFloat32(offset, points[i].x, true);     // x
+    view.setFloat32(offset + 4, points[i].y, true); // y
+    view.setFloat32(offset + 8, points[i].z, true); // z
+  }
+
+  const combined = new Uint8Array(headerBytes.length + bodyBytes.length);
+  combined.set(headerBytes);
+  combined.set(bodyBytes, headerBytes.length);
+  
+  return combined;
 }
