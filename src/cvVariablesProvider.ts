@@ -22,15 +22,31 @@ export class CVVariable extends vscode.TreeItem {
         
         if (isPaired && groupIndex !== undefined) {
             const colors = [
-                'charts.blue',
-                'charts.red',
-                'charts.green',
-                'charts.yellow',
-                'charts.orange',
-                'charts.purple'
+                '#3794ef', // Blue
+                '#f14c4c', // Red
+                '#89d185', // Green
+                '#cca700', // Yellow
+                '#d18616', // Orange
+                '#b180d7', // Purple
+                '#117da0', // Cyan
+                '#e12672', // Magenta
+                '#008080', // Teal
+                '#73c991', // Lime
+                '#f06292', // Pink
+                '#ffd700'  // Gold
             ];
-            const colorId = colors[groupIndex % colors.length];
-            this.iconPath = new vscode.ThemeIcon(typeIcon, new vscode.ThemeColor(colorId));
+            const color = colors[groupIndex % colors.length];
+            
+            // Use custom SVG to prevent VS Code from turning the icon white on selection
+            const svgPath = kind === 'mat' 
+                ? "M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Zm10.5 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM2.5 14.5h11V9.38l-3.344-3.345a.25.25 0 0 0-.353 0l-3.05 3.05-1.147-1.147a.25.25 0 0 0-.353 0L2.5 11.188Z"
+                : "m8.31 1.066 6.5 3.5a.75.25 0 0 1 0 .434l-6.5 3.5a.75.75 0 0 1-.62 0l-6.5-3.5a.75.25 0 0 1 0-.434l6.5-3.5a.75.75 0 0 1 .62 0ZM2.51 4.75 8 7.708l5.49-2.958L8 1.792Zm-1.2 4.016a.75.75 0 0 1 1.024-.274L8 11.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Zm0 3a.75.75 0 0 1 1.024-.274L8 14.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Z";
+            
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><path fill="${color}" d="${svgPath}"></path></svg>`;
+            const base64 = Buffer.from(svg).toString('base64');
+            const iconUri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
+            
+            this.iconPath = { light: iconUri, dark: iconUri };
             this.description = `(Group ${groupIndex + 1}) ${this.type}`;
             this.contextValue = 'cvVariablePaired';
         } else {
