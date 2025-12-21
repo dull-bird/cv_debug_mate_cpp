@@ -5,6 +5,7 @@ import { drawPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage } from "./matImage/matProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
+import { SyncManager } from "./utils/syncManager";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Extension "cv-debugmate-cpp" is now active.');
@@ -31,6 +32,41 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("cv-debugmate.refreshVariables", () => {
       cvVariablesProvider.refresh();
+    })
+  );
+
+  // Pair variables command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cv-debugmate.pairVariable", async (cvVar: CVVariable) => {
+      const variables = cvVariablesProvider.getVariables();
+      const options = variables
+        .filter(v => v.name !== cvVar.name && v.kind === cvVar.kind)
+        .map(v => ({ label: v.name, description: v.type }));
+
+      if (options.length === 0) {
+        vscode.window.showInformationMessage(`No other ${cvVar.kind === 'mat' ? 'image' : 'point cloud'} variables found to pair with.`);
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(options, {
+        placeHolder: `Select a variable to pair with ${cvVar.name}`
+      });
+
+      if (selected) {
+        cvVariablesProvider.setPairing(cvVar.name, selected.label);
+        vscode.window.showInformationMessage(`Paired ${cvVar.name} with ${selected.label}`);
+      }
+    })
+  );
+
+  // Unpair variable command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cv-debugmate.unpairVariable", (cvVar: CVVariable) => {
+      const pairedVars = cvVariablesProvider.getPairedVariables(cvVar.name);
+      cvVariablesProvider.unpair(cvVar.name);
+      if (pairedVars.length > 0) {
+        vscode.window.showInformationMessage(`Unpaired ${cvVar.name} from group (${pairedVars.join(', ')})`);
+      }
     })
   );
 

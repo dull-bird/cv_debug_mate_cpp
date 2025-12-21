@@ -10,6 +10,7 @@ import {
 } from "../utils/debugger";
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
+import { SyncManager } from "../utils/syncManager";
 
 // Function to draw point cloud
 export async function drawPointCloud(
@@ -55,12 +56,14 @@ export async function drawPointCloud(
     
     panel.webview.html = getWebviewContentForPointCloud(points);
     
+    SyncManager.registerPanel(variableName, panel);
+
     // Dispose previous listener if it exists to avoid multiple listeners on reused panel
     if ((panel as any)._messageListener) {
       (panel as any)._messageListener.dispose();
     }
 
-    // Handle messages from webview (e.g., save PLY request)
+    // Handle messages from webview (e.g., save PLY request, view sync)
     (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === "savePLY") {
@@ -84,6 +87,8 @@ export async function drawPointCloud(
             vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
             console.error("Error saving PLY:", error);
           }
+        } else if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
         }
       },
       undefined,

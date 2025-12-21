@@ -281,8 +281,30 @@ export function getWebviewContentForMat(
                                 loadingText.innerText = 'Initialization failed: ' + e.message;
                             }
                         }, 10);
+                    } else if (message.command === 'setView') {
+                        const state = message.state;
+                        if (!isInitialized) {
+                            pendingSyncState = state;
+                            return;
+                        }
+                        applyViewState(state);
                     }
                 });
+
+                function applyViewState(state) {
+                    if (state.scale !== undefined) scale = state.scale;
+                    if (state.offsetX !== undefined) offsetX = state.offsetX;
+                    if (state.offsetY !== undefined) offsetY = state.offsetY;
+                    requestRender();
+                }
+
+                function emitViewChange() {
+                    if (!isInitialized) return;
+                    vscode.postMessage({
+                        command: 'viewChanged',
+                        state: { scale, offsetX, offsetY }
+                    });
+                }
 
                 function bytesToTypedArray(bytes, depth) {
                     const buf = bytes.buffer;
@@ -301,6 +323,8 @@ export function getWebviewContentForMat(
                 }
 
                 let rawData = null;
+                let isInitialized = false;
+                let pendingSyncState = null;
                 let saveFormat = 'png';
                 let renderMode = 'byte';
                 let valueFormat = 'fixed3';
@@ -361,7 +385,15 @@ export function getWebviewContentForMat(
                 function initializeImageViewer(rawBytes) {
                     rawData = bytesToTypedArray(rawBytes, depth);
                     updateOffscreenFromRaw();
-                    resetView();
+                    
+                    if (pendingSyncState) {
+                        applyViewState(pendingSyncState);
+                        pendingSyncState = null;
+                    } else {
+                        resetView();
+                    }
+                    
+                    isInitialized = true;
                     requestRender();
                 }
 
@@ -854,9 +886,14 @@ export function getWebviewContentForMat(
                     });
                 }
 
+                function requestRenderWithSync() {
+                    requestRender();
+                    emitViewChange();
+                }
+
                 function setZoom(newScale) {
                     scale = Math.max(0.05, Math.min(100, newScale)); // Increased max zoom to 100x
-                    requestRender();
+                    requestRenderWithSync();
                 }
 
                 // Zoom around a screen point (mouse cursor), keeping the image coord under cursor stable
@@ -875,14 +912,14 @@ export function getWebviewContentForMat(
                     offsetX = screenX - imgX * nextScale;
                     offsetY = screenY - imgY * nextScale;
 
-                    requestRender();
+                    requestRenderWithSync();
                 }
 
                 function resetView() {
                     scale = 1;
                     offsetX = 0;
                     offsetY = 0;
-                    requestRender();
+                    requestRenderWithSync();
                 }
 
                 // Event Listeners
@@ -1043,7 +1080,7 @@ export function getWebviewContentForMat(
                     if (isDragging) {
                         offsetX = e.clientX - startX;
                         offsetY = e.clientY - startY;
-                        requestRender();
+                        requestRenderWithSync();
                     }
 
                     // Update pixel info

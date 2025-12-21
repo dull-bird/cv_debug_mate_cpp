@@ -43,6 +43,16 @@
                 "command": "cv-debugmate.viewVariable",
                 "title": "View Variable",
                 "icon": "$(eye)"
+            },
+            {
+                "command": "cv-debugmate.pairVariable",
+                "title": "Pair with...",
+                "icon": "$(link)"
+            },
+            {
+                "command": "cv-debugmate.unpairVariable",
+                "title": "Unpair",
+                "icon": "$(link-external)"
             }
         ],
         "views": {
@@ -77,7 +87,27 @@
                 {
                     "command": "cv-debugmate.viewVariable",
                     "when": "view == cv-debugmate-variables",
-                    "group": "inline"
+                    "group": "inline@1"
+                },
+                {
+                    "command": "cv-debugmate.pairVariable",
+                    "when": "view == cv-debugmate-variables && viewItem == cvVariable",
+                    "group": "inline@2"
+                },
+                {
+                    "command": "cv-debugmate.unpairVariable",
+                    "when": "view == cv-debugmate-variables && viewItem == cvVariablePaired",
+                    "group": "inline@2"
+                },
+                {
+                    "command": "cv-debugmate.pairVariable",
+                    "when": "view == cv-debugmate-variables && viewItem == cvVariable",
+                    "group": "1_pairing"
+                },
+                {
+                    "command": "cv-debugmate.unpairVariable",
+                    "when": "view == cv-debugmate-variables && viewItem == cvVariablePaired",
+                    "group": "1_pairing"
                 }
             ]
         }

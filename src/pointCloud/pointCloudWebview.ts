@@ -144,6 +144,8 @@ export function getWebviewContentForPointCloud(
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 
                 const points = ${pointsArray};
+                let isInitialized = false;
+                let pendingSyncState = null;
                 
                 // Main scene
                 const scene = new THREE.Scene();
@@ -326,7 +328,14 @@ export function getWebviewContentForPointCloud(
                     controls.update();
                 }
                 
-                resetView();
+                if (pendingSyncState) {
+                    applyViewState(pendingSyncState);
+                    pendingSyncState = null;
+                } else {
+                    resetView();
+                }
+                
+                isInitialized = true;
 
                 function updateColors(mode) {
                     const colorAttr = geometry.attributes.color;
@@ -387,10 +396,73 @@ export function getWebviewContentForPointCloud(
                     material.size = parseFloat(e.target.value);
                 };
                 
+                const vscode = acquireVsCodeApi();
+
                 document.getElementById('btnSavePLY').onclick = () => {
-                    const vscode = acquireVsCodeApi();
                     vscode.postMessage({ command: 'savePLY' });
                 };
+
+                let isSyncing = false;
+                window.addEventListener('message', event => {
+                    const message = event.data;
+                    if (message.command === 'setView') {
+                        const state = message.state;
+                        if (!isInitialized) {
+                            pendingSyncState = state;
+                            return;
+                        }
+                        applyViewState(state);
+                    }
+                });
+
+                function applyViewState(state) {
+                    isSyncing = true;
+                    if (state.cameraPosition) {
+                        camera.position.set(state.cameraPosition.x, state.cameraPosition.y, state.cameraPosition.z);
+                    }
+                    if (state.cameraQuaternion) {
+                        camera.quaternion.set(state.cameraQuaternion.x, state.cameraQuaternion.y, state.cameraQuaternion.z, state.cameraQuaternion.w);
+                    }
+                    if (state.cameraUp) {
+                        camera.up.set(state.cameraUp.x, state.cameraUp.y, state.cameraUp.z);
+                    }
+                    if (state.controlsTarget) {
+                        controls.target.set(state.controlsTarget.x, state.controlsTarget.y, state.controlsTarget.z);
+                    }
+                    controls.update();
+                    
+                    // Force a render immediately after sync
+                    renderer.render(scene, camera);
+                    updateAxisView();
+                    
+                    isSyncing = false;
+                }
+
+                let lastSyncTime = 0;
+                function emitViewChange(force = false) {
+                    if (isSyncing || !isInitialized) return;
+                    const now = Date.now();
+                    if (!force && (now - lastSyncTime < 30)) return; // Throttle to ~30fps
+                    lastSyncTime = now;
+                    
+                    vscode.postMessage({
+                        command: 'viewChanged',
+                        state: {
+                            cameraPosition: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                            cameraQuaternion: { x: camera.quaternion.x, y: camera.quaternion.y, z: camera.quaternion.z, w: camera.quaternion.w },
+                            cameraUp: { x: camera.up.x, y: camera.up.y, z: camera.up.z },
+                            controlsTarget: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+                        }
+                    });
+                }
+
+                controls.addEventListener('change', () => {
+                    emitViewChange();
+                });
+
+                controls.addEventListener('end', () => {
+                    emitViewChange(true); // Force a final sync on interaction end
+                });
 
                 function animate() {
                     requestAnimationFrame(animate);

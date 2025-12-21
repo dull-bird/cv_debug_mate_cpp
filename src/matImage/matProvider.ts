@@ -7,6 +7,7 @@ import {
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
 import { PanelManager } from "../utils/panelManager";
+import { SyncManager } from "../utils/syncManager";
 
 // Function to draw the cv::Mat image
 export async function drawMatImage(
@@ -183,6 +184,21 @@ export async function drawMatImage(
       channels,
       depth,
       { base64: "" } // Don't embed data directly, send via message
+    );
+
+    SyncManager.registerPanel(variableName, panel);
+    
+    // Dispose previous listener if it exists to avoid multiple listeners on reused panel
+    if ((panel as any)._syncListener) {
+      (panel as any)._syncListener.dispose();
+    }
+
+    (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
+        }
+      }
     );
 
     // Send complete data at once to webview (webview has its own memory space)
