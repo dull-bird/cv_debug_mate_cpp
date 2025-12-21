@@ -33,6 +33,18 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 - Interactive 3D rotation, pan, and zoom
 - Powered by Three.js
 
+### 🔍 CV DebugMate Panel
+- **Automatic Variable Collection**: Automatically detects all visualizable OpenCV variables in the current stack frame.
+- **Dedicated Sidebar View**: A new view in the Debug sidebar for quick access to all Mat and Point Cloud variables.
+- **Type Identification**: Distinct icons for images (Mat) and 3D data (Point Cloud).
+- **One-Click Viewing**: Quick-action buttons to open visualization tabs without using context menus.
+
+### 🔗 View Synchronization & Pairing
+- **Sync Groups**: Pair multiple variables together to synchronize their view state (zoom, pan, 3D rotation).
+- **Color-Coded Groups**: Visual group identification via color-coded icons and group labels (`Group 1`, `Group 2`, etc.).
+- **Initial State Persistence**: New members of a group automatically inherit the current view state of the group.
+- **Precision Point Cloud Sync**: High-precision synchronization for 3D views including camera position, rotation, and target.
+
 ### 💾 Export Options
 - **Save PNG**: Export image as PNG file
 - **Save TIFF**: Export image as TIFF file (supports raw floating-point data)
@@ -86,13 +98,17 @@ src/
 
 ## Usage
 
-1. Start a C++ debug session in VS Code
-2. Set a breakpoint where OpenCV variables are in scope
-3. In the **Variables** or **Watch** panel, right-click on a supported variable (`cv::Mat` or `std::vector<cv::Point3f>`)
-4. Select **"View by CV DebugMate"** from the context menu
-5. The visualization will open in a new tab
+### Option 1: CV DebugMate Panel (Recommended)
+1. Start a C++ debug session in VS Code.
+2. Open the **Run and Debug** sidebar.
+3. Locate the **CV DebugMate** section.
+4. All visualizable variables in the current scope will appear automatically.
+5. Click the **Eye icon** or variable name to view.
+6. Click the **Link icon** to pair variables for synchronized viewing.
 
-![Debug Usage](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/debug_usage.png)
+### Option 2: Context Menu
+1. Right-click on a supported variable in the standard **Variables** or **Watch** panel.
+2. Select **"View by CV DebugMate"**.
 
 ---
 
