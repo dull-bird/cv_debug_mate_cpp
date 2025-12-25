@@ -49,6 +49,19 @@ export function getWebviewContentForPlot(
                 flex-wrap: nowrap;
                 height: 30px;
             }
+            .btn-group {
+                display: flex;
+                gap: 2px;
+                background: #333;
+                border: 1px solid #444;
+                border-radius: 3px;
+                padding: 1px;
+            }
+            .btn-group .btn {
+                border: none;
+                height: 24px;
+                padding: 0 8px;
+            }
             /* 统一按钮和下拉触发器样式 */
             .btn, .dropdown-trigger {
                 background: #333;
@@ -70,6 +83,11 @@ export function getWebviewContentForPlot(
             .btn:hover, .dropdown-trigger:hover {
                 background: #444;
                 border-color: #666;
+            }
+            .btn:disabled {
+                opacity: 0.3;
+                cursor: not-allowed;
+                filter: grayscale(1);
             }
             .btn.active {
                 background: #007acc;
@@ -156,6 +174,10 @@ export function getWebviewContentForPlot(
         <div id="header">
             <div id="title">View: ${variableName}</div>
             <div id="toolbar">
+                <div class="btn-group">
+                    <button id="btnBack" class="btn" title="Previous View" disabled>⬅️</button>
+                    <button id="btnForward" class="btn" title="Next View" disabled>➡️</button>
+                </div>
                 <button id="btnHome" class="btn" title="Reset View (Home)">🏠 Home</button>
                 <button id="btnZoomRect" class="btn" title="Zoom to Rectangle">🔍 Zoom</button>
                 <button id="btnPan" class="btn active" title="Pan Mode">✋ Pan</button>
@@ -204,6 +226,8 @@ export function getWebviewContentForPlot(
                     const btnHome = document.getElementById('btnHome');
                     const btnZoomRect = document.getElementById('btnZoomRect');
                     const btnPan = document.getElementById('btnPan');
+                    const btnBack = document.getElementById('btnBack');
+                    const btnForward = document.getElementById('btnForward');
                     
                     const triggerX = document.getElementById('triggerX');
                     const menuX = document.getElementById('menuX');
@@ -220,6 +244,56 @@ export function getWebviewContentForPlot(
                     let interactionMode = 'pan';
                     let scaleX = 1, scaleY = 1, offsetX = 0, offsetY = 0;
                     let isDragging = false, dragStartX = 0, dragStartY = 0, lastMouseX = 0, lastMouseY = 0;
+
+                    // 视图历史记录
+                    let viewHistory = [];
+                    let historyIndex = -1;
+
+                    function pushHistory() {
+                        const state = { scaleX: scaleX, scaleY: scaleY, offsetX: offsetX, offsetY: offsetY };
+                        // 如果当前状态与上一个记录一致，则不记录
+                        if (historyIndex >= 0) {
+                            const last = viewHistory[historyIndex];
+                            if (last.scaleX === state.scaleX && last.scaleY === state.scaleY && 
+                                last.offsetX === state.offsetX && last.offsetY === state.offsetY) {
+                                return;
+                            }
+                        }
+                        
+                        // 移除当前索引之后的历史记录
+                        if (historyIndex < viewHistory.length - 1) {
+                            viewHistory = viewHistory.slice(0, historyIndex + 1);
+                        }
+                        
+                        viewHistory.push(state);
+                        historyIndex++;
+                        
+                        // 限制历史记录数量
+                        if (viewHistory.length > 50) {
+                            viewHistory.shift();
+                            historyIndex--;
+                        }
+                        updateHistoryButtons();
+                    }
+
+                    function updateHistoryButtons() {
+                        btnBack.disabled = historyIndex <= 0;
+                        btnForward.disabled = historyIndex >= viewHistory.length - 1;
+                    }
+
+                    function applyHistoryState(index) {
+                        if (index >= 0 && index < viewHistory.length) {
+                            const state = viewHistory[index];
+                            scaleX = state.scaleX; scaleY = state.scaleY;
+                            offsetX = state.offsetX; offsetY = state.offsetY;
+                            historyIndex = index;
+                            draw();
+                            updateHistoryButtons();
+                        }
+                    }
+
+                    btnBack.onclick = function() { applyHistoryState(historyIndex - 1); };
+                    btnForward.onclick = function() { applyHistoryState(historyIndex + 1); };
 
                     function updateSize() {
                         const rect = container.getBoundingClientRect();
@@ -353,6 +427,7 @@ export function getWebviewContentForPlot(
                         scaleX = scaleY = 1;
                         offsetX = offsetY = 0;
                         draw();
+                        pushHistory();
                     }
 
                     // 下拉菜单切换逻辑
@@ -481,23 +556,27 @@ export function getWebviewContentForPlot(
                     });
 
                     window.addEventListener('mouseup', function(e) {
-                        if (isDragging && interactionMode === 'zoomRect') {
-                            const r = container.getBoundingClientRect();
-                            const x1 = fromScreenX(Math.min(dragStartX - r.left, e.clientX - r.left));
-                            const x2 = fromScreenX(Math.max(dragStartX - r.left, e.clientX - r.left));
-                            const y1 = fromScreenY(Math.max(dragStartY - r.top, e.clientY - r.top));
-                            const y2 = fromScreenY(Math.min(dragStartY - r.top, e.clientY - r.top));
-                            if (Math.abs(e.clientX - dragStartX) > 5) {
-                                const iW = width - padding.left - padding.right, iH = height - padding.top - padding.bottom;
-                                scaleX = iW / ((x2 - x1) / rangeX * iW); scaleY = iH / ((y2 - y1) / rangeY * iH);
-                                offsetX = -((x1 - minX) / rangeX * iW); offsetY = -((y1 - minY) / rangeY * iH);
-                                draw();
+                        if (isDragging) {
+                            if (interactionMode === 'zoomRect') {
+                                const r = container.getBoundingClientRect();
+                                const x1 = fromScreenX(Math.min(dragStartX - r.left, e.clientX - r.left));
+                                const x2 = fromScreenX(Math.max(dragStartX - r.left, e.clientX - r.left));
+                                const y1 = fromScreenY(Math.max(dragStartY - r.top, e.clientY - r.top));
+                                const y2 = fromScreenY(Math.min(dragStartY - r.top, e.clientY - r.top));
+                                if (Math.abs(e.clientX - dragStartX) > 5) {
+                                    const iW = width - padding.left - padding.right, iH = height - padding.top - padding.bottom;
+                                    scaleX = iW / ((x2 - x1) / rangeX * iW); scaleY = iH / ((y2 - y1) / rangeY * iH);
+                                    offsetX = -((x1 - minX) / rangeX * iW); offsetY = -((y1 - minY) / rangeY * iH);
+                                    draw();
+                                }
+                                zoomRectEl.style.display = 'none';
                             }
-                            zoomRectEl.style.display = 'none';
+                            pushHistory();
                         }
                         isDragging = false;
                     });
 
+                    let wheelTimeout = null;
                     container.addEventListener('wheel', function(e) {
                         e.preventDefault();
                         const f = e.deltaY > 0 ? 0.9 : 1.1;
@@ -507,6 +586,9 @@ export function getWebviewContentForPlot(
                         scaleX *= f; scaleY *= f;
                         offsetX = (mx - padding.left) / scaleX - rx; offsetY = (height - padding.bottom - my) / scaleY - ry;
                         draw();
+                        
+                        if (wheelTimeout) clearTimeout(wheelTimeout);
+                        wheelTimeout = setTimeout(pushHistory, 500);
                     }, { passive: false });
 
                     window.onresize = function() { draw(); };
@@ -516,7 +598,10 @@ export function getWebviewContentForPlot(
 
                     // Initial draw with a small delay to ensure layout is ready
                     updateDataBounds();
-                    setTimeout(draw, 100);
+                    setTimeout(function() {
+                        draw();
+                        pushHistory(); // 记录初始状态
+                    }, 100);
                     vscode.postMessage({ command: 'requestOptions' });
 
                 } catch (err) {
