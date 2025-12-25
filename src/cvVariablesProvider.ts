@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 export class CVVariable extends vscode.TreeItem {
@@ -10,7 +10,8 @@ export class CVVariable extends vscode.TreeItem {
         public readonly variablesReference: number,
         public readonly value: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly kind: 'mat' | 'pointcloud',
+        public readonly kind: 'mat' | 'pointcloud' | 'plot',
+        public readonly size: number = 0,
         public isPaired: boolean = false,
         public pairedWith?: string,
         public groupIndex?: number
@@ -18,9 +19,11 @@ export class CVVariable extends vscode.TreeItem {
         super(name, collapsibleState);
         this.tooltip = `${this.name}: ${this.type}${this.pairedWith ? ` (Paired with ${this.pairedWith})` : ''}`;
         
-        const typeIcon = kind === 'mat' ? 'file-media' : 'layers';
+        let typeIcon = 'file-media';
+        if (kind === 'pointcloud') typeIcon = 'layers';
+        else if (kind === 'plot') typeIcon = 'graph';
         
-        if (isPaired && groupIndex !== undefined) {
+        if (isPaired && groupIndex !== undefined && kind !== 'plot') {
             const colors = [
                 '#3794ef', // Blue
                 '#f14c4c', // Red
@@ -46,13 +49,13 @@ export class CVVariable extends vscode.TreeItem {
             const base64 = Buffer.from(svg).toString('base64');
             const iconUri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
             
-            this.iconPath = { light: iconUri, dark: iconUri };
+                        this.iconPath = { light: iconUri, dark: iconUri };
             this.description = `(Group ${groupIndex + 1}) ${this.type}`;
-            this.contextValue = 'cvVariablePaired';
+            this.contextValue = `cvVariablePaired:${kind}`;
         } else {
             this.iconPath = new vscode.ThemeIcon(typeIcon);
             this.description = this.type;
-            this.contextValue = 'cvVariable';
+            this.contextValue = `cvVariable:${kind}`;
         }
 
         this.command = {
@@ -132,6 +135,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
             const scopesResponse = await debugSession.customRequest('scopes', { frameId });
             
             const visualizableVariables: CVVariable[] = [];
+            const variablePromises: Promise<CVVariable | null>[] = [];
             
             for (const scope of scopesResponse.scopes) {
                 const variablesResponse = await debugSession.customRequest('variables', {
@@ -139,26 +143,75 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
                 });
                 
                 for (const v of variablesResponse.variables) {
+                    const variableName = v.evaluateName || v.name;
                     const isM = isMat(v);
                     const point3 = isPoint3Vector(v);
-                    if (isM || point3.isPoint3) {
-                        const kind = isM ? 'mat' : 'pointcloud';
-                        const pairedVars = SyncManager.getPairedVariables(v.name);
-                        const groupIndex = SyncManager.getGroupIndex(v.name);
-                        visualizableVariables.push(new CVVariable(
-                            v.name,
-                            v.type,
-                            v.evaluateName || v.name,
-                            v.variablesReference,
-                            v.value,
-                            vscode.TreeItemCollapsibleState.None,
-                            kind,
-                            pairedVars.length > 0,
-                            pairedVars.length > 0 ? pairedVars.join(', ') : undefined,
-                            groupIndex
-                        ));
-                    }
+                    const vector1D = is1DVector(v);
+
+                    const checkVariable = async (): Promise<CVVariable | null> => {
+                        let is1DM = isLikely1DMat(v);
+                        const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
+                        
+                        // If it's a Mat but we're not sure if it's 1D, probe it
+                        if (isM && !is1DM.is1D && confirmed1DSize === undefined && v.variablesReference > 0) {
+                            try {
+                                const children = await debugSession.customRequest('variables', {
+                                    variablesReference: v.variablesReference
+                                });
+                                let r = 0, c = 0, ch = 1;
+                                for (const child of children.variables) {
+                                    const val = parseInt(child.value);
+                                    if (child.name === 'rows') r = val;
+                                    else if (child.name === 'cols') c = val;
+                                    else if (child.name === 'flags') {
+                                        if (!isNaN(val)) ch = (((val & 0xFFF) >> 3) & 63) + 1;
+                                    }
+                                }
+                                if (ch === 1 && (r === 1 || c === 1) && r * c > 0) {
+                                    is1DM = { is1D: true, size: r * c };
+                                    SyncManager.markAs1D(variableName, r * c);
+                                }
+                            } catch (e) {
+                                // Ignore probing errors
+                            }
+                        }
+
+                        if (isM || point3.isPoint3 || vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
+                            let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
+                            let size = 0;
+                            if (point3.isPoint3) {
+                                kind = 'pointcloud';
+                            } else if (vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
+                                kind = 'plot';
+                                size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DM.size);
+                            }
+                            
+                            const pairedVars = SyncManager.getPairedVariables(variableName);
+                            const groupIndex = SyncManager.getGroupIndex(variableName);
+                            return new CVVariable(
+                                v.name,
+                                v.type,
+                                variableName,
+                                v.variablesReference,
+                                v.value,
+                                vscode.TreeItemCollapsibleState.None,
+                                kind,
+                                size,
+                                pairedVars.length > 0,
+                                pairedVars.length > 0 ? pairedVars.join(', ') : undefined,
+                                groupIndex
+                            );
+                        }
+                        return null;
+                    };
+
+                    variablePromises.push(checkVariable());
                 }
+            }
+            
+            const results = await Promise.all(variablePromises);
+            for (const res of results) {
+                if (res) visualizableVariables.push(res);
             }
             
             this.variables = visualizableVariables;

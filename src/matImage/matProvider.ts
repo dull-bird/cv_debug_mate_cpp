@@ -169,7 +169,7 @@ export async function drawMatImage(
     );
 
     // Show the webview to visualize the matrix as an image
-    const panelTitle = `View: cv::Mat ${variableName}`;
+    const panelTitle = `View: ${variableName}`;
     const panel = PanelManager.getOrCreatePanel(
       "MatImageViewer",
       panelTitle,

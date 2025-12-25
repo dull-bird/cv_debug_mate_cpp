@@ -85,28 +85,23 @@
             ],
             "view/item/context": [
                 {
-                    "command": "cv-debugmate.viewVariable",
-                    "when": "view == cv-debugmate-variables",
-                    "group": "inline@1"
-                },
-                {
                     "command": "cv-debugmate.pairVariable",
-                    "when": "view == cv-debugmate-variables && viewItem == cvVariable",
+                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariable:mat' || viewItem == 'cvVariable:pointcloud')",
                     "group": "inline@2"
                 },
                 {
                     "command": "cv-debugmate.unpairVariable",
-                    "when": "view == cv-debugmate-variables && viewItem == cvVariablePaired",
+                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariablePaired:mat' || viewItem == 'cvVariablePaired:pointcloud')",
                     "group": "inline@2"
                 },
                 {
                     "command": "cv-debugmate.pairVariable",
-                    "when": "view == cv-debugmate-variables && viewItem == cvVariable",
+                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariable:mat' || viewItem == 'cvVariable:pointcloud')",
                     "group": "1_pairing"
                 },
                 {
                     "command": "cv-debugmate.unpairVariable",
-                    "when": "view == cv-debugmate-variables && viewItem == cvVariablePaired",
+                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariablePaired:mat' || viewItem == 'cvVariablePaired:pointcloud')",
                     "group": "1_pairing"
                 }
             ]

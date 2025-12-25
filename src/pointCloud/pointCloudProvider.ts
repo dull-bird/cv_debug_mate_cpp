@@ -46,7 +46,7 @@ export async function drawPointCloud(
     }
 
     // Show the webview to visualize the points
-    const panelTitle = `View: point cloud ${variableName}`;
+    const panelTitle = `View: ${variableName}`;
     const panel = PanelManager.getOrCreatePanel(
       "3DPointViewer",
       panelTitle,

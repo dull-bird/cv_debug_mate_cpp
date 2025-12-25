@@ -54,6 +54,76 @@ export function isMat(variableInfo: any): boolean {
   return result;
 }
 
+// Function to check if a cv::Mat is likely 1D (n*1 or 1*n) based on its summary/value string
+export function isLikely1DMat(variableInfo: any): { is1D: boolean; size: number } {
+  if (!isMat(variableInfo)) return { is1D: false, size: 0 };
+  const result = (variableInfo.result || variableInfo.value || "").toLowerCase();
+  const type = (variableInfo.type || "").toLowerCase();
+  
+  // 1. Try to parse dimensions from summary string (e.g. "[1 x 100]", "100x1")
+  const dimMatch = result.match(/\[\s*(\d+)\s*x\s*(\d+)\s*\]/) || result.match(/(\d+)\s*x\s*(\d+)/);
+  if (dimMatch) {
+    const rows = parseInt(dimMatch[1]);
+    const cols = parseInt(dimMatch[2]);
+    if (rows === 1 || cols === 1) {
+      return { is1D: true, size: rows * cols };
+    }
+  }
+
+  // 2. Check for common 1D Mat typedefs/templates if dimensions aren't in summary
+  // e.g., Mat1b, Mat1f, Mat1d (usually 1D vectors or single channel images)
+  // but many people use Mat1f for 1D data.
+  if (type.includes("mat1b") || type.includes("mat1s") || type.includes("mat1w") || 
+      type.includes("mat1i") || type.includes("mat1f") || type.includes("mat1d")) {
+    // If it's one of these and we see a single number in result like "100", 
+    // it might be a 1D mat.
+    const sizeMatch = result.match(/^(\d+)$/) || result.match(/size=(\d+)/);
+    if (sizeMatch) {
+      return { is1D: true, size: parseInt(sizeMatch[1]) };
+    }
+  }
+
+  return { is1D: false, size: 0 };
+}
+
+// Function to check if the variable is a standard 1D vector (int, float, double, uchar, etc.)
+export function is1DVector(variableInfo: any): { is1D: boolean; elementType: string; size: number } {
+  const type = variableInfo.type || "";
+  
+  // Match std::vector<T> where T is a basic numeric type
+  const vectorMatch = type.match(/std::(?:__1::)?vector<\s*([^,>]+?)\s*(?:,.*)?>/);
+  
+  if (vectorMatch) {
+    const elementType = vectorMatch[1].trim();
+    const basicTypes = [
+      'int', 'float', 'double', 'char', 'unsigned char', 'uchar', 
+      'short', 'unsigned short', 'ushort', 'long', 'unsigned long',
+      'long long', 'unsigned long long', 'int32_t', 'uint32_t', 
+      'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
+    ];
+    
+    // Check if it's a basic numeric type
+    const isBasic = basicTypes.some(t => 
+      elementType === t || 
+      elementType === `class ${t}` || 
+      elementType === `struct ${t}` ||
+      (elementType.startsWith('unsigned ') && basicTypes.includes(elementType.replace('unsigned ', '')))
+    );
+    
+    if (isBasic) {
+      // Try to parse size from value string
+      let size = 0;
+      const val = variableInfo.value || "";
+      const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
+      if (sizeMatch) size = parseInt(sizeMatch[1]);
+      
+      return { is1D: true, elementType, size };
+    }
+  }
+  
+  return { is1D: false, elementType: "", size: 0 };
+}
+
 // Get bytes per element based on depth
 export function getBytesPerElement(depth: number): number {
   switch (depth) {

@@ -49,12 +49,20 @@ int main() {
   cv::Mat_<cv::Vec3f> floatImg_template;
   floatImg.copyTo(floatImg_template);
 
+  cv::Mat img_small;
+  cv::resize(img, img_small, cv::Size(), 0.1, 0.1);
+
+  // 1-D mat
+  cv::Mat mat_1d = (cv::Mat_<float>(1, 10) << 0.0f, 1.0f, 2.0f, 3.0f, 4.0f,
+                    5.0f, 6.0f, 7.0f, 8.0f, 9.0f);
+
   // ============================================
   // Test 2: Create a point cloud
   // ============================================
 
   std::vector<cv::Point3f> cloud;
   std::vector<cv::Point3d> cloud_d;
+  std::vector<float> vec_x, vec_y, vec_z;
 
   // Generate a sphere point cloud
   const int numPoints = 5000;
@@ -90,6 +98,9 @@ int main() {
     float z = (static_cast<float>(rand()) / RAND_MAX) * 20.0f - 10.0f;
     cloud.push_back(cv::Point3f(x, y, z));
     cloud_d.push_back(cv::Point3d(x, y, z));
+    vec_x.push_back(x);
+    vec_y.push_back(y);
+    vec_z.push_back(z);
   }
 
   std::cout << "Test data created:" << std::endl;

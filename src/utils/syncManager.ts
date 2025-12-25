@@ -27,6 +27,17 @@ export class SyncManager {
     private static groupToIndex: Map<string, number> = new Map();
     private static nextGroupIndex = 0;
 
+    // variableName -> size (confirmed by evaluation)
+    private static confirmed1DVariables: Map<string, number> = new Map();
+
+    static markAs1D(variableName: string, size: number) {
+        this.confirmed1DVariables.set(variableName, size);
+    }
+
+    static getConfirmed1DSize(variableName: string): number | undefined {
+        return this.confirmed1DVariables.get(variableName);
+    }
+
     // Track if a variable has received the group state at least once
     private static variableHasSynced: Set<string> = new Set();
 

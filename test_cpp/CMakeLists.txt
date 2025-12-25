@@ -37,6 +37,17 @@ message(STATUS "OpenCV found: ${OpenCV_VERSION} at ${OpenCV_DIR}")
 add_executable(test_debugmate main.cpp)
 target_link_libraries(test_debugmate ${OpenCV_LIBS})
 
+# 为 Release 模式添加调试符号
+if(MSVC)
+    # /Zi 生成调试信息 PDB 文件
+    target_compile_options(test_debugmate PRIVATE $<$<CONFIG:Release>:/Zi>)
+    # /DEBUG 告诉链接器生成 PDB
+    target_link_options(test_debugmate PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+else()
+    # 对于 GCC 和 Clang，添加 -g 选项
+    target_compile_options(test_debugmate PRIVATE $<$<CONFIG:Release>:-g>)
+endif()
+
 # Auto copy OpenCV DLLs to output directory (only for MSVC builds)
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # Get OpenCV bin directory (where DLLs are located)

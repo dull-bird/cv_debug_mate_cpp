@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import { getEvaluateContext } from "./utils/debugger";
-import { isPoint3Vector, isMat } from "./utils/opencv";
 import { drawPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage } from "./matImage/matProvider";
+import { drawPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat } from "./utils/opencv";
+import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Extension "cv-debugmate-cpp" is now active.');
@@ -32,6 +34,13 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("cv-debugmate.refreshVariables", () => {
       cvVariablesProvider.refresh();
+    })
+  );
+
+  // Helper command for providers
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cv-debugmate.getVariables", () => {
+      return cvVariablesProvider.getVariables();
     })
   );
 
@@ -70,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  async function visualizeVariable(variable: any) {
+  async function visualizeVariable(variable: any, force: boolean = false) {
     console.log("========== OpenCV Visualizer Start ==========");
     const debugSession = vscode.debug.activeDebugSession;
 
@@ -135,34 +144,68 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       // Generate a more robust state token based on the evaluated value
-      // This is much more stable than frameId on Mac/Clang (CodeLLDB)
       const valueSummary = variableInfo.result || "";
       const stateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
 
-      if (PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken) ||
-          PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
-        console.log("Panel is fresh, just revealing it.");
-        const viewType = isMat(variable) ? "MatImageViewer" : "3DPointViewer";
-        PanelManager.getOrCreatePanel(viewType, `View: ${variableName}`, debugSession.id, variableName);
+      const point3Info = isPoint3Vector(variableInfo);
+      const isMatType = isMat(variableInfo);
+      const is1DMatType = isLikely1DMat(variableInfo);
+      const vector1D = is1DVector(variableInfo);
+      const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
+
+      let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
+      if (point3Info.isPoint3) {
+        viewType = "3DPointViewer";
+      } else if (vector1D.is1D || is1DMatType.is1D || confirmed1DSize !== undefined) {
+        viewType = "CurvePlotViewer";
+      }
+
+      if (!force && PanelManager.isPanelFresh(viewType, debugSession.id, variableName, stateToken)) {
+        console.log(`Panel ${viewType} is fresh, just revealing it.`);
+        const panelTitle = `View: ${variableName}`;
+        PanelManager.getOrCreatePanel(viewType, panelTitle, debugSession.id, variableName);
         return;
       }
 
-      console.log("--- Variable Info ---");
-
-      const point3Info = isPoint3Vector(variableInfo);
-      const isMatType = isMat(variableInfo);
-      
       const finalStateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
 
       if (point3Info.isPoint3) {
         await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble);
         PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, finalStateToken);
       } else if (isMatType) {
-        await drawMatImage(debugSession, variableInfo, frameId, variableName);
-        PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, finalStateToken);
+        // Confirm if it's really 1D Mat
+        let matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
+        
+        // Fallback for rows/cols if they are 0 (likely failed to read from variablesReference)
+        if (matInfo.rows === 0 || matInfo.cols === 0) {
+          const rowsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.rows`, frameId, context: "watch" });
+          const colsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.cols`, frameId, context: "watch" });
+          matInfo.rows = parseInt(rowsResp.result) || 0;
+          matInfo.cols = parseInt(colsResp.result) || 0;
+          
+          if (matInfo.channels === 1) { // Only check channels if rows/cols were missing
+             const chanResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.channels()`, frameId, context: "watch" });
+             matInfo.channels = parseInt(chanResp.result) || 1;
+          }
+        }
+
+        if (matInfo.channels === 1 && (matInfo.rows === 1 || matInfo.cols === 1)) {
+          // Mark as 1D and refresh UI
+          SyncManager.markAs1D(variableName, matInfo.rows * matInfo.cols);
+          cvVariablesProvider.refresh();
+          
+          await drawPlot(debugSession, variableName, matInfo);
+          PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, finalStateToken);
+        } else {
+          await drawMatImage(debugSession, variableInfo, frameId, variableName);
+          PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, finalStateToken);
+        }
+      } else if (vector1D.is1D) {
+        await drawPlot(debugSession, variableName, vector1D.elementType);
+        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, finalStateToken);
       } else {
         vscode.window.showErrorMessage(
-          "Variable is neither a vector of cv::Point3f/cv::Point3d nor a cv::Mat."
+          "Variable is not visualizable (supported: cv::Mat, Point3 vector, or 1D numeric vector)."
         );
       }
       
@@ -179,7 +222,7 @@ export function activate(context: vscode.ExtensionContext) {
       "extension.viewVariable",
       async (selectedVariable: any) => {
         const variable = selectedVariable.variable;
-        await visualizeVariable(variable);
+        await visualizeVariable(variable, false); // Changed to false
       }
     )
   );
@@ -189,7 +232,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "cv-debugmate.viewVariable",
       async (cvVariable: CVVariable) => {
-        await visualizeVariable(cvVariable);
+        await visualizeVariable(cvVariable, false); // Changed to false
       }
     )
   );
