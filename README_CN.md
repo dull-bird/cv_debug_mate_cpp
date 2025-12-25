@@ -33,6 +33,14 @@
 - 鼠标交互式 3D 旋转、平移和缩放
 - 基于 Three.js 渲染
 
+### 📈 1D 数据曲线图可视化
+- 将 `std::vector<int/float/double/uchar>` 等数值向量绘制为折线图
+- **自动识别 1D Mat**：自动将 `1xN` 或 `Nx1` 的单通道 `cv::Mat` 识别为 1D 数据并进行曲线绘制
+- **自定义 X 轴**：支持选择“索引 (Index)”或当前作用域内其他长度一致的 1D 变量作为 X 轴坐标
+- **丰富交互**：支持框选放大 (Zoom to Rectangle)、平移 (Pan) 以及一键复位 (Home)
+- **数值追踪**：鼠标悬停自动捕捉最近的数据点并显示精确的 X-Y 坐标
+- **数据导出**：支持将当前曲线图保存为 PNG 图片，或将 X-Y 原始数据导出为 CSV 文件
+
 ### 🔍 CV DebugMate 面板
 - **自动变量收集**：自动检测当前堆栈帧中所有可可视化的 OpenCV 变量。
 - **专用侧边栏视图**：在“运行和调试”侧边栏中新增专用面板，快速访问所有 Mat 和点云变量。
@@ -80,6 +88,9 @@ src/
 ### 点云可视化
 ![点云可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
+### 1D 曲线图可视化
+![1D 曲线图可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
+
 ---
 
 ## 调试器支持
@@ -90,7 +101,6 @@ src/
 | GCC | C/C++ (cppdbg) | ✅ | ✅ | Windows MinGW 环境已测试 |
 | Clang+MSVC | CodeLLDB | ✅ | ❌ | Windows 已测试。LLDB 无法解析 MSVC STL，vector size 始终返回 0 |
 | Clang | CodeLLDB | ✅ | ✅ | macOS 已测试 |
-| GDB | C/C++ (cppdbg) | ✅ | ✅ | Linux 支持已确认 |
 
 ### 已知限制
 
@@ -105,7 +115,7 @@ src/
 2. 打开 **“运行和调试”** 侧边栏。
 3. 找到 **CV DebugMate** 标题栏。
 4. 当前作用域内所有可预览的变量将自动显示。
-5. 点击变量右侧的 **“眼睛”图标** 或变量名进行查看。
+5. 点击变量名进行查看。
 6. 点击 **“链接”图标** 可将变量与其他变量配对，实现联动对比。
 
 ### 方法 2：右键菜单
@@ -127,6 +137,10 @@ src/
 ### 点云
 - `std::vector<cv::Point3f>`
 - `std::vector<cv::Point3d>`
+
+### 1D 数据 (曲线图)
+- `std::vector<int>`、`std::vector<float>`、`std::vector<double>`、`std::vector<uchar>` 等数值向量
+- `1xN` 或 `Nx1` 的单通道 `cv::Mat` (自动转换)
 
 ---
 
@@ -166,6 +180,7 @@ CV DebugMate C++ 通过 **VS Code 调试适配器协议（DAP）** 从调试会�
 - **4）解析并渲染**：
   - Mat：解码原始字节/原始浮点 → Canvas 渲染（缩放/平移/网格/像素值）。
   - 点云：解析 XYZ → Three.js 渲染与交互。
+  - 1D 数据：解析数值序列 → 高性能 Canvas 曲线绘制（支持框选放大、数据导出）。
 
 ### 说明 / 限制
 - **LLDB + MSVC STL** 支持有限，`vector` 相关信息可能不可靠（例如 size=0），点云功能可能不可用或更慢。

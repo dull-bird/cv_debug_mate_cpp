@@ -33,6 +33,14 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 - Interactive 3D rotation, pan, and zoom
 - Powered by Three.js
 
+### 📈 1D Data Plotting
+- Visualize numeric vectors like `std::vector<int/float/double/uchar>` as 2D line plots
+- **Auto 1D Mat Detection**: Automatically recognizes single-channel `1xN` or `Nx1` `cv::Mat` as 1D data for plotting
+- **Custom X-Axis**: Choose between "Index" or any other compatible 1D variable in scope as the X-axis coordinate
+- **Interactive Plotting**: Supports rectangle zoom (Zoom to Rectangle), panning, and one-click reset (Home)
+- **Data Tracking**: Mouse hover automatically snaps to the nearest data point and displays precise X-Y coordinates
+- **Export Data**: Save the current plot as a PNG image or export raw X-Y data to a CSV file
+
 ### 🔍 CV DebugMate Panel
 - **Automatic Variable Collection**: Automatically detects all visualizable OpenCV variables in the current stack frame.
 - **Dedicated Sidebar View**: A new view in the Debug sidebar for quick access to all Mat and Point Cloud variables.
@@ -80,6 +88,9 @@ src/
 ### Point Cloud Visualization
 ![Point Cloud Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
+### 1D Curve Plotting
+![1D Curve Plotting](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
+
 ---
 
 ## Supported Debuggers
@@ -90,7 +101,7 @@ src/
 |GCC | C/C++ (cppdbg) |✅ | ✅ | Tested on Windows MinGW Environment |
 | Clang+MSVC | CodeLLDB | ✅ | ❌ | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
 | Clang |  CodeLLDB | ✅ | ✅ | Tested on macOS |
-| GDB | C/C++ (cppdbg) | ✅ | ✅ | Linux support confirmed |
+
 
 ### Known Limitations
 
@@ -105,7 +116,7 @@ src/
 2. Open the **Run and Debug** sidebar.
 3. Locate the **CV DebugMate** section.
 4. All visualizable variables in the current scope will appear automatically.
-5. Click the **Eye icon** or variable name to view.
+5. Click the variable name to view.
 6. Click the **Link icon** to pair variables for synchronized viewing.
 
 ### Option 2: Context Menu
@@ -127,6 +138,10 @@ src/
 ### Point Clouds
 - `std::vector<cv::Point3f>`
 - `std::vector<cv::Point3d>`
+
+### 1D Data (Plots)
+- Numeric vectors: `std::vector<int>`, `std::vector<float>`, `std::vector<double>`, `std::vector<uchar>`, etc.
+- 1D single-channel `cv::Mat` (1xN or Nx1)
 
 ---
 
@@ -165,6 +180,7 @@ CV DebugMate C++ uses the **VS Code Debug Adapter Protocol (DAP)** to pull OpenC
 - **4) Decode & render**:
   - Mat → decode raw bytes (or raw floats) and render via Canvas (pan/zoom/grid/values).
   - Point cloud → parse XYZ triplets and render via Three.js.
+  - 1D Data → parse numeric sequences and render as high-performance Canvas plots (with rectangle zoom and data export).
 
 ### Notes / limitations
 - **LLDB + MSVC STL** has limited support; vector parsing may fail (e.g. size reported as 0), so point clouds can be unavailable or slower.
