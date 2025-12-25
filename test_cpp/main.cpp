@@ -40,6 +40,8 @@ int main() {
   // Create a floating point image
   cv::Mat floatImg;
   img.convertTo(floatImg, CV_32FC3, 1.0 / 255.0 / 2);
+  floatImg -= cv::Scalar(0.5f, 0.5f, 0.5f) / 2;
+  floatImg *= 1000.0f; // Scale up for better visualization
 
   cv::Mat_<uchar> grayImg_template;
   grayImg.copyTo(grayImg_template);

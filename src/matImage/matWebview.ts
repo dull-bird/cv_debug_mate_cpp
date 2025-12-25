@@ -219,14 +219,9 @@ export function getWebviewContentForMat(
                     <div class="dd-menu" role="menu" aria-label="Render mode menu"></div>
                 </span>
                 <span class="dd" id="ddValueFormat">
-                    <label>Value:</label>
+                    <label>Format:</label>
                     <button class="dd-btn" id="btnValueFormat" type="button">Fixed(3)</button>
                     <div class="dd-menu" role="menu" aria-label="Value format menu"></div>
-                </span>
-                <span class="dd" id="ddUiScale">
-                    <label>Scale:</label>
-                    <button class="dd-btn" id="btnUiScale" type="button">Auto</button>
-                    <div class="dd-menu" role="menu" aria-label="UI scale menu"></div>
                 </span>
             </span>
         </div>
@@ -248,11 +243,9 @@ export function getWebviewContentForMat(
                 const btnSaveFormat = document.getElementById('btnSaveFormat');
                 const btnRenderMode = document.getElementById('btnRenderMode');
                 const btnValueFormat = document.getElementById('btnValueFormat');
-                const btnUiScale = document.getElementById('btnUiScale');
                 const ddSaveFormat = document.getElementById('ddSaveFormat');
                 const ddRenderMode = document.getElementById('ddRenderMode');
                 const ddValueFormat = document.getElementById('ddValueFormat');
-                const ddUiScale = document.getElementById('ddUiScale');
                 const loadingOverlay = document.getElementById('loading');
                 const loadingText = document.getElementById('loading-text');
                 
@@ -488,7 +481,6 @@ export function getWebviewContentForMat(
                     ddSaveFormat.classList.remove('open');
                     ddRenderMode.classList.remove('open');
                     ddValueFormat.classList.remove('open');
-                    ddUiScale.classList.remove('open');
                 }
 
                 // Measure text width once (used to make dropdown buttons/menus stable-width)
@@ -606,35 +598,26 @@ export function getWebviewContentForMat(
                         { value: 'fixed3', label: 'Fixed(3)' },
                         { value: 'fixed6', label: 'Fixed(6)' },
                         { value: 'sci2', label: 'Sci(2)' },
+                        { value: 'sci4', label: 'Sci(4)' },
                     ],
                     () => valueFormat,
                     (v) => { valueFormat = v; requestRender(); }
-                );
-                initDropdown(
-                    ddUiScale,
-                    btnUiScale,
-                    [
-                        { value: 'auto', label: 'Auto' },
-                        { value: '1', label: '1' },
-                        { value: '1.25', label: '1.25' },
-                        { value: '1.5', label: '1.5' },
-                        { value: '2', label: '2' },
-                    ],
-                    () => uiScaleMode,
-                    (v) => { uiScaleMode = v; updateUiScale(); requestRender(); }
                 );
 
                 // Defaults
                 btnSaveFormat.textContent = 'PNG';
                 btnValueFormat.textContent = 'Fixed(3)';
-                btnUiScale.textContent = 'Auto';
 
                 // Auto pick a better default for float/double
                 if (depth === 5 || depth === 6) {
                     renderMode = 'norm01';
                     btnRenderMode.textContent = 'Float * 255 → Byte';
+                    valueFormat = 'sci2'; // Scientific notation by default for floats
+                    btnValueFormat.textContent = 'Sci(2)';
+                    ddValueFormat.style.display = 'inline-flex';
                 } else {
                     btnRenderMode.textContent = 'Byte [0, 255]';
+                    ddValueFormat.style.display = 'none';
                 }
 
                 function clamp(v, lo, hi) {
@@ -643,28 +626,29 @@ export function getWebviewContentForMat(
 
                 function computeAutoUiScale() {
                     const dpr = window.devicePixelRatio || 1;
-                    // Gentle scaling: consistent feel across monitors without exploding on 4K
-                    return clamp(Math.sqrt(dpr), 1, 2);
+                    // In auto mode, we use 100% scale (1.0) as the base for 1x DPI.
+                    const baseScale = dpr;
+                    // For scientific notation or high precision, we need even more space.
+                    const formatFactor = (valueFormat === 'sci2' || valueFormat === 'sci4' || valueFormat === 'fixed6') ? 1.2 : 1.0;
+                    return clamp(baseScale * formatFactor, 1, 4);
                 }
 
                 function updateUiScale() {
-                    if (uiScaleMode === 'auto') {
-                        uiScale = computeAutoUiScale();
-                        return;
-                    }
-                    const v = parseFloat(uiScaleMode);
-                    // Allowed values: 1 / 1.25 / 1.5 / 2
-                    uiScale = (isFinite(v) ? v : 1);
+                    uiScale = computeAutoUiScale();
                 }
 
                 updateUiScale();
 
                 function formatFloat(v) {
-                    if (!isFinite(v)) return 'NaN';
-                    if (valueFormat === 'fixed3') return v.toFixed(3);
-                    if (valueFormat === 'fixed6') return v.toFixed(6);
-                    if (valueFormat === 'sci2') return v.toExponential(2);
-                    return v.toFixed(3);
+                    if (!isFinite(v)) return ' NaN ';
+                    let s = '';
+                    if (valueFormat === 'fixed3') s = v.toFixed(3);
+                    else if (valueFormat === 'fixed6') s = v.toFixed(6);
+                    else if (valueFormat === 'sci2') s = v.toExponential(2);
+                    else if (valueFormat === 'sci4') s = v.toExponential(4);
+                    else s = v.toFixed(3);
+                    // Reserve a space for the sign if positive, to align with negative numbers
+                    return (v >= 0 ? ' ' : '') + s;
                 }
 
                 function formatValue(v) {
@@ -735,53 +719,69 @@ export function getWebviewContentForMat(
 
                 function drawPixelTextOverlay() {
                     textCtx.clearRect(0, 0, viewW, viewH);
+                    if (!pixelTextEnabled) return;
 
-                     if (!pixelTextEnabled) return;
-                     // RGB shows 3 lines, needs a higher minimum scale than grayscale
-                     const minScaleForText = (channels === 3) ? 26 : PIXEL_TEXT_MIN_SCALE;
-                     if (scale < minScaleForText) return;
-
-                    // Compute visible image rect in pixel coordinates
+                    // 1. Compute visible image rect
                     const left = Math.max(0, Math.floor((-offsetX) / scale));
                     const top = Math.max(0, Math.floor((-offsetY) / scale));
                     const right = Math.min(cols - 1, Math.ceil((viewW - offsetX) / scale) - 1);
                     const bottom = Math.min(rows - 1, Math.ceil((viewH - offsetY) / scale) - 1);
-
                     if (right < left || bottom < top) return;
+
+                    // 2. Sampling: Find the ACTUAL maximum character length in the current view
+                    let actualMaxChars = 1;
+                    const step = Math.max(1, Math.floor((right - left) / 10)); // Sample ~10x10 grid
+                    for (let y = top; y <= bottom; y += step) {
+                        for (let x = left; x <= right; x += step) {
+                            const idx = (y * cols + x) * channels;
+                            for (let c = 0; c < (channels === 3 ? 3 : 1); c++) {
+                                const val = rawData[idx + c];
+                                let len = formatValue(val).length;
+                                if (channels === 3) len += 2; // "R:" prefix
+                                if (len > actualMaxChars) actualMaxChars = len;
+                            }
+                        }
+                    }
+
+                    const numLines = (channels === 3) ? 3 : 1;
+                    const fillFactor = 0.90; // Use 90% of the cell
+                    const usableCellW = scale * fillFactor;
+                    const usableCellH = scale * fillFactor;
+
+                    // Measure actual character width ratio for the monospace font
+                    textCtx.font = "100px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+                    const charWidthRatio = textCtx.measureText("0").width / 100;
+
+                    // Calculate max font size that fits both width and height
+                    const fontSizeW = usableCellW / (charWidthRatio * actualMaxChars);
+                    const fontSizeH = usableCellH / (1.05 * numLines); // 1.05 for line spacing
+                    
+                    let fontSize = Math.floor(Math.min(fontSizeW, fontSizeH));
+                    
+                    // 3. Minimum 8px requirement
+                    if (fontSize < 8) return;
+                    
+                     fontSize = Math.min(16, fontSize);
+
+                    const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+                    const lineHeight = Math.floor(fontSize * 1.05);
+                    
+                    textCtx.font = fontSize + 'px ' + fontFamily;
+                    textCtx.textAlign = 'center';
+                    textCtx.textBaseline = 'middle';
+                    textCtx.lineWidth = Math.max(1, Math.floor(fontSize / 6));
+                    textCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+                    textCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+
+                    // Since fontSize is derived from actualMaxChars, it is guaranteed to fit.
+                    // We remove the secondary fit check that was causing rendering to be skipped.
+                    const padGray = 1;
+                    const padRgb = 1;
 
                     const visibleW = right - left + 1;
                     const visibleH = bottom - top + 1;
                     const visibleCount = visibleW * visibleH;
                     if (visibleCount > MAX_PIXEL_TEXT_LABELS) return;
-
-                     // Adaptive font size based on current zoom (scale) and UI scale
-                     // For grayscale, we want it larger; for RGB (3 lines), we need it smaller to fit.
-                     const baseSize = (channels === 3) ? (scale / 7) : (scale / 4);
-                     const fontSize = Math.max(8, Math.min(48, Math.round(baseSize * uiScale)));
-                     const fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-                     const lineHeight = Math.max(fontSize, Math.round(fontSize * 1.1)); 
-                     
-                     const padGray = 2; // px padding inside each cell (grayscale)
-                     const padRgb = 1;  // px padding inside each cell (RGB uses a bit more space)
-                     textCtx.font = fontSize + 'px ' + fontFamily;
-                    textCtx.textAlign = 'center';
-                    textCtx.textBaseline = 'middle';
-                    // Adaptive stroke width based on font size
-                    textCtx.lineWidth = Math.max(1, fontSize / 5);
-                    textCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
-                    textCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-
-                    function canFitTextInCell(lines, cellInnerW, cellInnerH) {
-                        if (cellInnerW <= 0 || cellInnerH <= 0) return false;
-                        if (lines.length * lineHeight > cellInnerH) return false;
-                        // Check max line width
-                        let maxW = 0;
-                        for (const s of lines) {
-                            const w = textCtx.measureText(s).width;
-                            if (w > maxW) maxW = w;
-                        }
-                        return maxW <= cellInnerW;
-                    }
 
                     for (let y = top; y <= bottom; y++) {
                         const screenY = y * scale + offsetY + scale / 2;
@@ -792,53 +792,40 @@ export function getWebviewContentForMat(
                             if (screenX < -scale || screenX > viewW + scale) continue;
 
                             const idx = (y * cols + x) * channels;
-                            let label = '';
-                            if (channels === 1) {
-                                label = formatValue(rawData[idx]);
-                            } else if (channels === 3) {
+                            if (channels === 3) {
                                 const r = rawData[idx];
                                 const g = rawData[idx + 1];
                                 const b = rawData[idx + 2];
 
                                 const cellX = x * scale + offsetX;
                                 const cellY = y * scale + offsetY;
-                                const cellInnerW = Math.max(0, scale - padRgb * 2);
-                                const cellInnerH = Math.max(0, scale - padRgb * 2);
+                                const cellInnerW = scale - padRgb * 2;
+                                const cellInnerH = scale - padRgb * 2;
                                 const l1 = 'R:' + formatValue(r);
                                 const l2 = 'G:' + formatValue(g);
                                 const l3 = 'B:' + formatValue(b);
                                 const lines = [l1, l2, l3];
-                                if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
 
                                 textCtx.save();
                                 textCtx.beginPath();
                                 textCtx.rect(cellX + padRgb, cellY + padRgb, cellInnerW, cellInnerH);
                                 textCtx.clip();
 
-                                // Center the 3 lines vertically within the cell
                                 const totalH = lines.length * lineHeight;
                                 const topY = (cellY + padRgb) + (cellInnerH - totalH) / 2 + lineHeight / 2;
-                                const baseY = topY;
-                                textCtx.strokeText(l1, screenX, baseY);
-                                textCtx.fillText(l1, screenX, baseY);
-                                textCtx.strokeText(l2, screenX, baseY + lineHeight);
-                                textCtx.fillText(l2, screenX, baseY + lineHeight);
-                                textCtx.strokeText(l3, screenX, baseY + lineHeight * 2);
-                                textCtx.fillText(l3, screenX, baseY + lineHeight * 2);
+                                textCtx.strokeText(l1, screenX, topY);
+                                textCtx.fillText(l1, screenX, topY);
+                                textCtx.strokeText(l2, screenX, topY + lineHeight);
+                                textCtx.fillText(l2, screenX, topY + lineHeight);
+                                textCtx.strokeText(l3, screenX, topY + lineHeight * 2);
+                                textCtx.fillText(l3, screenX, topY + lineHeight * 2);
                                 textCtx.restore();
-                                continue;
-                            } else {
-                                continue;
-                            }
-
-                            // Grayscale: overflow check + per-cell clip
-                            if (channels === 1) {
+                            } else if (channels === 1) {
+                                const label = formatValue(rawData[idx]);
                                 const cellX = x * scale + offsetX;
                                 const cellY = y * scale + offsetY;
-                                const cellInnerW = Math.max(0, scale - padGray * 2);
-                                const cellInnerH = Math.max(0, scale - padGray * 2);
-                                const lines = [label];
-                                if (!canFitTextInCell(lines, cellInnerW, cellInnerH)) continue;
+                                const cellInnerW = scale - padGray * 2;
+                                const cellInnerH = scale - padGray * 2;
 
                                 textCtx.save();
                                 textCtx.beginPath();
