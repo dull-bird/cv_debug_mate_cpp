@@ -379,6 +379,8 @@ export function getWebviewContentForMat(
                     rawData = bytesToTypedArray(rawBytes, depth);
                     updateOffscreenFromRaw();
                     
+                    isInitialized = true;
+                    
                     if (pendingSyncState) {
                         applyViewState(pendingSyncState);
                         pendingSyncState = null;
@@ -386,7 +388,6 @@ export function getWebviewContentForMat(
                         resetView();
                     }
                     
-                    isInitialized = true;
                     requestRender();
                 }
 

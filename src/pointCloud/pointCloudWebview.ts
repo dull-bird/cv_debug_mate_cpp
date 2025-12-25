@@ -335,14 +335,14 @@ export function getWebviewContentForPointCloud(
                     controls.update();
                 }
                 
+                isInitialized = true;
+                
                 if (pendingSyncState) {
                     applyViewState(pendingSyncState);
                     pendingSyncState = null;
                 } else {
                     resetView();
                 }
-                
-                isInitialized = true;
 
                 function updateColors(mode) {
                     const colorAttr = geometry.attributes.color;

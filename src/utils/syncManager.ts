@@ -15,6 +15,8 @@ export interface ViewState {
 
 export class SyncManager {
     private static panels: Map<string, vscode.WebviewPanel> = new Map();
+    // variableName -> last known state (even if not in a group)
+    private static variableStates: Map<string, ViewState> = new Map();
     // variableName -> groupId
     private static variableToGroup: Map<string, string> = new Map();
     // groupId -> Set of variableNames
@@ -25,11 +27,14 @@ export class SyncManager {
     private static groupToIndex: Map<string, number> = new Map();
     private static nextGroupIndex = 0;
 
+    // Track if a variable has received the group state at least once
+    private static variableHasSynced: Set<string> = new Set();
+
     static registerPanel(variableName: string, panel: vscode.WebviewPanel) {
         this.panels.set(variableName, panel);
+        this.variableHasSynced.delete(variableName); // Reset sync flag for new/reused panel
         
         // If this variable is in a group and that group has a state, sync it immediately
-        // We use a small delay to ensure the webview is ready to receive messages
         const groupId = this.variableToGroup.get(variableName);
         if (groupId) {
             const state = this.groupStates.get(groupId);
@@ -40,13 +45,16 @@ export class SyncManager {
                             command: 'setView',
                             state: state
                         });
+                        this.variableHasSynced.add(variableName);
                     }
-                }, 500); // 50ms should be enough for the webview to initialize its listeners
+                }, 500);
             }
         }
 
         panel.onDidDispose(() => {
             this.panels.delete(variableName);
+            this.variableStates.delete(variableName);
+            this.variableHasSynced.delete(variableName);
         });
     }
 
@@ -55,33 +63,68 @@ export class SyncManager {
         let groupId2 = this.variableToGroup.get(var2);
 
         if (!groupId1 && !groupId2) {
-            // Create new group
+            // Neither is in a group. Determine who should be the base.
+            const state1 = this.variableStates.get(var1);
+            const state2 = this.variableStates.get(var2);
+            
+            // Heuristic: if one has a non-default view (zoomed or panned), it's the base.
+            const isChanged = (s?: ViewState) => s && (
+                (s.scale !== undefined && Math.abs(s.scale - 1.0) > 0.001) ||
+                (s.offsetX !== 0 || s.offsetY !== 0) ||
+                (s.cameraPosition !== undefined)
+            );
+
+            const hasChanged1 = isChanged(state1);
+            const hasChanged2 = isChanged(state2);
+
             const newGroupId = `group-${Date.now()}`;
-            this.addToGroup(var1, newGroupId);
-            this.addToGroup(var2, newGroupId);
+            if (!hasChanged1 && hasChanged2) {
+                // var2 wins
+                this.addToGroup(var2, newGroupId);
+                this.addToGroup(var1, newGroupId);
+            } else {
+                // var1 wins (default)
+                this.addToGroup(var1, newGroupId);
+                this.addToGroup(var2, newGroupId);
+            }
         } else if (groupId1 && !groupId2) {
+            // var1 is already in a group, add var2 to it (keeps group 1's state)
             this.addToGroup(var2, groupId1);
         } else if (!groupId1 && groupId2) {
+            // var2 is already in a group, add var1 to it (keeps group 2's state)
             this.addToGroup(var1, groupId2);
         } else if (groupId1 && groupId2 && groupId1 !== groupId2) {
-            // Merge group 2 into group 1
-            const vars2 = this.groupToVariables.get(groupId2);
-            if (vars2) {
-                for (const v of vars2) {
-                    this.addToGroup(v, groupId1);
-                }
+            // Both are in groups. Merge the newer group into the older group to preserve established state.
+            const index1 = this.groupToIndex.get(groupId1) ?? Infinity;
+            const index2 = this.groupToIndex.get(groupId2) ?? Infinity;
+            
+            if (index1 <= index2) {
+                this.mergeGroups(groupId2, groupId1);
+            } else {
+                this.mergeGroups(groupId1, groupId2);
             }
-            this.groupToVariables.delete(groupId2);
-            this.groupStates.delete(groupId2);
         }
 
-        // IMPORTANT: After pairing, ensure both variables are synced to the group's state
-        // If one of them has a state, it will be in groupStates[groupId] now.
-        const finalGroupId = this.variableToGroup.get(var1)!;
-        const state = this.groupStates.get(finalGroupId);
-        if (state) {
-            this.broadcastToGroup(finalGroupId, state);
+        // Broadcast the master state to everyone in the final group
+        const finalGroupId = this.variableToGroup.get(var1);
+        if (finalGroupId) {
+            const state = this.groupStates.get(finalGroupId);
+            if (state) {
+                this.broadcastToGroup(finalGroupId, state);
+            }
         }
+    }
+
+    private static mergeGroups(sourceGroupId: string, targetGroupId: string) {
+        const vars = this.groupToVariables.get(sourceGroupId);
+        if (vars) {
+            for (const v of vars) {
+                this.addToGroup(v, targetGroupId);
+            }
+        }
+        this.groupToVariables.delete(sourceGroupId);
+        this.groupStates.delete(sourceGroupId);
+        this.groupToIndex.delete(sourceGroupId);
     }
 
     private static addToGroup(varName: string, groupId: string) {
@@ -93,7 +136,13 @@ export class SyncManager {
         this.groupToVariables.get(groupId)!.add(varName);
 
         // If the variable has a state and the group doesn't, let this variable define the group state
-        // (This happens during initial grouping)
+        if (!this.groupStates.has(groupId)) {
+            const state = this.variableStates.get(varName);
+            if (state) {
+                this.groupStates.set(groupId, state);
+                this.variableHasSynced.add(varName); // This variable defines the state, so it's "synced"
+            }
+        }
     }
 
     private static broadcastToGroup(groupId: string, state: ViewState, excludeVar?: string) {
@@ -107,6 +156,7 @@ export class SyncManager {
                             command: 'setView',
                             state: state
                         });
+                        this.variableHasSynced.add(targetVar);
                     }
                 }
             }
@@ -139,9 +189,23 @@ export class SyncManager {
     }
 
     static syncView(sourceVar: string, state: ViewState) {
+        // Store as last known state for this variable
+        this.variableStates.set(sourceVar, state);
+
         const groupId = this.variableToGroup.get(sourceVar);
         if (groupId) {
-            // Store as last known state for this group
+            // CRITICAL FIX: If the group already has a state, ignore the first report
+            // from a variable that hasn't received the group state yet.
+            // This prevents a newly opened panel from overwriting the group state with its default (100%) zoom.
+            const hasGroupState = this.groupStates.has(groupId);
+            const hasSynced = this.variableHasSynced.has(sourceVar);
+
+            if (hasGroupState && !hasSynced) {
+                this.variableHasSynced.add(sourceVar);
+                return;
+            }
+
+            this.variableHasSynced.add(sourceVar);
             this.groupStates.set(groupId, state);
             this.broadcastToGroup(groupId, state, sourceVar);
         }
