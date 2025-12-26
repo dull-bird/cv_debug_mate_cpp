@@ -6,6 +6,10 @@
 #define M_PI 3.14159265358979323846
 
 int main() {
+
+  cv::Matx33f rotationMatrix =
+      cv::Matx33f::eye(); // Identity matrix as a placeholder
+
   // ============================================
   // Test 1: Create a cv::Mat image
   // ============================================

@@ -1,7 +1,7 @@
 // Function to check if the variable is a vector of cv::Point3f or cv::Point3d
-// Returns: { isPoint3: boolean, isDouble: boolean }
+// Returns: { isPoint3: boolean, isDouble: boolean, size: number }
 // isDouble: true for Point3d (double), false for Point3f (float)
-export function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble: boolean } {
+export function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble: boolean; size: number } {
   console.log("Checking if variable is Point3 vector");
   const type = variableInfo.type || "";
   console.log("Variable type string:", type);
@@ -29,8 +29,15 @@ export function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble
   
   const isPoint3 = isDouble || isFloat || isGeneric;
   
-  console.log(`isPoint3Vector result: isPoint3=${isPoint3}, isDouble=${isDouble}`);
-  return { isPoint3, isDouble };
+  let size = 0;
+  if (isPoint3) {
+    const val = variableInfo.value || "";
+    const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
+    if (sizeMatch) size = parseInt(sizeMatch[1]);
+  }
+
+  console.log(`isPoint3Vector result: isPoint3=${isPoint3}, isDouble=${isDouble}, size=${size}`);
+  return { isPoint3, isDouble, size };
 }
 
 // Function to check if the variable is a cv::Mat or cv::Mat_<T>

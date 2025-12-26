@@ -2,7 +2,41 @@ import * as vscode from 'vscode';
 import { isMat, isPoint3Vector, is1DVector, isLikely1DMat } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
+const COLORS = [
+    '#3794ef', // Blue
+    '#f14c4c', // Red
+    '#89d185', // Green
+    '#cca700', // Yellow
+    '#d18616', // Orange
+    '#b180d7', // Purple
+    '#117da0', // Cyan
+    '#e12672', // Magenta
+    '#008080', // Teal
+    '#73c991', // Lime
+    '#f06292', // Pink
+    '#ffd700'  // Gold
+];
+
+const SVG_PATHS = {
+    mat: "M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Zm10.5 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM2.5 14.5h11V9.38l-3.344-3.345a.25.25 0 0 0-.353 0l-3.05 3.05-1.147-1.147a.25.25 0 0 0-.353 0L2.5 11.188Z",
+    pointcloud: "m8.31 1.066 6.5 3.5a.75.25 0 0 1 0 .434l-6.5 3.5a.75.75 0 0 1-.62 0l-6.5-3.5a.75.25 0 0 1 0-.434l6.5-3.5a.75.75 0 0 1 .62 0ZM2.51 4.75 8 7.708l5.49-2.958L8 1.792Zm-1.2 4.016a.75.75 0 0 1 1.024-.274L8 11.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Zm0 3a.75.75 0 0 1 1.024-.274L8 14.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Z",
+    group: "M3 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H3Zm0 1h10a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
+};
+
+function getColoredIcon(kind: 'mat' | 'pointcloud' | 'plot' | 'group', color: string): { light: vscode.Uri, dark: vscode.Uri } {
+    let path = SVG_PATHS.group;
+    if (kind === 'mat') path = SVG_PATHS.mat;
+    else if (kind === 'pointcloud') path = SVG_PATHS.pointcloud;
+    
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><path fill="${color}" d="${path}"></path></svg>`;
+    const base64 = Buffer.from(svg).toString('base64');
+    const iconUri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
+    return { light: iconUri, dark: iconUri };
+}
+
 export class CVVariable extends vscode.TreeItem {
+    public readonly isEmpty: boolean;
+
     constructor(
         public readonly name: string,
         public readonly type: string,
@@ -12,6 +46,7 @@ export class CVVariable extends vscode.TreeItem {
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly kind: 'mat' | 'pointcloud' | 'plot',
         public readonly size: number = 0,
+        public readonly sizeInfo: string = '',
         public isPaired: boolean = false,
         public pairedWith?: string,
         public groupIndex?: number
@@ -23,55 +58,56 @@ export class CVVariable extends vscode.TreeItem {
         if (kind === 'pointcloud') typeIcon = 'layers';
         else if (kind === 'plot') typeIcon = 'graph';
         
+        this.isEmpty = (sizeInfo === '0' || sizeInfo === '0x0' || sizeInfo === '' || size === 0);
+        const displaySize = this.isEmpty ? 'empty' : sizeInfo;
+        
+        // Only show size in description, no type
+        this.description = `[${displaySize}]`;
+
         if (isPaired && groupIndex !== undefined && kind !== 'plot') {
-            const colors = [
-                '#3794ef', // Blue
-                '#f14c4c', // Red
-                '#89d185', // Green
-                '#cca700', // Yellow
-                '#d18616', // Orange
-                '#b180d7', // Purple
-                '#117da0', // Cyan
-                '#e12672', // Magenta
-                '#008080', // Teal
-                '#73c991', // Lime
-                '#f06292', // Pink
-                '#ffd700'  // Gold
-            ];
-            const color = colors[groupIndex % colors.length];
-            
-            // Use custom SVG to prevent VS Code from turning the icon white on selection
-            const svgPath = kind === 'mat' 
-                ? "M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25Zm10.5 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM2.5 14.5h11V9.38l-3.344-3.345a.25.25 0 0 0-.353 0l-3.05 3.05-1.147-1.147a.25.25 0 0 0-.353 0L2.5 11.188Z"
-                : "m8.31 1.066 6.5 3.5a.75.25 0 0 1 0 .434l-6.5 3.5a.75.75 0 0 1-.62 0l-6.5-3.5a.75.25 0 0 1 0-.434l6.5-3.5a.75.75 0 0 1 .62 0ZM2.51 4.75 8 7.708l5.49-2.958L8 1.792Zm-1.2 4.016a.75.75 0 0 1 1.024-.274L8 11.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Zm0 3a.75.75 0 0 1 1.024-.274L8 14.208l5.666-3.05a.75.75 0 0 1 .668 1.342l-6 3.23a.75.75 0 0 1-.668 0l-6-3.23a.75.75 0 0 1-.274-1.024Z";
-            
-            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><path fill="${color}" d="${svgPath}"></path></svg>`;
-            const base64 = Buffer.from(svg).toString('base64');
-            const iconUri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
-            
-                        this.iconPath = { light: iconUri, dark: iconUri };
-            this.description = `(Group ${groupIndex + 1}) ${this.type}`;
-            this.contextValue = `cvVariablePaired:${kind}`;
+            const color = COLORS[groupIndex % COLORS.length];
+            this.iconPath = getColoredIcon(kind, color);
+            this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}`;
         } else {
             this.iconPath = new vscode.ThemeIcon(typeIcon);
-            this.description = this.type;
-            this.contextValue = `cvVariable:${kind}`;
+            this.contextValue = `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}`;
         }
 
-        this.command = {
-            command: 'cv-debugmate.viewVariable',
-            title: 'View Variable',
-            arguments: [this]
-        };
+        if (!this.isEmpty) {
+            this.command = {
+                command: 'cv-debugmate.viewVariable',
+                title: 'View Variable',
+                arguments: [this]
+            };
+        }
     }
 }
 
-export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> {
-    private _onDidChangeTreeData: vscode.EventEmitter<CVVariable | undefined | void> = new vscode.EventEmitter<CVVariable | undefined | void>();
-    readonly onDidChangeTreeData: vscode.Event<CVVariable | undefined | void> = this._onDidChangeTreeData.event;
+export class CVGroup extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly variables: CVVariable[],
+        public readonly groupIndex?: number
+    ) {
+        super(label, collapsibleState);
+        this.contextValue = 'cvGroup';
+        
+        if (groupIndex !== undefined) {
+            const color = COLORS[groupIndex % COLORS.length];
+            this.iconPath = getColoredIcon('group', color);
+        } else {
+            this.iconPath = new vscode.ThemeIcon('symbol-group');
+        }
+    }
+}
+
+export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable | CVGroup> {
+    private _onDidChangeTreeData: vscode.EventEmitter<CVVariable | CVGroup | undefined | void> = new vscode.EventEmitter<CVVariable | CVGroup | undefined | void>();
+    readonly onDidChangeTreeData: vscode.Event<CVVariable | CVGroup | undefined | void> = this._onDidChangeTreeData.event;
 
     private variables: CVVariable[] = [];
-    // We'll use SyncManager as the source of truth for pairings to keep it consistent
+    private groups: CVGroup[] = [];
     
     refresh(): void {
         this._onDidChangeTreeData.fire();
@@ -95,18 +131,23 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
         return this.variables;
     }
 
-    getTreeItem(element: CVVariable): vscode.TreeItem {
+    getTreeItem(element: CVVariable | CVGroup): vscode.TreeItem {
         return element;
     }
 
-    async getChildren(element?: CVVariable): Promise<CVVariable[]> {
-        if (element) {
-            return []; // We don't support nested variables in the tree for now
+    async getChildren(element?: CVVariable | CVGroup): Promise<(CVVariable | CVGroup)[]> {
+        if (element instanceof CVGroup) {
+            return element.variables;
+        }
+        
+        if (element instanceof CVVariable) {
+            return [];
         }
 
         const debugSession = vscode.debug.activeDebugSession;
         if (!debugSession) {
             this.variables = [];
+            this.groups = [];
             return [];
         }
 
@@ -114,12 +155,11 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
             const threadsResponse = await debugSession.customRequest('threads');
             if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
                 this.variables = [];
+                this.groups = [];
                 return [];
             }
             
-            // Use the first thread that is stopped
             const threadId = threadsResponse.threads[0].id;
-            
             const stackTraceResponse = await debugSession.customRequest('stackTrace', {
                 threadId: threadId,
                 startFrame: 0,
@@ -128,6 +168,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
             
             if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
                 this.variables = [];
+                this.groups = [];
                 return [];
             }
             
@@ -151,14 +192,22 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
                     const checkVariable = async (): Promise<CVVariable | null> => {
                         let is1DM = isLikely1DMat(v);
                         const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
+                        let r = 0, c = 0;
                         
-                        // If it's a Mat but we're not sure if it's 1D, probe it
-                        if (isM && !is1DM.is1D && confirmed1DSize === undefined && v.variablesReference > 0) {
+                        if (isM) {
+                            const dimMatch = v.value.match(/\[\s*(\d+)\s*x\s*(\d+)\s*\]/) || v.value.match(/(\d+)\s*x\s*(\d+)/);
+                            if (dimMatch) {
+                                r = parseInt(dimMatch[1]);
+                                c = parseInt(dimMatch[2]);
+                            }
+                        }
+
+                        if (isM && v.variablesReference > 0 && (r === 0 || c === 0 || (!is1DM.is1D && confirmed1DSize === undefined))) {
                             try {
                                 const children = await debugSession.customRequest('variables', {
                                     variablesReference: v.variablesReference
                                 });
-                                let r = 0, c = 0, ch = 1;
+                                let ch = 1;
                                 for (const child of children.variables) {
                                     const val = parseInt(child.value);
                                     if (child.name === 'rows') r = val;
@@ -171,19 +220,30 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
                                     is1DM = { is1D: true, size: r * c };
                                     SyncManager.markAs1D(variableName, r * c);
                                 }
-                            } catch (e) {
-                                // Ignore probing errors
-                            }
+                            } catch (e) {}
                         }
 
                         if (isM || point3.isPoint3 || vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
+                            let sizeInfo = '';
+
                             if (point3.isPoint3) {
                                 kind = 'pointcloud';
+                                size = point3.size || 0;
+                                if (size === 0) {
+                                    const sizeMatch = v.value.match(/size=(\d+)/) || v.value.match(/\[(\d+)\]/);
+                                    if (sizeMatch) size = parseInt(sizeMatch[1]);
+                                }
+                                sizeInfo = size > 0 ? `${size} points` : '';
                             } else if (vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
                                 kind = 'plot';
                                 size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DM.size);
+                                sizeInfo = size > 0 ? `${size} elements` : '';
+                            } else if (isM) {
+                                kind = 'mat';
+                                size = r * c;
+                                sizeInfo = (r > 0 && c > 0) ? `${r}x${c}` : '';
                             }
                             
                             const pairedVars = SyncManager.getPairedVariables(variableName);
@@ -197,6 +257,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
                                 vscode.TreeItemCollapsibleState.None,
                                 kind,
                                 size,
+                                sizeInfo,
                                 pairedVars.length > 0,
                                 pairedVars.length > 0 ? pairedVars.join(', ') : undefined,
                                 groupIndex
@@ -215,12 +276,45 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable> 
             }
             
             this.variables = visualizableVariables;
-            return visualizableVariables;
+            
+            const groupMap = new Map<number | undefined, CVVariable[]>();
+            for (const v of visualizableVariables) {
+                const idx = v.groupIndex;
+                if (!groupMap.has(idx)) {
+                    groupMap.set(idx, []);
+                }
+                groupMap.get(idx)!.push(v);
+            }
+
+            const resultGroups: CVGroup[] = [];
+            const sortedIndices = Array.from(groupMap.keys())
+                .filter((idx): idx is number => idx !== undefined)
+                .sort((a, b) => a - b);
+            
+            for (const idx of sortedIndices) {
+                resultGroups.push(new CVGroup(
+                    `Group ${idx + 1}`,
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    groupMap.get(idx)!,
+                    idx
+                ));
+            }
+
+            const ungrouped = groupMap.get(undefined);
+            if (ungrouped && ungrouped.length > 0) {
+                resultGroups.push(new CVGroup(
+                    '(ungrouped)',
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    ungrouped
+                ));
+            }
+
+            return resultGroups;
         } catch (error) {
             console.error('Error fetching variables:', error);
             this.variables = [];
+            this.groups = [];
             return [];
         }
     }
 }
-

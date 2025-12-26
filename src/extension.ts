@@ -184,6 +184,43 @@ export function activate(context: vscode.ExtensionContext) {
       const vector1D = is1DVector(variableInfo);
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
 
+      // Check for empty variables before proceeding
+      let isEmpty = false;
+      let reason = "";
+
+      if (point3Info.isPoint3) {
+        if (point3Info.size === 0) {
+          // Try to extract from value string if size is 0
+          const sizeMatch = variableInfo.result?.match(/size=(\d+)/) || variableInfo.result?.match(/\[(\d+)\]/);
+          if (!sizeMatch || parseInt(sizeMatch[1]) === 0) {
+            isEmpty = true;
+            reason = "Point cloud is empty";
+          }
+        }
+      } else if (vector1D.is1D || is1DMatType.is1D || confirmed1DSize !== undefined) {
+        const size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DMatType.size);
+        if (size === 0) {
+          isEmpty = true;
+          reason = "Plot data is empty";
+        }
+      } else if (isMatType) {
+        // Mat empty check will be done after getMatInfoFromVariables or from value summary
+        const dimMatch = variableInfo.result?.match(/\[\s*(\d+)\s*x\s*(\d+)\s*\]/) || variableInfo.result?.match(/(\d+)\s*x\s*(\d+)/);
+        if (dimMatch) {
+          const r = parseInt(dimMatch[1]);
+          const c = parseInt(dimMatch[2]);
+          if (r === 0 || c === 0) {
+            isEmpty = true;
+            reason = "Mat is empty";
+          }
+        }
+      }
+
+      if (isEmpty) {
+        if (reveal) vscode.window.showInformationMessage(reason);
+        return;
+      }
+
       let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
       if (point3Info.isPoint3) {
         viewType = "3DPointViewer";
