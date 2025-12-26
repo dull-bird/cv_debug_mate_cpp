@@ -19,12 +19,14 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.debug.onDidChangeActiveStackItem(() => {
       cvVariablesProvider.refresh();
-      // Only refresh visible panels on step to avoid performance hit
-      refreshVisiblePanels();
+      // Debug position moved, increment global version
+      PanelManager.incrementDebugStateVersion();
+      // Step triggered: Refresh visible ones immediately
+      refreshVisiblePanels(false);
     })
   );
 
-  async function refreshVisiblePanels() {
+  async function refreshVisiblePanels(force: boolean = false) {
     const debugSession = vscode.debug.activeDebugSession;
     if (!debugSession) return;
 
@@ -35,7 +37,8 @@ export function activate(context: vscode.ExtensionContext) {
         const [viewType, sessionId, variableName] = parts;
         if (sessionId === debugSession.id) {
           try {
-            await visualizeVariable({ name: variableName, evaluateName: variableName }, false, false);
+            // Use force=true for steps or version refreshes to ensure memory is reread
+            await visualizeVariable({ name: variableName, evaluateName: variableName }, true, false);
           } catch (e) {}
         }
       }
@@ -175,10 +178,6 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      // Generate a preliminary state token based on the evaluated value
-      const valueSummary = variableInfo.result || "";
-      const stateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
-
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
       const is1DMatType = isLikely1DMat(variableInfo);
@@ -192,17 +191,8 @@ export function activate(context: vscode.ExtensionContext) {
         viewType = "CurvePlotViewer";
       }
 
-      if (!shouldForce && PanelManager.isPanelFresh(viewType, debugSession.id, variableName, stateToken)) {
-        console.log(`Panel ${viewType} is fresh, skipping re-draw.`);
-        if (reveal) {
-          const panelTitle = `View: ${variableName}`;
-          PanelManager.getOrCreatePanel(viewType, panelTitle, debugSession.id, variableName, true);
-        }
-        return;
-      }
-
       if (point3Info.isPoint3) {
-        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal);
+        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal, shouldForce);
       } else if (isMatType) {
         // Confirm if it's really 1D Mat
         let matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
@@ -227,12 +217,12 @@ export function activate(context: vscode.ExtensionContext) {
           SyncManager.markAs1D(variableName, matInfo.rows * matInfo.cols);
           cvVariablesProvider.refresh();
           
-          await drawPlot(debugSession, variableName, matInfo, reveal);
+          await drawPlot(debugSession, variableName, matInfo, reveal, shouldForce);
         } else {
-          await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal);
+          await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal, shouldForce);
         }
       } else if (vector1D.is1D) {
-        await drawPlot(debugSession, variableName, vector1D.elementType, reveal);
+        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce);
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(
@@ -240,6 +230,9 @@ export function activate(context: vscode.ExtensionContext) {
           );
         }
       }
+      
+      // Successfully visualized, mark this panel as up-to-date for the current debug version
+      PanelManager.markAsRefreshed(viewType, debugSession.id, variableName);
       
       console.log("========== OpenCV Visualizer End ==========");
     } catch (error: any) {

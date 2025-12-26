@@ -19,7 +19,8 @@ export async function drawPointCloud(
   variableInfo: any, 
   variableName: string, 
   isDouble: boolean = false,
-  reveal: boolean = true
+  reveal: boolean = true,
+  force: boolean = false
 ) {
   try {
     console.log("Drawing point cloud with debugger type:", debugSession.type);
@@ -60,7 +61,7 @@ export async function drawPointCloud(
       reveal
     );
 
-    if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
       console.log(`PointCloud panel is already up-to-date with token: ${stateToken}`);
       return;
     }

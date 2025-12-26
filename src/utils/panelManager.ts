@@ -1,7 +1,41 @@
 import * as vscode from 'vscode';
 
 export class PanelManager {
-    private static panels: Map<string, { panel: vscode.WebviewPanel, lastStateToken?: string }> = new Map();
+    private static panels: Map<string, { 
+        panel: vscode.WebviewPanel, 
+        lastStateToken?: string,
+        lastRefreshedVersion?: number 
+    }> = new Map();
+
+    private static currentDebugStateVersion = 0;
+
+    /**
+     * Increment the debug state version to track steps.
+     */
+    static incrementDebugStateVersion() {
+        this.currentDebugStateVersion++;
+    }
+
+    /**
+     * Mark a panel as having been refreshed for the current debug version.
+     */
+    static markAsRefreshed(viewType: string, sessionId: string, variableName: string) {
+        const key = `${viewType}:::${sessionId}:::${variableName}`;
+        const entry = this.panels.get(key);
+        if (entry) {
+            entry.lastRefreshedVersion = this.currentDebugStateVersion;
+        }
+    }
+
+    /**
+     * Check if a panel needs refreshing because the debug state has moved forward.
+     */
+    static needsVersionRefresh(viewType: string, sessionId: string, variableName: string): boolean {
+        const key = `${viewType}:::${sessionId}:::${variableName}`;
+        const entry = this.panels.get(key);
+        if (!entry) return false;
+        return (entry.lastRefreshedVersion ?? -1) < this.currentDebugStateVersion;
+    }
 
     /**
      * Get an existing panel or create a new one for a specific variable in a debug session.
@@ -47,8 +81,14 @@ export class PanelManager {
 
         panel.onDidChangeViewState(e => {
             if (e.webviewPanel.visible) {
-                // Trigger refresh when panel becomes visible
-                vscode.commands.executeCommand('cv-debugmate.refreshVisiblePanels');
+                const parts = key.split(':::');
+                if (parts.length === 3) {
+                    const [vType, sid, vName] = parts;
+                    if (PanelManager.needsVersionRefresh(vType, sid, vName)) {
+                        // Only trigger refresh if a debug step has occurred since last update
+                        vscode.commands.executeCommand('cv-debugmate.refreshVisiblePanels', true);
+                    }
+                }
             }
         });
 

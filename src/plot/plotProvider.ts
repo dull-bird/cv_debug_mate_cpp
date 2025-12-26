@@ -18,7 +18,8 @@ export async function drawPlot(
   debugSession: vscode.DebugSession,
   variableName: string,
   elementTypeOrMat: string | { rows: number, cols: number, channels: number, depth: number, dataPtr: string },
-  reveal: boolean = true
+  reveal: boolean = true,
+  force: boolean = false
 ) {
   try {
     let initialData: number[] | null = null;
@@ -58,7 +59,7 @@ export async function drawPlot(
       reveal
     );
 
-    if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
       console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
       return;
     }

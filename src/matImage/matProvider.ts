@@ -16,7 +16,8 @@ export async function drawMatImage(
   variableInfo: any,
   frameId: number,
   variableName: string,
-  reveal: boolean = true
+  reveal: boolean = true,
+  force: boolean = false
 ) {
   try {
     const usingLLDB = isUsingLLDB(debugSession);
@@ -144,7 +145,7 @@ export async function drawMatImage(
       reveal
     );
 
-    if (PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
       console.log(`Mat panel is already up-to-date with token: ${stateToken}`);
       return;
     }
