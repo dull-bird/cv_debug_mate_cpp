@@ -489,6 +489,13 @@ export function getWebviewContentForPlot(
                                 currentXText.textContent = message.name;
                                 updateDataBounds(); resetView();
                             }
+                        } else if (message.command === 'updateInitialData') {
+                            dataY = message.data;
+                            if (currentVariableNameX === "Index") {
+                                dataX = dataY.map(function(_, i) { return i; });
+                            }
+                            updateDataBounds();
+                            draw();
                         }
                     });
 

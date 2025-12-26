@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 import { 
   evaluateWithTimeout, 
   isUsingLLDB, 
-  readMemoryChunked 
+  readMemoryChunked,
+  getMemorySample
 } from "../utils/debugger";
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
@@ -14,7 +15,8 @@ export async function drawMatImage(
   debugSession: vscode.DebugSession,
   variableInfo: any,
   frameId: number,
-  variableName: string
+  variableName: string,
+  reveal: boolean = true
 ) {
   try {
     const usingLLDB = isUsingLLDB(debugSession);
@@ -124,6 +126,29 @@ export async function drawMatImage(
 
     console.log(`Matrix info: ${rows}x${cols}, ${channels} channels, depth=${depth}`);
 
+    const bytesPerElement = getBytesPerElement(depth);
+    const totalBytes = rows * cols * channels * bytesPerElement;
+
+    const panelTitle = `View: ${variableName}`;
+    // Check if panel is already fresh with this hard state token
+    // Now including memory sampling to detect internal pixel changes
+    // BUT only skip if it's NOT a focus-triggered refresh
+    const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+    const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
+    
+    const panel = PanelManager.getOrCreatePanel(
+      "MatImageViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    if (PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`Mat panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+
     if (isNaN(rows) || isNaN(cols) || isNaN(channels) || isNaN(depth)) {
       throw new Error("Invalid matrix dimensions or type");
     }
@@ -168,15 +193,24 @@ export async function drawMatImage(
       }
     );
 
-    // Show the webview to visualize the matrix as an image
-    const panelTitle = `View: ${variableName}`;
-    const panel = PanelManager.getOrCreatePanel(
-      "MatImageViewer",
-      panelTitle,
-      debugSession.id,
-      variableName
-    );
-    
+    // Update state token AFTER data is read
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+
+    // If panel already has content, only send data to preserve view state (zoom/pan)
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("Panel already has HTML, sending only data to preserve view state");
+      const buffer = dataResult.buffer;
+      if (buffer) {
+        await panel.webview.postMessage({
+          command: 'completeData',
+          data: new Uint8Array(buffer),
+          // Send metadata just in case they changed but didn't trigger reload
+          rows, cols, channels, depth 
+        });
+        return;
+      }
+    }
+
     panel.webview.html = getWebviewContentForMat(
       panel.webview,
       rows,

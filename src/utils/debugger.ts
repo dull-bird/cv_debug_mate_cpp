@@ -56,6 +56,47 @@ export async function getCurrentFrameId(debugSession: vscode.DebugSession): Prom
 }
 
 /**
+ * Get a small sample of memory to detect content changes without reading everything.
+ * Reads 1KB from start, middle and end.
+ */
+export async function getMemorySample(
+  debugSession: vscode.DebugSession,
+  memoryReference: string,
+  totalBytes: number
+): Promise<string> {
+  if (totalBytes <= 0 || !memoryReference) return "";
+  
+  const SIZES = [512, 512, 512]; // Start, middle, end samples
+  const offsets = [
+    0,
+    Math.floor(totalBytes / 2),
+    Math.max(0, totalBytes - 512)
+  ];
+
+  let sampleData = "";
+  for (let i = 0; i < offsets.length; i++) {
+    try {
+      const count = Math.min(SIZES[i], totalBytes - offsets[i]);
+      if (count <= 0) continue;
+      
+      const response = await debugSession.customRequest("readMemory", {
+        memoryReference: memoryReference,
+        offset: offsets[i],
+        count: count
+      });
+      
+      if (response && response.data) {
+        // Just take a small slice of the base64 to keep the token compact
+        sampleData += response.data.substring(0, 32);
+      }
+    } catch (e) {
+      // Ignore sample errors
+    }
+  }
+  return sampleData;
+}
+
+/**
  * Helper function to read memory in chunks to avoid debugger limitations.
  * Each chunk is 16MB by default.
  */

@@ -249,16 +249,21 @@ export function getWebviewContentForMat(
                 const loadingOverlay = document.getElementById('loading');
                 const loadingText = document.getElementById('loading-text');
                 
-                const rows = ${rows};
-                const cols = ${cols};
-                const channels = ${channels};
-                const depth = ${depth};
-
                 // Listen for complete data from extension
                 const vscode = acquireVsCodeApi();
+                let rows = ${rows};
+                let cols = ${cols};
+                let channels = ${channels};
+                let depth = ${depth};
+
                 window.addEventListener('message', event => {
                     const message = event.data;
                     if (message.command === 'completeData') {
+                        if (message.rows !== undefined) rows = message.rows;
+                        if (message.cols !== undefined) cols = message.cols;
+                        if (message.channels !== undefined) channels = message.channels;
+                        if (message.depth !== undefined) depth = message.depth;
+
                         const rawBytes = message.data; // This is a Uint8Array
                         console.log('Received binary data: ' + rawBytes.length + ' bytes');
                         
@@ -379,15 +384,14 @@ export function getWebviewContentForMat(
                     rawData = bytesToTypedArray(rawBytes, depth);
                     updateOffscreenFromRaw();
                     
-                    isInitialized = true;
-                    
                     if (pendingSyncState) {
                         applyViewState(pendingSyncState);
                         pendingSyncState = null;
-                    } else {
+                    } else if (!isInitialized) {
                         resetView();
                     }
                     
+                    isInitialized = true;
                     requestRender();
                 }
 

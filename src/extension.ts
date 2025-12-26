@@ -19,8 +19,28 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.debug.onDidChangeActiveStackItem(() => {
       cvVariablesProvider.refresh();
+      // Only refresh visible panels on step to avoid performance hit
+      refreshVisiblePanels();
     })
   );
+
+  async function refreshVisiblePanels() {
+    const debugSession = vscode.debug.activeDebugSession;
+    if (!debugSession) return;
+
+    const panels = PanelManager.getAllPanels();
+    for (const [key, entry] of panels.entries()) {
+      if (entry.panel.visible) {
+        const parts = key.split(':::');
+        const [viewType, sessionId, variableName] = parts;
+        if (sessionId === debugSession.id) {
+          try {
+            await visualizeVariable({ name: variableName, evaluateName: variableName }, false, false);
+          } catch (e) {}
+        }
+      }
+    }
+  }
 
   // Clear when debug session terminates
   context.subscriptions.push(
@@ -34,6 +54,13 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("cv-debugmate.refreshVariables", () => {
       cvVariablesProvider.refresh();
+    })
+  );
+
+  // Refresh visible panels command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cv-debugmate.refreshVisiblePanels", () => {
+      refreshVisiblePanels();
     })
   );
 
@@ -79,21 +106,24 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  async function visualizeVariable(variable: any, force: boolean = false) {
+  async function visualizeVariable(variable: any, force: boolean = false, reveal: boolean = true) {
     console.log("========== OpenCV Visualizer Start ==========");
     const debugSession = vscode.debug.activeDebugSession;
 
     if (!debugSession) {
-      vscode.window.showErrorMessage("No active debug session.");
+      if (reveal) vscode.window.showErrorMessage("No active debug session.");
       return;
     }
 
     try {
       const variableName = variable.evaluateName || variable.name;
+      console.log(`Visualizing variable: ${variableName}, force=${force}, reveal=${reveal}`);
 
       // Get the current thread and stack frame
-      console.log("--- Getting Thread and Frame ---");
       const threadsResponse = await debugSession.customRequest("threads");
+      if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
+        return;
+      }
       const threadId = threadsResponse.threads[0].id;
       
       const stackTraceResponse = await debugSession.customRequest(
@@ -104,15 +134,17 @@ export function activate(context: vscode.ExtensionContext) {
           levels: 1,
         }
       );
+      if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
+        return;
+      }
       const frameId = stackTraceResponse.stackFrames[0].id;
-      console.log("Using frameId:", frameId);
 
       // Pre-check if panel is fresh to avoid expensive evaluation and memory reading
       const isLLDB = debugSession.type === "lldb";
       let variableInfo: any;
       
-      if (isLLDB) {
-        try {
+      try {
+        if (isLLDB) {
           const evalResult = await debugSession.customRequest("evaluate", {
             expression: variableName,
             frameId: frameId,
@@ -125,25 +157,22 @@ export function activate(context: vscode.ExtensionContext) {
             variablesReference: evalResult.variablesReference || variable.variablesReference,
             evaluateName: variableName
           };
-        } catch (error) {
-          variableInfo = {
-            result: variable.value,
-            type: variable.type,
-            variablesReference: variable.variablesReference,
-            evaluateName: variableName
-          };
+        } else {
+          const evalContext = getEvaluateContext(debugSession);
+          variableInfo = await debugSession.customRequest("evaluate", {
+            expression: variableName,
+            frameId: frameId,
+            context: evalContext,
+          });
+          variableInfo.evaluateName = variableName;
         }
-      } else {
-        const evalContext = getEvaluateContext(debugSession);
-        variableInfo = await debugSession.customRequest("evaluate", {
-          expression: variableName,
-          frameId: frameId,
-          context: evalContext,
-        });
-        variableInfo.evaluateName = variableName;
+      } catch (e) {
+        // If evaluation fails, the variable might be out of scope
+        console.log(`Variable ${variableName} evaluation failed, might be out of scope.`);
+        return;
       }
 
-      // Generate a more robust state token based on the evaluated value
+      // Generate a preliminary state token based on the evaluated value
       const valueSummary = variableInfo.result || "";
       const stateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
 
@@ -161,32 +190,33 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (!force && PanelManager.isPanelFresh(viewType, debugSession.id, variableName, stateToken)) {
-        console.log(`Panel ${viewType} is fresh, just revealing it.`);
-        const panelTitle = `View: ${variableName}`;
-        PanelManager.getOrCreatePanel(viewType, panelTitle, debugSession.id, variableName);
+        console.log(`Panel ${viewType} is fresh, skipping re-draw.`);
+        if (reveal) {
+          const panelTitle = `View: ${variableName}`;
+          PanelManager.getOrCreatePanel(viewType, panelTitle, debugSession.id, variableName, true);
+        }
         return;
       }
 
-      const finalStateToken = `${debugSession.id}-${threadId}-${valueSummary}`;
-
       if (point3Info.isPoint3) {
-        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble);
-        PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, finalStateToken);
+        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal);
       } else if (isMatType) {
         // Confirm if it's really 1D Mat
         let matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
         
         // Fallback for rows/cols if they are 0 (likely failed to read from variablesReference)
         if (matInfo.rows === 0 || matInfo.cols === 0) {
-          const rowsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.rows`, frameId, context: "watch" });
-          const colsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.cols`, frameId, context: "watch" });
-          matInfo.rows = parseInt(rowsResp.result) || 0;
-          matInfo.cols = parseInt(colsResp.result) || 0;
-          
-          if (matInfo.channels === 1) { // Only check channels if rows/cols were missing
-             const chanResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.channels()`, frameId, context: "watch" });
-             matInfo.channels = parseInt(chanResp.result) || 1;
-          }
+          try {
+            const rowsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.rows`, frameId, context: "watch" });
+            const colsResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.cols`, frameId, context: "watch" });
+            matInfo.rows = parseInt(rowsResp.result) || 0;
+            matInfo.cols = parseInt(colsResp.result) || 0;
+            
+            if (matInfo.channels === 1) { // Only check channels if rows/cols were missing
+               const chanResp = await debugSession.customRequest("evaluate", { expression: `(int)${variableName}.channels()`, frameId, context: "watch" });
+               matInfo.channels = parseInt(chanResp.result) || 1;
+            }
+          } catch (e) {}
         }
 
         if (matInfo.channels === 1 && (matInfo.rows === 1 || matInfo.cols === 1)) {
@@ -194,24 +224,23 @@ export function activate(context: vscode.ExtensionContext) {
           SyncManager.markAs1D(variableName, matInfo.rows * matInfo.cols);
           cvVariablesProvider.refresh();
           
-          await drawPlot(debugSession, variableName, matInfo);
-          PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, finalStateToken);
+          await drawPlot(debugSession, variableName, matInfo, reveal);
         } else {
-          await drawMatImage(debugSession, variableInfo, frameId, variableName);
-          PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, finalStateToken);
+          await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal);
         }
       } else if (vector1D.is1D) {
-        await drawPlot(debugSession, variableName, vector1D.elementType);
-        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, finalStateToken);
+        await drawPlot(debugSession, variableName, vector1D.elementType, reveal);
       } else {
-        vscode.window.showErrorMessage(
-          "Variable is not visualizable (supported: cv::Mat, Point3 vector, or 1D numeric vector)."
-        );
+        if (reveal) {
+          vscode.window.showErrorMessage(
+            "Variable is not visualizable (supported: cv::Mat, Point3 vector, or 1D numeric vector)."
+          );
+        }
       }
       
       console.log("========== OpenCV Visualizer End ==========");
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Error: ${error.message || error}`);
+      if (reveal) vscode.window.showErrorMessage(`Error: ${error.message || error}`);
       console.log("ERROR during execution:", error);
     }
   }

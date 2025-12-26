@@ -9,19 +9,23 @@ export class PanelManager {
      * @param title Title of the panel
      * @param sessionId Debug session ID
      * @param variableName Name of the variable
+     * @param reveal Whether to reveal the panel if it exists
      */
     static getOrCreatePanel(
         viewType: string,
         title: string,
         sessionId: string,
-        variableName: string
+        variableName: string,
+        reveal: boolean = false
     ): vscode.WebviewPanel {
         const key = `${viewType}:::${sessionId}:::${variableName}`;
         
         if (this.panels.has(key)) {
             const entry = this.panels.get(key)!;
             entry.panel.title = title; // Update title in case it changed
-            entry.panel.reveal(vscode.ViewColumn.One);
+            if (reveal) {
+                entry.panel.reveal(entry.panel.viewColumn, false); // Manual trigger: bring to front and focus
+            }
             return entry.panel;
         }
 
@@ -39,6 +43,13 @@ export class PanelManager {
 
         panel.onDidDispose(() => {
             this.panels.delete(key);
+        });
+
+        panel.onDidChangeViewState(e => {
+            if (e.webviewPanel.visible) {
+                // Trigger refresh when panel becomes visible
+                vscode.commands.executeCommand('cv-debugmate.refreshVisiblePanels');
+            }
         });
 
         return panel;
@@ -62,6 +73,13 @@ export class PanelManager {
         const key = `${viewType}:::${sessionId}:::${variableName}`;
         const entry = this.panels.get(key);
         return entry?.lastStateToken === token;
+    }
+
+    /**
+     * Get all currently open panels.
+     */
+    static getAllPanels(): Map<string, { panel: vscode.WebviewPanel, lastStateToken?: string }> {
+        return new Map(this.panels);
     }
 
     /**

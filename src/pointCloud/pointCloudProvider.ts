@@ -6,7 +6,8 @@ import {
   isUsingLLDB, 
   isUsingCppdbg, 
   tryGetDataPointer, 
-  readMemoryChunked 
+  readMemoryChunked,
+  getMemorySample
 } from "../utils/debugger";
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
@@ -17,7 +18,8 @@ export async function drawPointCloud(
   debugSession: vscode.DebugSession, 
   variableInfo: any, 
   variableName: string, 
-  isDouble: boolean = false
+  isDouble: boolean = false,
+  reveal: boolean = true
 ) {
   try {
     console.log("Drawing point cloud with debugger type:", debugSession.type);
@@ -26,10 +28,13 @@ export async function drawPointCloud(
     let points: { x: number; y: number; z: number }[] = [];
 
     // Use readMemory approach (supports MSVC, LLDB, and GDB with multiple fallback strategies)
+    let dataPtrForToken = "";
     if (variableInfo.evaluateName) {
       console.log("Trying readMemory approach");
       try {
-        points = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo, isDouble);
+        const result = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo, isDouble);
+        points = result.points;
+        dataPtrForToken = result.dataPtr || "";
         if (points.length > 0) {
           console.log(`Loaded ${points.length} points via readMemory`);
         }
@@ -40,20 +45,44 @@ export async function drawPointCloud(
 
     console.log(`Loaded ${points.length} points`);
 
+    const panelTitle = `View: ${variableName}`;
+    // Check if panel is already fresh with this hard state token
+    const bytesPerPoint = isDouble ? 24 : 12;
+    const totalBytes = points.length * bytesPerPoint;
+    const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
+    const stateToken = `${points.length}|${dataPtrForToken}|${sample}`;
+    
+    const panel = PanelManager.getOrCreatePanel(
+      "3DPointViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`PointCloud panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+
     if (points.length === 0) {
       vscode.window.showWarningMessage("No points found in the vector. Make sure the vector is not empty.");
       return;
     }
 
-    // Show the webview to visualize the points
-    const panelTitle = `View: ${variableName}`;
-    const panel = PanelManager.getOrCreatePanel(
-      "3DPointViewer",
-      panelTitle,
-      debugSession.id,
-      variableName
-    );
-    
+    // Update state token AFTER check
+    PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, stateToken);
+
+    // If panel already has content, only send data to preserve view state
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("PointCloud panel already has HTML, sending only data");
+      await panel.webview.postMessage({
+        command: 'updateData',
+        points: points
+      });
+      return;
+    }
+
     panel.webview.html = getWebviewContentForPointCloud(points);
     
     SyncManager.registerPanel(variableName, panel);
@@ -105,7 +134,7 @@ export async function getPointCloudViaReadMemory(
   evaluateName: string,
   variableInfo?: any,
   isDouble: boolean = false
-): Promise<{ x: number; y: number; z: number }[]> {
+): Promise<{ points: { x: number; y: number; z: number }[], dataPtr: string | null }> {
   const points: { x: number; y: number; z: number }[] = [];
   // Use frameId from variableInfo if available, otherwise get current frame
   const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
@@ -143,7 +172,7 @@ export async function getPointCloudViaReadMemory(
   
   if (isNaN(size) || size <= 0) {
     console.log("Could not get vector size or size is 0");
-    return points;
+    return { points, dataPtr: null };
   }
   console.log(`Vector size: ${size}`);
   
@@ -305,7 +334,7 @@ export async function getPointCloudViaReadMemory(
   
   if (!dataPtr) {
     console.log("Could not extract data pointer with any approach");
-    return points;
+    return { points, dataPtr: null };
   }
   
   // Read all points at once
@@ -342,6 +371,6 @@ export async function getPointCloudViaReadMemory(
     console.log(`Loaded ${points.length} points via readMemory`);
   }
   
-  return points;
+  return { points, dataPtr };
 }
 

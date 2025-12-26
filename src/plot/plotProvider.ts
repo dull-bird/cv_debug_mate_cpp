@@ -5,7 +5,8 @@ import {
   isUsingMSVC, 
   isUsingLLDB, 
   tryGetDataPointer, 
-  readMemoryChunked 
+  readMemoryChunked,
+  getMemorySample
 } from "../utils/debugger";
 import { getWebviewContentForPlot } from "./plotWebview";
 import { PanelManager } from "../utils/panelManager";
@@ -16,29 +17,64 @@ import { getBytesPerElement } from "../utils/opencv";
 export async function drawPlot(
   debugSession: vscode.DebugSession,
   variableName: string,
-  elementTypeOrMat: string | { rows: number, cols: number, channels: number, depth: number, dataPtr: string }
+  elementTypeOrMat: string | { rows: number, cols: number, channels: number, depth: number, dataPtr: string },
+  reveal: boolean = true
 ) {
   try {
     let initialData: number[] | null = null;
+    let dataPtrForToken = "";
     
     if (typeof elementTypeOrMat === 'string') {
         console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
-        initialData = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat);
+        const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat);
+        if (result) {
+            initialData = result.data;
+            dataPtrForToken = result.dataPtr || "";
+        }
     } else {
         console.log(`Drawing plot for 1D Mat: ${variableName}, info:`, elementTypeOrMat);
         initialData = await readMatDataInternal(debugSession, variableName, elementTypeOrMat);
+        dataPtrForToken = elementTypeOrMat.dataPtr || "";
     }
 
     if (!initialData) return;
 
-    // 6. Show webview
     const panelTitle = `View: ${variableName}`;
+    // Check if panel is already fresh with this hard state token
+    // For plots, we can determine the sample bytes based on the element type
+    let totalBytes = initialData.length * 4; // Default to 4 bytes per element
+    if (typeof elementTypeOrMat !== 'string') {
+        totalBytes = initialData.length * getBytesPerElement(elementTypeOrMat.depth);
+    }
+    
+    const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
+    const stateToken = `${initialData.length}|${dataPtrForToken}|${sample}`;
+    
     const panel = PanelManager.getOrCreatePanel(
       "CurvePlotViewer",
       panelTitle,
       debugSession.id,
-      variableName
+      variableName,
+      reveal
     );
+
+    if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+
+    // Update state token
+    PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
+
+    // If panel already has content, only send data to preserve view state
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("Plot panel already has HTML, sending only data");
+      await panel.webview.postMessage({
+        command: 'updateInitialData',
+        data: initialData
+      });
+      return;
+    }
 
     panel.webview.html = getWebviewContentForPlot(variableName, initialData);
 
@@ -114,7 +150,8 @@ export async function drawPlot(
                     const matInfo = await getMatInfoFromVariables(debugSession, targetVar.variablesReference);
                     newData = await readMatDataInternal(debugSession, targetVar.evaluateName, matInfo);
                 } else {
-                    newData = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData!.length);
+                    const result = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData!.length);
+                    newData = result ? result.data : null;
                 }
                 
                 if (newData) {
@@ -188,7 +225,7 @@ async function readVectorDataInternal(
     variableName: string,
     type: string,
     expectedSize?: number
-): Promise<number[] | null> {
+): Promise<{ data: number[], dataPtr: string | null } | null> {
     const frameId = await getCurrentFrameId(debugSession);
     const context = getEvaluateContext(debugSession);
 
@@ -290,5 +327,5 @@ async function readVectorDataInternal(
     for (let i = 0; i < size; i++) {
         data.push(readMethod(buffer, i * bytesPerElement));
     }
-    return data;
+    return { data, dataPtr };
 }

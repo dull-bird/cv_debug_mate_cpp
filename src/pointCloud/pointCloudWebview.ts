@@ -150,7 +150,7 @@ export function getWebviewContentForPointCloud(
                 import * as THREE from 'three';
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 
-                const points = ${pointsArray};
+                let points = ${pointsArray};
                 let isInitialized = false;
                 let pendingSyncState = null;
                 
@@ -420,8 +420,48 @@ export function getWebviewContentForPointCloud(
                             return;
                         }
                         applyViewState(state);
+                    } else if (message.command === 'updateData') {
+                        updatePointCloudData(message.points);
                     }
                 });
+
+                function updatePointCloudData(newPoints) {
+                    points = newPoints;
+                    const positions = geometry.attributes.position.array;
+                    const colors = geometry.attributes.color.array;
+                    
+                    // If point count changed, we need to recreate geometry
+                    if (newPoints.length !== positions.length / 3) {
+                        console.log('Point count changed, recreating geometry');
+                        geometry.dispose();
+                        const newPositions = new Float32Array(newPoints.length * 3);
+                        const newColors = new Float32Array(newPoints.length * 3);
+                        
+                        newPoints.forEach((p, i) => {
+                            newPositions[i * 3] = p.x;
+                            newPositions[i * 3 + 1] = p.z;
+                            newPositions[i * 3 + 2] = -p.y;
+                            newColors[i * 3] = 0.5;
+                            newColors[i * 3 + 1] = 0.7;
+                            newColors[i * 3 + 2] = 1.0;
+                        });
+                        
+                        geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
+                        geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
+                    } else {
+                        // Update existing attributes
+                        newPoints.forEach((p, i) => {
+                            positions[i * 3] = p.x;
+                            positions[i * 3 + 1] = p.z;
+                            positions[i * 3 + 2] = -p.y;
+                        });
+                        geometry.attributes.position.needsUpdate = true;
+                    }
+                    
+                    // Update info display
+                    document.getElementById('pointCount').textContent = newPoints.length;
+                    renderer.render(scene, camera);
+                }
 
                 function applyViewState(state) {
                     isSyncing = true;
