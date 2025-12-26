@@ -163,6 +163,8 @@ export async function drawPlot(
                     });
                 }
             }
+        } else if (message.command === 'reload') {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
         } else if (message.command === 'saveFile') {
             const options: vscode.SaveDialogOptions = {
                 defaultUri: vscode.Uri.file(message.defaultName),

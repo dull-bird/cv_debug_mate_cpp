@@ -117,6 +117,8 @@ export async function drawPointCloud(
           }
         } else if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
         }
       },
       undefined,

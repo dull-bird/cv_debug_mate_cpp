@@ -179,6 +179,7 @@ export function getWebviewContentForPlot(
                     <button id="btnForward" class="btn" title="Next View" disabled>➡️</button>
                 </div>
                 <button id="btnHome" class="btn" title="Reset View (Home)">🏠 Home</button>
+                <button id="btnReload" class="btn" title="强制从内存重新读取数据 (保持缩放)">🔄 Reload</button>
                 <button id="btnZoomRect" class="btn" title="Zoom to Rectangle">🔍 Zoom</button>
                 <button id="btnPan" class="btn active" title="Pan Mode">✋ Pan</button>
                 
@@ -600,6 +601,9 @@ export function getWebviewContentForPlot(
 
                     window.onresize = function() { draw(); };
                     btnHome.onclick = resetView;
+                    document.getElementById('btnReload').onclick = function() {
+                        vscode.postMessage({ command: 'reload' });
+                    };
                     btnPan.onclick = function() { interactionMode = 'pan'; btnPan.classList.add('active'); btnZoomRect.classList.remove('active'); };
                     btnZoomRect.onclick = function() { interactionMode = 'zoomRect'; btnZoomRect.classList.add('active'); btnPan.classList.remove('active'); };
 

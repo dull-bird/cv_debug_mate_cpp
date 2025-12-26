@@ -133,6 +133,7 @@ export function getWebviewContentForPointCloud(
                 <button id="btnHeightY">Color by Y</button>
                 <button id="btnHeightX">Color by X</button>
                 <button id="btnResetView">Reset View</button>
+                <button id="btnReload" title="强制从内存重新读取数据 (保持视角)">🔄 Reload</button>
                 <button id="btnSavePLY" style="margin-top: 8px; background: #28a745;">Save PLY</button>
             </div>
             <div id="axisView"></div>
@@ -399,6 +400,9 @@ export function getWebviewContentForPointCloud(
                 document.getElementById('btnHeightY').onclick = () => updateColors('y');
                 document.getElementById('btnHeightZ').onclick = () => updateColors('z');
                 document.getElementById('btnResetView').onclick = resetView;
+                document.getElementById('btnReload').onclick = () => {
+                    vscode.postMessage({ command: 'reload' });
+                };
                 document.getElementById('pointSizeInput').oninput = (e) => {
                     material.size = parseFloat(e.target.value);
                 };

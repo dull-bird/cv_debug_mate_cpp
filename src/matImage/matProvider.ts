@@ -231,6 +231,9 @@ export async function drawMatImage(
       async (message) => {
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          // Manual reload triggered from webview
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
         }
       }
     );

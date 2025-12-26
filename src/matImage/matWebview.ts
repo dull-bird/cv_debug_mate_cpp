@@ -193,6 +193,7 @@ export function getWebviewContentForMat(
         </div>
         <div id="controls">
             <span class="ctrl-group" id="zoomGroup">
+                <button id="reload" title="强制从内存重新读取数据 (保持缩放)">🔄 Reload</button>
                 <button id="zoomIn">Zoom In</button>
                 <button id="zoomOut">Zoom Out</button>
                 <button id="reset">Reset</button>
@@ -929,6 +930,10 @@ export function getWebviewContentForMat(
 
                 document.getElementById('reset').addEventListener('click', () => {
                     resetView();
+                });
+
+                document.getElementById('reload').addEventListener('click', () => {
+                    vscode.postMessage({ command: 'reload' });
                 });
 
                 // Toggle pixel text overlay

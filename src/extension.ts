@@ -117,7 +117,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     try {
       const variableName = variable.evaluateName || variable.name;
-      console.log(`Visualizing variable: ${variableName}, force=${force}, reveal=${reveal}`);
+      // If variable contains skipToken, we treat it as a force refresh
+      const shouldForce = force || variable.skipToken;
+      
+      console.log(`Visualizing variable: ${variableName}, force=${shouldForce}, reveal=${reveal}`);
 
       // Get the current thread and stack frame
       const threadsResponse = await debugSession.customRequest("threads");
@@ -189,7 +192,7 @@ export function activate(context: vscode.ExtensionContext) {
         viewType = "CurvePlotViewer";
       }
 
-      if (!force && PanelManager.isPanelFresh(viewType, debugSession.id, variableName, stateToken)) {
+      if (!shouldForce && PanelManager.isPanelFresh(viewType, debugSession.id, variableName, stateToken)) {
         console.log(`Panel ${viewType} is fresh, skipping re-draw.`);
         if (reveal) {
           const panelTitle = `View: ${variableName}`;
