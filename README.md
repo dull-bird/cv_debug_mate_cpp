@@ -78,12 +78,12 @@ A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ 
 
 ## Supported Debuggers
 
-| Compiler   | VS Code Extension | cv::Mat | Point Cloud | Notes                                                                       |
-| ---------- | ----------------- | ------- | ----------- | --------------------------------------------------------------------------- |
-| MSVC       | C/C++ (cppvsdbg)  | ✅      | ✅          | Tested on Windows                                                           |
-| GCC        | C/C++ (cppdbg)    | ✅      | ✅          | Tested on Windows MinGW Environment                                         |
-| Clang+MSVC | CodeLLDB          | ✅      | ❌          | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
-| Clang      | CodeLLDB          | ✅      | ✅          | Tested on macOS                                                             |
+| Compiler   | VS Code Extension | 1D data            | cv::Mat | Point Cloud | Notes                                                                       |
+| ---------- | ----------------- | ------------------ | ------- | ----------- | --------------------------------------------------------------------------- |
+| MSVC       | C/C++ (cppvsdbg)  | ✅                 | ✅      | ✅          | Tested on Windows                                                           |
+| GCC        | C/C++ (cppdbg)    | ✅                 | ✅      | ✅          | Tested on Windows MinGW Environment                                         |
+| Clang+MSVC | CodeLLDB          | ❌(vector) ✅(Mat) | ✅      | ❌          | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
+| Clang      | CodeLLDB          | ✅                 | ✅      | ✅          | Tested on macOS                                                             |
 
 ### Known Limitations
 

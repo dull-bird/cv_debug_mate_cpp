@@ -78,12 +78,12 @@
 
 ## 调试器支持
 
-| 编译器     | VS Code 插件     | cv::Mat | 点云 | 备注                                                           |
-| ---------- | ---------------- | ------- | ---- | -------------------------------------------------------------- |
-| MSVC       | C/C++ (cppvsdbg) | ✅      | ✅   | Windows 已测试                                                 |
-| GCC        | C/C++ (cppdbg)   | ✅      | ✅   | Windows MinGW 环境已测试                                       |
-| Clang+MSVC | CodeLLDB         | ✅      | ❌   | Windows 已测试。LLDB 无法解析 MSVC STL，vector size 始终返回 0 |
-| Clang      | CodeLLDB         | ✅      | ✅   | macOS 已测试                                                   |
+| 编译器     | VS Code 插件     | 1D 数据            | cv::Mat | 点云 | 备注                                                           |
+| ---------- | ---------------- | ------------------ | ------- | ---- | -------------------------------------------------------------- |
+| MSVC       | C/C++ (cppvsdbg) | ✅                 | ✅      | ✅   | Windows 已测试                                                 |
+| GCC        | C/C++ (cppdbg)   | ✅                 | ✅      | ✅   | Windows MinGW 环境已测试                                       |
+| Clang+MSVC | CodeLLDB         | ❌(vector) ✅(Mat) | ✅      | ❌   | Windows 已测试。LLDB 无法解析 MSVC STL，vector size 始终返回 0 |
+| Clang      | CodeLLDB         | ✅                 | ✅      | ✅   | macOS 已测试                                                   |
 
 ### 已知限制
 
