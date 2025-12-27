@@ -2,7 +2,7 @@
 
 [English](https://github.com/dull-bird/cv_debug_mate_cpp#readme) | 中文
 
-一个用于在 C++ 调试过程中可视化 OpenCV 数据结构的 VS Code 扩展。
+一个用于在 C++ 调试过程中可视化 1/2/3D 数据结构的 VS Code 扩展。
 
 **灵感来源于 Visual Studio 的 [Image Watch](https://marketplace.visualstudio.com/items?itemName=VisualCPPTeam.ImageWatch2022) 插件。**
 
@@ -21,7 +21,7 @@
 - **数值追踪**：鼠标悬停自动捕捉最近的数据点并显示精确的 X-Y 坐标
 - **数据导出**：支持将当前曲线图保存为 PNG 图片，或将 X-Y 原始数据导出为 CSV 文件
 
-### 🖼️ Mat 图像可视化
+### 🖼️ 2D Mat 图像可视化
 
 ![Mat 可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_mac.png)
 
@@ -40,7 +40,7 @@
 - 鼠标悬停显示像素值
 - 放大时显示网格
 
-### 📊 点云可视化
+### 📊 3D 点云可视化
 
 ![点云可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
@@ -52,21 +52,21 @@
 
 ### 🔍 CV DebugMate 面板
 
+![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel.png)
+
 - **自动变量收集**：自动检测当前堆栈帧中所有可可视化的 OpenCV 变量。
 - **专用侧边栏视图**：在“运行和调试”侧边栏中新增专用面板，快速访问所有 Mat 和点云变量。
 - **类型识别图标**：为图像 (Mat) 和 3D 数据 (点云) 提供直观的区分图标。
 - **一键查看**：通过行内快捷按钮直接打开可视化标签页，无需右键菜单。
 
-![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel.png)
-
 ### 🔗 视图同步与配对
+
+![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
 
 - **同步组 (Sync Groups)**：将多个变量进行配对，实现视角的实时联动（缩放、平移、3D 旋转）。
 - **颜色编码识别**：通过不同颜色的图标和组标签（`Group 1`, `Group 2` 等）直观区分不同的同步组。
 - **初始状态继承**：新打开的组成员会自动继承该组当前的视图状态，确保对比连续性。
 - **高精度点云同步**：针对 3D 视角优化，同步相机位置、旋转、目标点及向上矢量。
-
-![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
 
 ### 💾 导出选项
 

@@ -2,7 +2,7 @@
 
 English | [中文](https://github.com/dull-bird/cv_debug_mate_cpp/blob/main/README_CN.md)
 
-A Visual Studio Code extension for visualizing OpenCV data structures during C++ debugging.
+A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ debugging.
 
 **Inspired by [Image Watch](https://marketplace.visualstudio.com/items?itemName=VisualCPPTeam.ImageWatch2022) for Visual Studio.**
 
@@ -10,7 +10,21 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 
 ## Features
 
-### 🖼️ Mat Visualization
+### 📈 1D Data Plotting
+
+![1D Curve Plotting](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
+
+- Visualize numeric vectors like `std::vector<int/float/double/uchar>` as line plots
+- **Auto 1D Mat Detection**: Automatically recognizes single-channel `1xN` or `Nx1` `cv::Mat` as 1D data for plotting
+- **Custom X-Axis**: Choose between "Index" or any other compatible 1D variable in scope as the X-axis coordinate
+- **Interactive Plotting**: Supports rectangle zoom (Zoom to Rectangle), panning (Pan), and one-click reset (Home)
+- **Data Tracking**: Mouse hover automatically snaps to the nearest data point and displays precise X-Y coordinates
+- **Export Data**: Save the current plot as a PNG image or export raw X-Y data to a CSV file
+
+### 🖼️ 2D Mat Visualization
+
+![Mat Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_mac.png)
+
 - View `cv::Mat` images directly in VS Code during debugging
 - Support for grayscale, RGB, and multi-channel images
 - Support for various data types: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
@@ -26,82 +40,50 @@ A Visual Studio Code extension for visualizing OpenCV data structures during C++
 - Pixel value display on hover
 - Grid overlay when zoomed in
 
-### 📊 Point Cloud Visualization  
+### 📊 3D Point Cloud Visualization
+
+![Point Cloud Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
+
 - View `std::vector<cv::Point3f>` and `std::vector<cv::Point3d>` as 3D point clouds
 - **Color Mapping**: Colorize points by X, Y, or Z coordinates
 - **Adjustable Point Size**: Fine-tune point visibility
 - Interactive 3D rotation, pan, and zoom
 - Powered by Three.js
 
-### 📈 1D Data Plotting
-- Visualize numeric vectors like `std::vector<int/float/double/uchar>` as 2D line plots
-- **Auto 1D Mat Detection**: Automatically recognizes single-channel `1xN` or `Nx1` `cv::Mat` as 1D data for plotting
-- **Custom X-Axis**: Choose between "Index" or any other compatible 1D variable in scope as the X-axis coordinate
-- **Interactive Plotting**: Supports rectangle zoom (Zoom to Rectangle), panning, and one-click reset (Home)
-- **Data Tracking**: Mouse hover automatically snaps to the nearest data point and displays precise X-Y coordinates
-- **Export Data**: Save the current plot as a PNG image or export raw X-Y data to a CSV file
-
 ### 🔍 CV DebugMate Panel
+
+![CV DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel.png)
+
 - **Automatic Variable Collection**: Automatically detects all visualizable OpenCV variables in the current stack frame.
-- **Dedicated Sidebar View**: A new view in the Debug sidebar for quick access to all Mat and Point Cloud variables.
-- **Type Identification**: Distinct icons for images (Mat) and 3D data (Point Cloud).
+- **Dedicated Sidebar View**: A new view in the "Run and Debug" sidebar for quick access to all Mat and Point Cloud variables.
+- **Type Identification Icons**: Distinct icons for images (Mat) and 3D data (Point Cloud).
 - **One-Click Viewing**: Quick-action buttons to open visualization tabs without using context menus.
 
-![CV DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
-
 ### 🔗 View Synchronization & Pairing
-- **Sync Groups**: Pair multiple variables together to synchronize their view state (zoom, pan, 3D rotation).
+
+![CV DebugMate Panel Grouped](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
+
+- **Sync Groups**: Pair multiple variables together to synchronize their view state in real-time (zoom, pan, 3D rotation).
 - **Color-Coded Groups**: Visual group identification via color-coded icons and group labels (`Group 1`, `Group 2`, etc.).
-- **Initial State Persistence**: New members of a group automatically inherit the current view state of the group.
-- **Precision Point Cloud Sync**: High-precision synchronization for 3D views including camera position, rotation, and target.
+- **Initial State Inheritance**: New members of a group automatically inherit the current view state of the group, ensuring comparison continuity.
+- **Precision Point Cloud Sync**: Optimized for 3D views, synchronizing camera position, rotation, target, and up vector.
 
 ### 💾 Export Options
+
 - **Save PNG**: Export image as PNG file
 - **Save TIFF**: Export image as TIFF file (supports raw floating-point data)
 - **Save PLY**: Export point cloud data to PLY format for external tools
 
 ---
 
-## Project Structure
-
-The project is modularized for better maintainability:
-
-```text
-src/
-  ├── extension.ts              # Entry point & command registration
-  ├── utils/
-  │   ├── debugger.ts           # DAP interactions (readMemory, evaluate)
-  │   └── opencv.ts             # OpenCV type detection & helpers
-  ├── pointCloud/
-  │   ├── pointCloudProvider.ts # Data extraction for point clouds
-  │   └── pointCloudWebview.ts  # Webview content & Three.js logic
-  └── matImage/
-      ├── matProvider.ts        # Data extraction for cv::Mat
-      └── matWebview.ts         # Webview content & Canvas logic
-```
-
-## Screenshots
-
-### Mat Visualization
-![Mat Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image.png)
-
-### Point Cloud Visualization
-![Point Cloud Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
-
-### 1D Curve Plotting
-![1D Curve Plotting](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
-
----
-
 ## Supported Debuggers
 
-| Compiler| VS Code Extension | cv::Mat | Point Cloud | Notes |
-|-----|----|---------|-------------|-------|
-| MSVC | C/C++ (cppvsdbg) | ✅ | ✅ | Tested on Windows |
-|GCC | C/C++ (cppdbg) |✅ | ✅ | Tested on Windows MinGW Environment |
-| Clang+MSVC | CodeLLDB | ✅ | ❌ | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
-| Clang |  CodeLLDB | ✅ | ✅ | Tested on macOS |
-
+| Compiler   | VS Code Extension | cv::Mat | Point Cloud | Notes                                                                       |
+| ---------- | ----------------- | ------- | ----------- | --------------------------------------------------------------------------- |
+| MSVC       | C/C++ (cppvsdbg)  | ✅      | ✅          | Tested on Windows                                                           |
+| GCC        | C/C++ (cppdbg)    | ✅      | ✅          | Tested on Windows MinGW Environment                                         |
+| Clang+MSVC | CodeLLDB          | ✅      | ❌          | Tested on Windows. LLDB cannot parse MSVC STL, vector size always returns 0 |
+| Clang      | CodeLLDB          | ✅      | ✅          | Tested on macOS                                                             |
 
 ### Known Limitations
 
@@ -112,15 +94,17 @@ src/
 ## Usage
 
 ### Option 1: CV DebugMate Panel (Recommended)
+
 1. Start a C++ debug session in VS Code.
-2. Open the **Run and Debug** sidebar.
+2. Open the **"Run and Debug"** sidebar.
 3. Locate the **CV DebugMate** section.
 4. All visualizable variables in the current scope will appear automatically.
 5. Click the variable name to view.
-6. Click the **Link icon** to pair variables for synchronized viewing.
+6. Click the **"Link" icon** to pair variables for synchronized viewing.
 
 ### Option 2: Context Menu
-1. Right-click on a supported variable in the standard **Variables** or **Watch** panel.
+
+1. Right-click on a supported variable in the standard **"Variables"** or **"Watch"** panel.
 2. Select **"View by CV DebugMate"**.
 
 ---
@@ -128,7 +112,8 @@ src/
 ## Supported Types
 
 ### Image
--  `cv::Mat` & `cv::Mat_<T>`
+
+- `cv::Mat` & `cv::Mat_<T>`
 - Grayscale images (1 channel)
 - Color images (3 channels, BGR)
 - RGBA images (4 channels)
@@ -136,36 +121,41 @@ src/
 - Support for template matrix types like `cv::Mat_<uchar>`, `cv::Mat_<cv::Vec3b>`, etc.
 
 ### Point Clouds
+
 - `std::vector<cv::Point3f>`
 - `std::vector<cv::Point3d>`
 
 ### 1D Data (Plots)
+
 - Numeric vectors: `std::vector<int>`, `std::vector<float>`, `std::vector<double>`, `std::vector<uchar>`, etc.
-- 1D single-channel `cv::Mat` (1xN or Nx1)
+- Single-channel `cv::Mat` (`1xN` or `Nx1`, auto-detected)
 
 ---
 
 ## Keyboard & Mouse Controls
 
 ### Image Viewer
-| Action | Control |
-|--------|---------|
-| Zoom In | Scroll Up / Click "Zoom In" |
-| Zoom Out | Scroll Down / Click "Zoom Out" |
-| Pan | Click and Drag |
-| Reset View | Click "Reset" |
-| Save PNG | Click "Save PNG" |
-| Save TIFF | Click "Save TIFF" |
 
-Other configrations.
+| Action     | Control                        |
+| ---------- | ------------------------------ |
+| Zoom In    | Scroll Up / Click "Zoom In"    |
+| Zoom Out   | Scroll Down / Click "Zoom Out" |
+| Pan        | Click and Drag                 |
+| Reset View | Click "Reset"                  |
+| Save PNG   | Click "Save PNG"               |
+| Save TIFF  | Click "Save TIFF"              |
+
+And other settings options.
 
 ### 3D Point Cloud Viewer
-| Action | Control |
-|--------|---------|
-| Rotate | Click and Drag |
-| Zoom | Scroll |
-| Color Mode | Click "Color by X/Y/Z" or "Solid" |
-| Save PLY | Click "Save PLY" | 
+
+| Action     | Control                                 |
+| ---------- | --------------------------------------- |
+| Rotate     | Click and Drag                          |
+| Zoom       | Scroll                                  |
+| Color Mode | Click button to switch (Solid/by Z/Y/X) |
+| Point Size | Adjust via input box                    |
+| Save PLY   | Click "Save PLY"                        |
 
 ---
 
@@ -173,33 +163,37 @@ Other configrations.
 
 CV DebugMate C++ uses the **VS Code Debug Adapter Protocol (DAP)** to pull OpenCV data out of a live debug session, then renders it in a **Webview** (HTML5 Canvas / Three.js).
 
-### Data flow (high level)
-- **1) Identify the type**: detect `cv::Mat` / `std::vector<cv::Point3f/Point3d>` from debugger-provided type info (sometimes via `evaluate()`).
-- **2) Extract metadata**: for `cv::Mat` read `rows/cols/channels/depth` (via `variables`/`variablesReference`).
-- **3) Read memory**: obtain the underlying data pointer (e.g. `mat.data`, `&vec[0]`, or debugger-specific expressions) and use DAP **`readMemory`** to fetch a contiguous buffer.
-- **4) Decode & render**:
-  - Mat → decode raw bytes (or raw floats) and render via Canvas (pan/zoom/grid/values).
-  - Point cloud → parse XYZ triplets and render via Three.js.
-  - 1D Data → parse numeric sequences and render as high-performance Canvas plots (with rectangle zoom and data export).
+### Data Flow (Simplified)
 
-### Notes / limitations
+- **1) Identify the type**: Detect `cv::Mat` / `std::vector<cv::Point3f/Point3d>` from debugger-provided type info (sometimes via `evaluate()`).
+- **2) Extract metadata**: For `cv::Mat`, read `rows/cols/channels/depth` (via `variables`/`variablesReference`).
+- **3) Read memory**: Obtain the underlying data pointer (e.g. `mat.data`, `&vec[0]`, or debugger-specific expressions) and use DAP **`readMemory`** to fetch a contiguous buffer.
+- **4) Decode & render**:
+  - Mat: Decode raw bytes/floats → Canvas rendering (zoom/pan/grid/pixel values).
+  - Point cloud: Parse XYZ triplets → Three.js rendering and interaction.
+  - 1D Data: Parse numeric sequences → High-performance Canvas plotting (with rectangle zoom and data export).
+
+### Notes / Limitations
+
 - **LLDB + MSVC STL** has limited support; vector parsing may fail (e.g. size reported as 0), so point clouds can be unavailable or slower.
-- Floating-point Mats are transferred as **raw values** and mapped to display range in the UI (e.g. min/max normalize).
+- Floating-point `cv::Mat` are transferred as **raw float values** to the Webview, and the mapping method (e.g. min/max normalize) is selected in the UI before display.
 
 ---
 
 ## Installation
 
 ### From VSIX
+
 1. Download the `.vsix` file
 2. In VS Code, go to Extensions view (`Ctrl+Shift+X`)
 3. Click `...` menu → "Install from VSIX..."
 4. Select the downloaded file
 
 ### From Source
+
 ```bash
-git clone <repository-url>
-cd cv-visualizer
+git clone https://github.com/dull-bird/cv_debug_mate_cpp
+cd cv_debug_mate_cpp
 npm install
 npm run compile
 # Press F5 to run in Extension Development Host
