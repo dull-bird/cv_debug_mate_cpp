@@ -27,7 +27,7 @@
         "point cloud",
         "c++"
     ],
-    "main": "./out/extension.js",
+    "main": "./dist/extension.js",
     "contributes": {
         "commands": [
             {
@@ -108,10 +108,15 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "pretest": "npm run compile && npm run lint",
+        "vscode:prepublish": "npm run package",
+        "compile": "npm run check-types && node esbuild.js",
+        "check-types": "tsc --noEmit",
+        "watch": "npm-run-all -p watch:*",
+        "watch:esbuild": "node esbuild.js --watch",
+        "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+        "package": "npm run check-types && node esbuild.js --production",
+        "compile-tests": "tsc -p . --outDir out",
+        "pretest": "npm run compile-tests && npm run lint",
         "lint": "eslint src",
         "test": "vscode-test"
     },
@@ -123,7 +128,9 @@
         "@typescript-eslint/parser": "^8.3.0",
         "@vscode/test-cli": "^0.0.10",
         "@vscode/test-electron": "^2.4.1",
+        "esbuild": "^0.24.0",
         "eslint": "^9.9.1",
+        "npm-run-all": "^4.1.5",
         "typescript": "^5.5.4",
         "vite": "^5.4.5"
     },
