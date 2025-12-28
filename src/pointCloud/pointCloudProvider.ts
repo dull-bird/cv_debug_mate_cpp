@@ -7,7 +7,8 @@ import {
   isUsingCppdbg, 
   tryGetDataPointer, 
   readMemoryChunked,
-  getMemorySample
+  getMemorySample,
+  getVectorSize
 } from "../utils/debugger";
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
@@ -145,33 +146,8 @@ export async function getPointCloudViaReadMemory(
   
   console.log(`getPointCloudViaReadMemory: evaluateName="${evaluateName}", frameId=${frameId}, context="${context}"`);
   
-  // Try to get vector size from variableInfo.result first (e.g., "size=8000")
-  let size = 0;
-  if (variableInfo && variableInfo.result) {
-    const sizeMatch = variableInfo.result.match(/size\s*=\s*(\d+)/);
-    if (sizeMatch) {
-      size = parseInt(sizeMatch[1]);
-      console.log(`Parsed vector size from variableInfo.result: ${size}`);
-    }
-  }
-  
-  // If not found in variableInfo, try to evaluate size() expression
-  if (size <= 0) {
-    try {
-      const sizeResponse = await debugSession.customRequest("evaluate", {
-        expression: `(int)${evaluateName}.size()`,
-        frameId: frameId,
-        context: context
-      });
-      
-      size = parseInt(sizeResponse.result);
-      if (!isNaN(size) && size > 0) {
-        console.log(`Got vector size from evaluate: ${size}`);
-      }
-    } catch (e) {
-      console.log("Failed to evaluate size() expression:", e);
-    }
-  }
+  // Get vector size using the common utility function
+  const size = await getVectorSize(debugSession, evaluateName, frameId, variableInfo);
   
   if (isNaN(size) || size <= 0) {
     console.log("Could not get vector size or size is 0");

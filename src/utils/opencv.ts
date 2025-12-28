@@ -118,9 +118,9 @@ export function is1DVector(variableInfo: any): { is1D: boolean; elementType: str
     );
     
     if (isBasic) {
-      // Try to parse size from value string
+      // Try to parse size from value string (check both value and result fields)
       let size = 0;
-      const val = variableInfo.value || "";
+      const val = variableInfo.value || variableInfo.result || "";
       const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
       if (sizeMatch) size = parseInt(sizeMatch[1]);
       

@@ -232,3 +232,79 @@ export function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
   return debugSession.type === "cppvsdbg";
 }
 
+/**
+ * Get vector size using multiple strategies.
+ * 1. First try to parse from variableInfo.value or variableInfo.result
+ * 2. Then try to evaluate size() expression with debugger-specific syntax
+ */
+export async function getVectorSize(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<number> {
+  let size = 0;
+  
+  // Strategy 1: Parse from variableInfo.value or variableInfo.result
+  if (variableInfo) {
+    const val = variableInfo.value || variableInfo.result || "";
+    const sizeMatch = val.match(/size\s*=\s*(\d+)/) || val.match(/length\s*=\s*(\d+)/) || val.match(/\[(\d+)\]/);
+    if (sizeMatch) {
+      size = parseInt(sizeMatch[1]);
+      if (!isNaN(size) && size > 0) {
+        console.log(`Parsed vector size from variableInfo: ${size}`);
+        return size;
+      }
+    }
+  }
+  
+  // Strategy 2: Evaluate size() expression with debugger-specific syntax
+  const context = getEvaluateContext(debugSession);
+  
+  // Different expressions for different debuggers
+  let sizeExpressions: string[];
+  if (isUsingLLDB(debugSession)) {
+    // LLDB doesn't support C-style casts like (int)
+    sizeExpressions = [
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`,
+      `(size_t)${variableName}.size()`
+    ];
+  } else if (isUsingMSVC(debugSession)) {
+    sizeExpressions = [
+      `(int)${variableName}.size()`,
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`
+    ];
+  } else {
+    // GDB (cppdbg) and fallback
+    sizeExpressions = [
+      `(int)${variableName}.size()`,
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`
+    ];
+  }
+  
+  for (const expr of sizeExpressions) {
+    try {
+      console.log(`Trying size expression: ${expr}`);
+      const sizeResponse = await debugSession.customRequest("evaluate", {
+        expression: expr,
+        frameId: frameId,
+        context: context
+      });
+      
+      const parsed = parseInt(sizeResponse.result);
+      if (!isNaN(parsed) && parsed > 0) {
+        console.log(`Got vector size from evaluate (${expr}): ${parsed}`);
+        return parsed;
+      }
+    } catch (e) {
+      console.log(`Expression "${expr}" failed:`, e);
+    }
+  }
+  
+  console.log("Could not get vector size from any method");
+  return 0;
+}
+

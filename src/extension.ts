@@ -183,6 +183,9 @@ export function activate(context: vscode.ExtensionContext) {
       const is1DMatType = isLikely1DMat(variableInfo);
       const vector1D = is1DVector(variableInfo);
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
+      
+      console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
+      console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
       let isEmpty = false;
@@ -198,7 +201,34 @@ export function activate(context: vscode.ExtensionContext) {
           }
         }
       } else if (vector1D.is1D || is1DMatType.is1D || confirmed1DSize !== undefined) {
-        const size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DMatType.size);
+        let size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DMatType.size);
+        
+        // If size is 0, try to get it via evaluate (especially for LLDB where value string may not contain size)
+        if (size === 0 && vector1D.is1D) {
+          // Try different expressions for different debuggers
+          const sizeExpressions = debugSession.type === "lldb" 
+            ? [`${variableName}.size()`, `(long long)${variableName}.size()`]
+            : [`(int)${variableName}.size()`, `${variableName}.size()`];
+          
+          for (const expr of sizeExpressions) {
+            try {
+              const sizeResp = await debugSession.customRequest("evaluate", {
+                expression: expr,
+                frameId: frameId,
+                context: getEvaluateContext(debugSession)
+              });
+              const parsed = parseInt(sizeResp.result);
+              if (!isNaN(parsed) && parsed > 0) {
+                size = parsed;
+                console.log(`Got vector size via evaluate (${expr}): ${size}`);
+                break;
+              }
+            } catch (e) {
+              console.log(`Failed to get vector size via ${expr}:`, e);
+            }
+          }
+        }
+        
         if (size === 0) {
           isEmpty = true;
           reason = "Plot data is empty";
@@ -259,7 +289,7 @@ export function activate(context: vscode.ExtensionContext) {
           await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal, shouldForce);
         }
       } else if (vector1D.is1D) {
-        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce);
+        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce, variableInfo);
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(

@@ -18,3 +18,5 @@ vsc-extension-quickstart.md
 esbuild.js
 index.html
 vscode-app-*.log
+assets/**
+!assets/icon.png

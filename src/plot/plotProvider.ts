@@ -4,9 +4,11 @@ import {
   getEvaluateContext, 
   isUsingMSVC, 
   isUsingLLDB, 
+  isUsingCppdbg,
   tryGetDataPointer, 
   readMemoryChunked,
-  getMemorySample
+  getMemorySample,
+  getVectorSize
 } from "../utils/debugger";
 import { getWebviewContentForPlot } from "./plotWebview";
 import { PanelManager } from "../utils/panelManager";
@@ -19,7 +21,8 @@ export async function drawPlot(
   variableName: string,
   elementTypeOrMat: string | { rows: number, cols: number, channels: number, depth: number, dataPtr: string },
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  variableInfo?: any
 ) {
   try {
     let initialData: number[] | null = null;
@@ -27,7 +30,7 @@ export async function drawPlot(
     
     if (typeof elementTypeOrMat === 'string') {
         console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
-        const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat);
+        const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat, undefined, variableInfo);
         if (result) {
             initialData = result.data;
             dataPtrForToken = result.dataPtr || "";
@@ -227,10 +230,13 @@ async function readVectorDataInternal(
     debugSession: vscode.DebugSession,
     variableName: string,
     type: string,
-    expectedSize?: number
+    expectedSize?: number,
+    variableInfo?: any
 ): Promise<{ data: number[], dataPtr: string | null } | null> {
-    const frameId = await getCurrentFrameId(debugSession);
+    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
     const context = getEvaluateContext(debugSession);
+
+    console.log(`readVectorDataInternal: variableName="${variableName}", type="${type}", debugger=${debugSession.type}`);
 
     // Check if it's actually a Mat (for X axis selection or similar)
     if (type.includes("cv::Mat")) {
@@ -239,13 +245,8 @@ async function readVectorDataInternal(
         return null;
     }
 
-    // 1. Get vector size
-    const sizeResponse = await debugSession.customRequest("evaluate", {
-      expression: `(int)${variableName}.size()`,
-      frameId: frameId,
-      context: context
-    });
-    const size = parseInt(sizeResponse.result);
+    // 1. Get vector size using the common utility function
+    const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
 
     if (isNaN(size) || size <= 0) {
       vscode.window.showWarningMessage(`Vector ${variableName} is empty or size could not be determined.`);
@@ -300,16 +301,118 @@ async function readVectorDataInternal(
         readMethod = (b, o) => b.readInt32LE(o);
     }
 
-    // 3. Get data pointer
+    // 3. Get data pointer - with special handling for different debuggers
     let dataPtr: string | null = null;
-    const ptrExprs = [
-        `${variableName}.data()`, 
-        `&${variableName}[0]`, 
-        `(void*)${variableName}.data()`,
-        `(void*)&${variableName}[0]`
-    ];
     
-    dataPtr = await tryGetDataPointer(debugSession, variableName, ptrExprs, frameId, context);
+    if (isUsingLLDB(debugSession)) {
+        console.log("Using LLDB-specific approaches for 1D vector");
+        
+        // First, try to get data pointer through variables if we have variablesReference
+        if (variableInfo && variableInfo.variablesReference > 0) {
+            try {
+                console.log(`Trying to get data pointer through variables, variablesReference=${variableInfo.variablesReference}`);
+                const varsResponse = await debugSession.customRequest("variables", {
+                    variablesReference: variableInfo.variablesReference
+                });
+                
+                if (varsResponse.variables && varsResponse.variables.length > 0) {
+                    const varNames = varsResponse.variables.slice(0, 10).map((v: any) => v.name).join(", ");
+                    console.log(`Found ${varsResponse.variables.length} variables (first 10: ${varNames}...)`);
+                    
+                    // Strategy 1: Look for __begin_ in the variables
+                    for (const v of varsResponse.variables) {
+                        const varName = v.name;
+                        if (varName === "__begin_" || varName.includes("__begin")) {
+                            console.log(`Found __begin_ variable: name="${varName}", value="${v.value}", memoryReference="${v.memoryReference}"`);
+                            
+                            // Extract pointer from value
+                            if (v.value) {
+                                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
+                                if (ptrMatch) {
+                                    dataPtr = ptrMatch[0];
+                                    console.log(`Extracted pointer from __begin_ variable: ${dataPtr}`);
+                                    break;
+                                }
+                            }
+                            
+                            // Also check memoryReference
+                            if (!dataPtr && v.memoryReference) {
+                                dataPtr = v.memoryReference;
+                                console.log(`Using memoryReference from __begin_ variable: ${dataPtr}`);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Strategy 2: If __begin_ not found, try to get [0] element's memoryReference
+                    if (!dataPtr) {
+                        const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
+                        if (firstElement) {
+                            console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
+                            
+                            if (firstElement.memoryReference) {
+                                dataPtr = firstElement.memoryReference;
+                                console.log(`Using memoryReference from [0] element as data pointer: ${dataPtr}`);
+                            } else if (firstElement.value) {
+                                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
+                                if (ptrMatch) {
+                                    dataPtr = ptrMatch[0];
+                                    console.log(`Extracted pointer from [0] element value: ${dataPtr}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log("Failed to get data pointer through variables:", e);
+            }
+        }
+        
+        // If variables approach didn't work, try evaluate expressions
+        if (!dataPtr) {
+            const lldbExpressions = [
+                `${variableName}.__begin_`,
+                `reinterpret_cast<long long>(${variableName}.__begin_)`,
+                `${variableName}.data()`,
+                `reinterpret_cast<long long>(${variableName}.data())`,
+                `&${variableName}[0]`,
+                `reinterpret_cast<long long>(&${variableName}[0])`
+            ];
+            dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
+        }
+        
+    } else if (isUsingMSVC(debugSession)) {
+        console.log("Using MSVC-specific approaches for 1D vector");
+        const msvcExpressions = [
+            `(long long)&${variableName}[0]`,
+            `reinterpret_cast<long long>(&${variableName}[0])`,
+            `(long long)${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, msvcExpressions, frameId, context);
+        
+    } else if (isUsingCppdbg(debugSession)) {
+        console.log("Using GDB-specific approaches for 1D vector");
+        const gdbExpressions = [
+            `(long long)${variableName}._M_impl._M_start`,
+            `reinterpret_cast<long long>(${variableName}._M_impl._M_start)`,
+            `(long long)${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`,
+            `(long long)&${variableName}[0]`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, gdbExpressions, frameId, context);
+        
+    } else {
+        // Fallback: try all approaches
+        console.log("Unknown debugger type, trying generic approaches");
+        const ptrExprs = [
+            `${variableName}.data()`, 
+            `&${variableName}[0]`, 
+            `(void*)${variableName}.data()`,
+            `(void*)&${variableName}[0]`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, ptrExprs, frameId, context);
+    }
 
     if (!dataPtr) {
         vscode.window.showErrorMessage(`Could not get data pointer for vector ${variableName}.`);
@@ -318,6 +421,7 @@ async function readVectorDataInternal(
 
     // 4. Read memory
     const totalBytes = size * bytesPerElement;
+    console.log(`Reading ${size} elements (${totalBytes} bytes) from ${dataPtr}`);
     const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
 
     if (!buffer) {
@@ -330,5 +434,6 @@ async function readVectorDataInternal(
     for (let i = 0; i < size; i++) {
         data.push(readMethod(buffer, i * bytesPerElement));
     }
+    console.log(`Successfully read ${data.length} elements`);
     return { data, dataPtr };
 }
