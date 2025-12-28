@@ -208,6 +208,8 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     variablesReference: v.variablesReference
                                 });
                                 let ch = 1;
+                                let matVarRef = 0;
+                                
                                 for (const child of children.variables) {
                                     const val = parseInt(child.value);
                                     if (child.name === 'rows') r = val;
@@ -215,7 +217,29 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     else if (child.name === 'flags') {
                                         if (!isNaN(val)) ch = (((val & 0xFFF) >> 3) & 63) + 1;
                                     }
+                                    // For cv::Mat_<T>, find the base cv::Mat member
+                                    else if ((child.name === 'cv::Mat' || child.name.includes('cv::Mat') || 
+                                              (child.name === 'Mat' && child.value?.includes('rows'))) && 
+                                             child.variablesReference > 0) {
+                                        matVarRef = child.variablesReference;
+                                    }
                                 }
+                                
+                                // If rows/cols not found directly, try from base cv::Mat member (for cv::Mat_<T>)
+                                if ((r === 0 || c === 0) && matVarRef > 0) {
+                                    const matChildren = await debugSession.customRequest('variables', {
+                                        variablesReference: matVarRef
+                                    });
+                                    for (const mc of matChildren.variables) {
+                                        const val = parseInt(mc.value);
+                                        if (mc.name === 'rows') r = val;
+                                        else if (mc.name === 'cols') c = val;
+                                        else if (mc.name === 'flags') {
+                                            if (!isNaN(val)) ch = (((val & 0xFFF) >> 3) & 63) + 1;
+                                        }
+                                    }
+                                }
+                                
                                 if (ch === 1 && (r === 1 || c === 1) && r * c > 0) {
                                     is1DM = { is1D: true, size: r * c };
                                     SyncManager.markAs1D(variableName, r * c);
