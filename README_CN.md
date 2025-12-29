@@ -14,11 +14,13 @@
 
 ![1D 曲线图可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
 
-- 将 `std::vector<int/float/double/uchar>` 等数值向量绘制为折线图
+- 将 `std::vector<int/float/double/uchar>` 和 `std::set<int/float/double>` 等数值容器可视化
+- **多种绘图模式**：支持在查看器中切换折线图 (Plot)、散点图 (Scatter) 和直方图 (Histogram)
 - **自动识别 1D Mat**：自动将 `1xN` 或 `Nx1` 的单通道 `cv::Mat` 识别为 1D 数据并进行曲线绘制
-- **自定义 X 轴**：支持选择“索引 (Index)”或当前作用域内其他长度一致的 1D 变量作为 X 轴坐标
+- **自定义 X 轴**：支持选择"索引 (Index)"或当前作用域内其他长度一致的 1D 变量作为 X 轴坐标
 - **丰富交互**：支持框选放大 (Zoom to Rectangle)、平移 (Pan) 以及一键复位 (Home)
 - **数值追踪**：鼠标悬停自动捕捉最近的数据点并显示精确的 X-Y 坐标
+- **绘图设置**：实时调整线宽、点大小、直方图分箱数、坐标轴范围、图表标题、画布尺寸和字体大小
 - **数据导出**：支持将当前曲线图保存为 PNG 图片，或将 X-Y 原始数据导出为 CSV 文件
 
 ### 🖼️ 2D Mat 图像可视化
@@ -128,6 +130,7 @@
 ### 1D 数据 (曲线图)
 
 - `std::vector<int>`、`std::vector<float>`、`std::vector<double>`、`std::vector<uchar>` 等数值向量
+- `std::set<int>`、`std::set<float>`、`std::set<double>` 等数值集合
 - `1xN` 或 `Nx1` 的单通道 `cv::Mat` (自动转换)
 
 ---

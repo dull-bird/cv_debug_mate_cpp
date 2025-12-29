@@ -14,11 +14,13 @@ A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ 
 
 ![1D Curve Plotting](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
 
-- Visualize numeric vectors like `std::vector<int/float/double/uchar>` as line plots
+- Visualize numeric vectors like `std::vector<int/float/double/uchar>` and `std::set<int/float/double>` as plots
+- **Multiple Plot Types**: Switch between Line Plot, Scatter Plot, and Histogram directly in the viewer
 - **Auto 1D Mat Detection**: Automatically recognizes single-channel `1xN` or `Nx1` `cv::Mat` as 1D data for plotting
 - **Custom X-Axis**: Choose between "Index" or any other compatible 1D variable in scope as the X-axis coordinate
 - **Interactive Plotting**: Supports rectangle zoom (Zoom to Rectangle), panning (Pan), and one-click reset (Home)
 - **Data Tracking**: Mouse hover automatically snaps to the nearest data point and displays precise X-Y coordinates
+- **Plot Settings**: Real-time customization of line width, point size, histogram bins, axis limits, chart title, canvas size, and font size
 - **Export Data**: Save the current plot as a PNG image or export raw X-Y data to a CSV file
 
 ### 🖼️ 2D Mat Visualization
@@ -128,6 +130,7 @@ A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ 
 ### 1D Data (Plots)
 
 - Numeric vectors: `std::vector<int>`, `std::vector<float>`, `std::vector<double>`, `std::vector<uchar>`, etc.
+- Numeric sets: `std::set<int>`, `std::set<float>`, `std::set<double>`
 - Single-channel `cv::Mat` (`1xN` or `Nx1`, auto-detected)
 
 ---
