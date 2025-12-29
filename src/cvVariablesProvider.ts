@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -188,6 +188,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                     const isM = isMat(v);
                     const point3 = isPoint3Vector(v);
                     const vector1D = is1DVector(v);
+                    const set1D = is1DSet(v);
 
                     const checkVariable = async (): Promise<CVVariable | null> => {
                         let is1DM = isLikely1DMat(v);
@@ -247,7 +248,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             } catch (e) {}
                         }
 
-                        if (isM || point3.isPoint3 || vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
+                        if (isM || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
@@ -260,9 +261,9 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     if (sizeMatch) size = parseInt(sizeMatch[1]);
                                 }
                                 sizeInfo = size > 0 ? `${size} points` : '';
-                            } else if (vector1D.is1D || is1DM.is1D || confirmed1DSize !== undefined) {
+                            } else if (vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
                                 kind = 'plot';
-                                size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DM.size);
+                                size = confirmed1DSize || (vector1D.is1D ? vector1D.size : (set1D.isSet ? set1D.size : is1DM.size));
                                 sizeInfo = size > 0 ? `${size} elements` : '';
                             } else if (isM) {
                                 kind = 'mat';

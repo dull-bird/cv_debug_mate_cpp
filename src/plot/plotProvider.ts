@@ -22,18 +22,28 @@ export async function drawPlot(
   elementTypeOrMat: string | { rows: number, cols: number, channels: number, depth: number, dataPtr: string },
   reveal: boolean = true,
   force: boolean = false,
-  variableInfo?: any
+  variableInfo?: any,
+  isSet: boolean = false
 ) {
   try {
     let initialData: number[] | null = null;
     let dataPtrForToken = "";
     
     if (typeof elementTypeOrMat === 'string') {
-        console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
-        const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat, undefined, variableInfo);
-        if (result) {
-            initialData = result.data;
-            dataPtrForToken = result.dataPtr || "";
+        if (isSet) {
+            console.log(`Drawing plot for set: ${variableName}, element type: ${elementTypeOrMat}`);
+            const result = await readSetDataInternal(debugSession, variableName, elementTypeOrMat, variableInfo);
+            if (result) {
+                initialData = result.data;
+                dataPtrForToken = `set:${result.data.length}`;
+            }
+        } else {
+            console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
+            const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat, undefined, variableInfo);
+            if (result) {
+                initialData = result.data;
+                dataPtrForToken = result.dataPtr || "";
+            }
         }
     } else {
         console.log(`Drawing plot for 1D Mat: ${variableName}, info:`, elementTypeOrMat);
@@ -154,7 +164,8 @@ export async function drawPlot(
                     const matInfo = await getMatInfoFromVariables(debugSession, targetVar.variablesReference);
                     newData = await readMatDataInternal(debugSession, targetVar.evaluateName, matInfo);
                 } else {
-                    const result = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData!.length);
+                    // Pass targetVar as variableInfo to support LLDB size detection
+                    const result = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData!.length, targetVar);
                     newData = result ? result.data : null;
                 }
                 
@@ -436,4 +447,119 @@ async function readVectorDataInternal(
     }
     console.log(`Successfully read ${data.length} elements`);
     return { data, dataPtr };
+}
+
+// Read data from std::set by iterating through elements via variablesReference
+// Set is a red-black tree, so we cannot use contiguous memory reading
+async function readSetDataInternal(
+    debugSession: vscode.DebugSession,
+    variableName: string,
+    type: string,
+    variableInfo?: any
+): Promise<{ data: number[] } | null> {
+    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+    const context = getEvaluateContext(debugSession);
+
+    console.log(`readSetDataInternal: variableName="${variableName}", type="${type}", debugger=${debugSession.type}`);
+
+    // 1. Get set size
+    const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
+
+    if (isNaN(size) || size <= 0) {
+        vscode.window.showWarningMessage(`Set ${variableName} is empty or size could not be determined.`);
+        return null;
+    }
+
+    console.log(`Set size: ${size}`);
+
+    // 2. Determine parse function based on element type
+    const typeLower = type.toLowerCase();
+    let parseValue: (val: string) => number;
+    
+    if (typeLower.includes("double")) {
+        parseValue = (val) => parseFloat(val);
+    } else if (typeLower.includes("float")) {
+        parseValue = (val) => parseFloat(val);
+    } else {
+        parseValue = (val) => parseInt(val);
+    }
+
+    // 3. Read elements via variablesReference
+    const data: number[] = [];
+    
+    if (variableInfo && variableInfo.variablesReference > 0) {
+        try {
+            const varsResponse = await debugSession.customRequest("variables", {
+                variablesReference: variableInfo.variablesReference
+            });
+            
+            if (varsResponse.variables && varsResponse.variables.length > 0) {
+                console.log(`Found ${varsResponse.variables.length} variables in set`);
+                
+                for (const v of varsResponse.variables) {
+                    // Skip internal implementation details
+                    if (v.name.startsWith('_') || v.name.startsWith('__')) continue;
+                    
+                    // Check if it's an indexed element [0], [1], etc.
+                    if (v.name.match(/^\[\d+\]$/)) {
+                        const val = parseValue(v.value);
+                        if (!isNaN(val)) {
+                            data.push(val);
+                        }
+                    }
+                }
+                
+                // If no indexed elements found, try to parse all numeric values
+                if (data.length === 0) {
+                    for (const v of varsResponse.variables) {
+                        if (v.name.startsWith('_') || v.name.startsWith('__')) continue;
+                        const val = parseValue(v.value);
+                        if (!isNaN(val)) {
+                            data.push(val);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log("Failed to read set elements via variablesReference:", e);
+        }
+    }
+
+    // 4. If variablesReference approach didn't work or returned fewer elements,
+    // try to evaluate elements one by one (slower but more reliable)
+    if (data.length < size && data.length < 1000) {
+        console.log(`Only got ${data.length} elements from variablesReference, trying evaluate approach`);
+        
+        // For std::set, we need to iterate. Try using *std::next or evaluate each index
+        // This is a fallback and may not work on all debuggers
+        try {
+            // Try to get begin iterator and iterate
+            const beginExpr = `*${variableName}.begin()`;
+            const beginResp = await debugSession.customRequest("evaluate", {
+                expression: beginExpr,
+                frameId: frameId,
+                context: context
+            });
+            
+            if (beginResp && beginResp.result) {
+                const firstVal = parseValue(beginResp.result);
+                if (!isNaN(firstVal) && data.length === 0) {
+                    data.push(firstVal);
+                }
+            }
+        } catch (e) {
+            console.log("Evaluate approach for set also failed:", e);
+        }
+    }
+
+    if (data.length === 0) {
+        vscode.window.showErrorMessage(`Failed to read elements from set ${variableName}.`);
+        return null;
+    }
+
+    // Sort the data since set is ordered
+    data.sort((a, b) => a - b);
+
+    console.log(`Successfully read ${data.length} elements from set`);
+    return { data };
 }

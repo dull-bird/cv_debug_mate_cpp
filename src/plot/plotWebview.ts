@@ -168,6 +168,93 @@ export function getWebviewContentForPlot(
                 border: 1px solid #555;
                 white-space: pre-line;
             }
+            
+            /* Settings Panel */
+            #settingsPanel {
+                display: none;
+                position: absolute;
+                top: 40px;
+                right: 10px;
+                background: #252526;
+                border: 1px solid #454545;
+                border-radius: 6px;
+                z-index: 3000;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+                padding: 12px;
+                min-width: 280px;
+                max-height: 70vh;
+                overflow-y: auto;
+            }
+            .settings-section {
+                margin-bottom: 12px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #444;
+            }
+            .settings-section:last-child {
+                margin-bottom: 0;
+                padding-bottom: 0;
+                border-bottom: none;
+            }
+            .settings-title {
+                font-size: 11px;
+                font-weight: bold;
+                color: #4a9eff;
+                margin-bottom: 8px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .settings-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 6px;
+                gap: 10px;
+            }
+            .settings-row label {
+                font-size: 12px;
+                color: #ccc;
+                flex-shrink: 0;
+            }
+            .settings-row input[type="number"],
+            .settings-row input[type="text"] {
+                width: 70px;
+                padding: 4px 6px;
+                background: #333;
+                border: 1px solid #555;
+                border-radius: 3px;
+                color: #ccc;
+                font-size: 11px;
+            }
+            .settings-row input[type="text"].wide {
+                width: 140px;
+            }
+            .settings-row input:focus {
+                outline: none;
+                border-color: #4a9eff;
+            }
+            .settings-row .range-inputs {
+                display: flex;
+                gap: 4px;
+                align-items: center;
+            }
+            .settings-row .range-inputs span {
+                color: #888;
+                font-size: 11px;
+            }
+            .settings-reset {
+                width: 100%;
+                margin-top: 10px;
+                padding: 6px;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+                cursor: pointer;
+                background: #444;
+                color: #ccc;
+            }
+            .settings-reset:hover {
+                background: #555;
+            }
         </style>
     </head>
     <body>
@@ -182,6 +269,13 @@ export function getWebviewContentForPlot(
                 <button id="btnReload" class="btn" title="强制从内存重新读取数据 (保持缩放)">🔄 Reload</button>
                 <button id="btnZoomRect" class="btn" title="Zoom to Rectangle">🔍 Zoom</button>
                 <button id="btnPan" class="btn active" title="Pan Mode">✋ Pan</button>
+                
+                <!-- 绘图模式选择 -->
+                <div class="btn-group">
+                    <button id="btnPlot" class="btn active" title="Line Plot">📈 Plot</button>
+                    <button id="btnScatter" class="btn" title="Scatter Plot">⚪ Scatter</button>
+                    <button id="btnHist" class="btn" title="Histogram">📊 Hist</button>
+                </div>
                 
                 <!-- 自定义 X 轴下拉菜单 -->
                 <div class="dropdown-container">
@@ -200,6 +294,9 @@ export function getWebviewContentForPlot(
                     </div>
                 </div>
                 
+                <!-- 设置按钮 -->
+                <button id="btnSettings" class="btn" title="Plot Settings">⚙️ Settings</button>
+                
                 <span id="info">Size: ${data.length}</span>
             </div>
         </div>
@@ -207,6 +304,70 @@ export function getWebviewContentForPlot(
             <canvas id="plotCanvas"></canvas>
             <div id="tooltip"></div>
             <div id="zoomRect" style="display:none; position:absolute; border:1px solid #4a9eff; background:rgba(74,158,255,0.2); pointer-events:none;"></div>
+        </div>
+        
+        <!-- 设置面板 -->
+        <div id="settingsPanel">
+            <div class="settings-section" id="plotSettings">
+                <div class="settings-title">📈 Plot Settings</div>
+                <div class="settings-row">
+                    <label>Line Width:</label>
+                    <input type="number" id="lineWidth" value="1.5" min="0.5" max="10" step="0.5">
+                </div>
+            </div>
+            <div class="settings-section" id="scatterSettings" style="display:none;">
+                <div class="settings-title">⚪ Scatter Settings</div>
+                <div class="settings-row">
+                    <label>Point Size:</label>
+                    <input type="number" id="pointSize" value="3" min="1" max="20" step="0.5">
+                </div>
+            </div>
+            <div class="settings-section" id="histSettings" style="display:none;">
+                <div class="settings-title">📊 Histogram Settings</div>
+                <div class="settings-row">
+                    <label>Bin Count:</label>
+                    <input type="number" id="binCount" value="50" min="5" max="500" step="5">
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-title">📐 Axis Limits</div>
+                <div class="settings-row">
+                    <label>X Range:</label>
+                    <div class="range-inputs">
+                        <input type="number" id="xMin" placeholder="auto" step="any">
+                        <span>to</span>
+                        <input type="number" id="xMax" placeholder="auto" step="any">
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label>Y Range:</label>
+                    <div class="range-inputs">
+                        <input type="number" id="yMin" placeholder="auto" step="any">
+                        <span>to</span>
+                        <input type="number" id="yMax" placeholder="auto" step="any">
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-title">🏷️ Title & Size</div>
+                <div class="settings-row">
+                    <label>Title:</label>
+                    <input type="text" id="customTitle" class="wide" placeholder="">
+                </div>
+                <div class="settings-row">
+                    <label>Canvas Size:</label>
+                    <div class="range-inputs">
+                        <input type="number" id="canvasWidth" placeholder="auto" min="200" step="10">
+                        <span>×</span>
+                        <input type="number" id="canvasHeight" placeholder="auto" min="200" step="10">
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label>Font Size:</label>
+                    <input type="number" id="fontSize" value="15" min="8" max="24" step="1">
+                </div>
+            </div>
+            <button class="settings-reset" id="resetSettings">🔄 Reset All</button>
         </div>
 
         <script nonce="${nonce}">
@@ -240,11 +401,38 @@ export function getWebviewContentForPlot(
                     const exportCSV = document.getElementById('exportCSV');
 
                     let width = 0, height = 0;
-                    let padding = { top: 40, right: 40, bottom: 40, left: 60 };
+                    let padding = { top: 40, right: 40, bottom: 55, left: 70 };
                     
                     let interactionMode = 'pan';
+                    let plotMode = 'plot'; // 'plot', 'scatter', 'hist'
                     let scaleX = 1, scaleY = 1, offsetX = 0, offsetY = 0;
                     let isDragging = false, dragStartX = 0, dragStartY = 0, lastMouseX = 0, lastMouseY = 0;
+                    
+                    const btnPlot = document.getElementById('btnPlot');
+                    const btnScatter = document.getElementById('btnScatter');
+                    const btnHist = document.getElementById('btnHist');
+                    
+                    // Settings panel elements
+                    const btnSettings = document.getElementById('btnSettings');
+                    const settingsPanel = document.getElementById('settingsPanel');
+                    const plotSettingsSection = document.getElementById('plotSettings');
+                    const scatterSettingsSection = document.getElementById('scatterSettings');
+                    const histSettingsSection = document.getElementById('histSettings');
+                    
+                    // Settings values
+                    let settings = {
+                        lineWidth: 1.5,
+                        pointSize: 3,
+                        binCount: 50,
+                        fontSize: 15,
+                        customTitle: '',
+                        xMin: null,
+                        xMax: null,
+                        yMin: null,
+                        yMax: null,
+                        canvasWidth: null,
+                        canvasHeight: null
+                    };
 
                     // 视图历史记录
                     let viewHistory = [];
@@ -299,9 +487,26 @@ export function getWebviewContentForPlot(
                     function updateSize() {
                         const rect = container.getBoundingClientRect();
                         const dpr = window.devicePixelRatio || 1;
-                        width = rect.width;
-                        height = rect.height;
+                        
+                        // Use custom size if set, otherwise use container size
+                        width = (settings.canvasWidth && settings.canvasWidth > 0) ? settings.canvasWidth : rect.width;
+                        height = (settings.canvasHeight && settings.canvasHeight > 0) ? settings.canvasHeight : rect.height;
+                        
                         if (width <= 0 || height <= 0) return false;
+                        
+                        // If custom size is set, update container style
+                        if (settings.canvasWidth && settings.canvasWidth > 0) {
+                            container.style.width = settings.canvasWidth + 'px';
+                        } else {
+                            container.style.width = '';
+                        }
+                        if (settings.canvasHeight && settings.canvasHeight > 0) {
+                            container.style.height = settings.canvasHeight + 'px';
+                            container.style.flexGrow = '0';
+                        } else {
+                            container.style.height = '';
+                            container.style.flexGrow = '1';
+                        }
                         
                         canvas.width = Math.floor(width * dpr);
                         canvas.height = Math.floor(height * dpr);
@@ -323,11 +528,15 @@ export function getWebviewContentForPlot(
 
                     function updateDataBounds() {
                         const bY = getBounds(dataY);
-                        minY = bY.min; maxY = bY.max;
+                        const bX = getBounds(dataX);
+                        
+                        // Apply custom limits if set, otherwise use auto
+                        minY = (settings.yMin !== null && !isNaN(settings.yMin)) ? settings.yMin : bY.min;
+                        maxY = (settings.yMax !== null && !isNaN(settings.yMax)) ? settings.yMax : bY.max;
                         rangeY = (maxY - minY) || 1;
 
-                        const bX = getBounds(dataX);
-                        minX = bX.min; maxX = bX.max;
+                        minX = (settings.xMin !== null && !isNaN(settings.xMin)) ? settings.xMin : bX.min;
+                        maxX = (settings.xMax !== null && !isNaN(settings.xMax)) ? settings.xMax : bX.max;
                         rangeX = (maxX - minX) || 1;
                     }
 
@@ -359,6 +568,25 @@ export function getWebviewContentForPlot(
                         if (!updateSize()) return;
                         ctx.clearRect(0, 0, width, height);
 
+                        const axisFontSize = settings.fontSize || 15;
+                        const titleFontSize = axisFontSize + 4; // Title is slightly larger
+                        const chartTitle = settings.customTitle || '';
+                        
+                        // Dynamic padding based on font size
+                        // Y-axis: tick labels are horizontal text, width grows slowly with font size
+                        const yTickLabelWidth = 45 + (axisFontSize - 15) * 2.5; // Base 45px + small adjustment
+                        const yAxisLabelSpace = axisFontSize; // Space for rotated Y axis label
+                        padding.left = Math.max(70, yTickLabelWidth + yAxisLabelSpace);
+                        
+                        // X-axis needs space for: tick labels height + axis label height
+                        const xTickLabelHeight = axisFontSize + 4;
+                        const xAxisLabelHeight = axisFontSize + 6;
+                        padding.bottom = Math.max(55, xTickLabelHeight + xAxisLabelHeight + 15);
+                        
+                        // Top padding for title area (extra space if custom title is set)
+                        padding.top = chartTitle ? Math.max(45, titleFontSize + 25) : 30;
+                        padding.right = 40;
+
                         const innerWidth = width - padding.left - padding.right;
                         const innerHeight = height - padding.top - padding.bottom;
                         if (innerWidth <= 0 || innerHeight <= 0) return;
@@ -372,55 +600,112 @@ export function getWebviewContentForPlot(
                         ctx.lineTo(width - padding.right, height - padding.bottom);
                         ctx.stroke();
 
-                        // Labels
+                        // Y-axis tick labels with custom font size
                         ctx.fillStyle = '#888';
-                        ctx.font = '10px Arial';
+                        ctx.font = axisFontSize + 'px Arial';
                         ctx.textAlign = 'right';
                         ctx.textBaseline = 'middle';
+                        const yTickOffset = 8; // Space between tick and label
                         for (let i = 0; i <= 5; i++) {
                             const val = minY + (rangeY * i / 5);
                             const y = toScreenY(val);
                             if (y >= padding.top && y <= height - padding.bottom) {
-                                ctx.fillText(val.toFixed(2), padding.left - 10, y);
-                                ctx.beginPath(); ctx.moveTo(padding.left - 5, y); ctx.lineTo(padding.left, y); ctx.stroke();
+                                ctx.fillText(val.toFixed(2), padding.left - yTickOffset, y);
+                                ctx.beginPath(); ctx.moveTo(padding.left - 4, y); ctx.lineTo(padding.left, y); ctx.stroke();
                             }
                         }
 
+                        // X-axis tick labels
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'top';
+                        const xTickOffset = 8; // Space between axis and tick label
+                        const xLabelHeight = axisFontSize + 4; // Height of tick labels
                         for (let i = 0; i <= 5; i++) {
                             const val = minX + (rangeX * i / 5);
                             const x = toScreenX(val);
                             if (x >= padding.left && x <= width - padding.right) {
-                                ctx.fillText(val.toFixed(2), x, height - padding.bottom + 10);
-                                ctx.beginPath(); ctx.moveTo(x, height - padding.bottom); ctx.lineTo(x, height - padding.bottom + 5); ctx.stroke();
+                                ctx.fillText(val.toFixed(2), x, height - padding.bottom + xTickOffset);
+                                ctx.beginPath(); ctx.moveTo(x, height - padding.bottom); ctx.lineTo(x, height - padding.bottom + 4); ctx.stroke();
                             }
                         }
 
-                        // Names
+                        // Chart title - centered at top
+                        if (chartTitle) {
+                            ctx.fillStyle = '#4a9eff';
+                            ctx.font = 'bold ' + titleFontSize + 'px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'top';
+                            ctx.fillText(chartTitle, padding.left + innerWidth / 2, 8);
+                        }
+                        
+                        // Axis names with custom font
                         ctx.fillStyle = '#4a9eff';
+                        ctx.font = (axisFontSize + 2) + 'px Arial';
                         ctx.textAlign = 'center';
-                        ctx.fillText(currentVariableNameX, padding.left + innerWidth / 2, height - 10);
+                        // X-axis label - position below tick labels with extra margin
+                        const xAxisLabelY = height - padding.bottom + xTickOffset + xLabelHeight + 8;
+                        ctx.fillText(currentVariableNameX, padding.left + innerWidth / 2, xAxisLabelY);
+                        // Y-axis label - rotated on left side
                         ctx.save();
-                        ctx.translate(15, padding.top + innerHeight / 2);
+                        ctx.translate(12, padding.top + innerHeight / 2);
                         ctx.rotate(-Math.PI / 2);
                         ctx.fillText(currentVariableNameY, 0, 0);
                         ctx.restore();
 
-                        // Curve
+                        // Clip to plot area
                         ctx.save();
                         ctx.beginPath();
                         ctx.rect(padding.left, padding.top, innerWidth, innerHeight);
                         ctx.clip();
-                        ctx.strokeStyle = '#4a9eff';
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        for (let i = 0; i < dataY.length; i++) {
-                            const x = toScreenX(dataX[i]);
-                            const y = toScreenY(dataY[i]);
-                            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                        
+                        if (plotMode === 'plot') {
+                            // Line plot with custom line width
+                            ctx.strokeStyle = '#4a9eff';
+                            ctx.lineWidth = settings.lineWidth || 1.5;
+                            ctx.beginPath();
+                            for (let i = 0; i < dataY.length; i++) {
+                                const x = toScreenX(dataX[i]);
+                                const y = toScreenY(dataY[i]);
+                                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                            }
+                            ctx.stroke();
+                        } else if (plotMode === 'scatter') {
+                            // Scatter plot with custom point size
+                            ctx.fillStyle = '#4a9eff';
+                            const pSize = settings.pointSize || 3;
+                            for (let i = 0; i < dataY.length; i++) {
+                                const x = toScreenX(dataX[i]);
+                                const y = toScreenY(dataY[i]);
+                                ctx.beginPath();
+                                ctx.arc(x, y, pSize, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                        } else if (plotMode === 'hist') {
+                            // Histogram with custom bin count
+                            const numBins = settings.binCount || 50;
+                            const binWidth = rangeY / numBins;
+                            const bins = new Array(numBins).fill(0);
+                            for (let i = 0; i < dataY.length; i++) {
+                                let binIdx = Math.floor((dataY[i] - minY) / binWidth);
+                                if (binIdx >= numBins) binIdx = numBins - 1;
+                                if (binIdx < 0) binIdx = 0;
+                                bins[binIdx]++;
+                            }
+                            const maxBin = Math.max(...bins);
+                            
+                            ctx.fillStyle = 'rgba(74, 158, 255, 0.7)';
+                            ctx.strokeStyle = '#4a9eff';
+                            ctx.lineWidth = 1;
+                            
+                            const barWidth = innerWidth / numBins;
+                            for (let i = 0; i < numBins; i++) {
+                                const barHeight = maxBin > 0 ? (bins[i] / maxBin) * innerHeight : 0;
+                                const x = padding.left + i * barWidth;
+                                const y = height - padding.bottom - barHeight;
+                                ctx.fillRect(x, y, barWidth - 1, barHeight);
+                                ctx.strokeRect(x, y, barWidth - 1, barHeight);
+                            }
                         }
-                        ctx.stroke();
                         ctx.restore();
                     }
 
@@ -584,20 +869,7 @@ export function getWebviewContentForPlot(
                         isDragging = false;
                     });
 
-                    let wheelTimeout = null;
-                    container.addEventListener('wheel', function(e) {
-                        e.preventDefault();
-                        const f = e.deltaY > 0 ? 0.9 : 1.1;
-                        const r = container.getBoundingClientRect();
-                        const mx = e.clientX - r.left, my = e.clientY - r.top;
-                        const rx = (mx - padding.left) / scaleX - offsetX, ry = (height - padding.bottom - my) / scaleY - offsetY;
-                        scaleX *= f; scaleY *= f;
-                        offsetX = (mx - padding.left) / scaleX - rx; offsetY = (height - padding.bottom - my) / scaleY - ry;
-                        draw();
-                        
-                        if (wheelTimeout) clearTimeout(wheelTimeout);
-                        wheelTimeout = setTimeout(pushHistory, 500);
-                    }, { passive: false });
+                    // Wheel zoom disabled to prevent accidental zooming - use Zoom button instead
 
                     window.onresize = function() { draw(); };
                     btnHome.onclick = resetView;
@@ -606,6 +878,133 @@ export function getWebviewContentForPlot(
                     };
                     btnPan.onclick = function() { interactionMode = 'pan'; btnPan.classList.add('active'); btnZoomRect.classList.remove('active'); };
                     btnZoomRect.onclick = function() { interactionMode = 'zoomRect'; btnZoomRect.classList.add('active'); btnPan.classList.remove('active'); };
+                    
+                    function setPlotMode(mode) {
+                        plotMode = mode;
+                        btnPlot.classList.toggle('active', mode === 'plot');
+                        btnScatter.classList.toggle('active', mode === 'scatter');
+                        btnHist.classList.toggle('active', mode === 'hist');
+                        updateSettingsSections();
+                        draw();
+                    }
+                    btnPlot.onclick = function() { setPlotMode('plot'); };
+                    btnScatter.onclick = function() { setPlotMode('scatter'); };
+                    btnHist.onclick = function() { setPlotMode('hist'); };
+                    
+                    // Settings panel logic
+                    function updateSettingsSections() {
+                        plotSettingsSection.style.display = plotMode === 'plot' ? 'block' : 'none';
+                        scatterSettingsSection.style.display = plotMode === 'scatter' ? 'block' : 'none';
+                        histSettingsSection.style.display = plotMode === 'hist' ? 'block' : 'none';
+                    }
+                    
+                    btnSettings.onclick = function(e) {
+                        e.stopPropagation();
+                        const isVisible = settingsPanel.style.display === 'block';
+                        settingsPanel.style.display = isVisible ? 'none' : 'block';
+                        if (!isVisible) {
+                            updateSettingsSections();
+                            // Populate current values
+                            document.getElementById('lineWidth').value = settings.lineWidth;
+                            document.getElementById('pointSize').value = settings.pointSize;
+                            document.getElementById('binCount').value = settings.binCount;
+                            document.getElementById('fontSize').value = settings.fontSize;
+                            document.getElementById('customTitle').value = settings.customTitle || '';
+                            document.getElementById('xMin').value = settings.xMin !== null ? settings.xMin : '';
+                            document.getElementById('xMax').value = settings.xMax !== null ? settings.xMax : '';
+                            document.getElementById('yMin').value = settings.yMin !== null ? settings.yMin : '';
+                            document.getElementById('yMax').value = settings.yMax !== null ? settings.yMax : '';
+                            document.getElementById('canvasWidth').value = settings.canvasWidth || '';
+                            document.getElementById('canvasHeight').value = settings.canvasHeight || '';
+                        }
+                    };
+                    
+                    settingsPanel.onclick = function(e) {
+                        e.stopPropagation();
+                    };
+                    
+                    const resetSettingsBtn = document.getElementById('resetSettings');
+                    
+                    // Default settings values
+                    const defaultSettings = {
+                        lineWidth: 1.5,
+                        pointSize: 3,
+                        binCount: 50,
+                        fontSize: 15,
+                        customTitle: '',
+                        xMin: null,
+                        xMax: null,
+                        yMin: null,
+                        yMax: null,
+                        canvasWidth: null,
+                        canvasHeight: null
+                    };
+                    
+                    // Real-time settings update function
+                    function updateSettingsFromInputs() {
+                        settings.lineWidth = parseFloat(document.getElementById('lineWidth').value) || 1.5;
+                        settings.pointSize = parseFloat(document.getElementById('pointSize').value) || 3;
+                        settings.binCount = parseInt(document.getElementById('binCount').value) || 50;
+                        settings.fontSize = parseInt(document.getElementById('fontSize').value) || 15;
+                        settings.customTitle = document.getElementById('customTitle').value || '';
+                        
+                        const xMinVal = document.getElementById('xMin').value;
+                        const xMaxVal = document.getElementById('xMax').value;
+                        const yMinVal = document.getElementById('yMin').value;
+                        const yMaxVal = document.getElementById('yMax').value;
+                        settings.xMin = xMinVal !== '' ? parseFloat(xMinVal) : null;
+                        settings.xMax = xMaxVal !== '' ? parseFloat(xMaxVal) : null;
+                        settings.yMin = yMinVal !== '' ? parseFloat(yMinVal) : null;
+                        settings.yMax = yMaxVal !== '' ? parseFloat(yMaxVal) : null;
+                        
+                        const cw = document.getElementById('canvasWidth').value;
+                        const ch = document.getElementById('canvasHeight').value;
+                        settings.canvasWidth = cw !== '' ? parseInt(cw) : null;
+                        settings.canvasHeight = ch !== '' ? parseInt(ch) : null;
+                        
+                        updateDataBounds();
+                        draw();
+                    }
+                    
+                    // Add real-time listeners to all setting inputs
+                    const settingInputs = settingsPanel.querySelectorAll('input');
+                    settingInputs.forEach(function(input) {
+                        input.addEventListener('input', updateSettingsFromInputs);
+                        input.addEventListener('change', updateSettingsFromInputs);
+                    });
+                    
+                    resetSettingsBtn.onclick = function() {
+                        // Reset all settings to defaults
+                        Object.assign(settings, defaultSettings);
+                        
+                        // Update input fields
+                        document.getElementById('lineWidth').value = defaultSettings.lineWidth;
+                        document.getElementById('pointSize').value = defaultSettings.pointSize;
+                        document.getElementById('binCount').value = defaultSettings.binCount;
+                        document.getElementById('fontSize').value = defaultSettings.fontSize;
+                        document.getElementById('customTitle').value = '';
+                        document.getElementById('xMin').value = '';
+                        document.getElementById('xMax').value = '';
+                        document.getElementById('yMin').value = '';
+                        document.getElementById('yMax').value = '';
+                        document.getElementById('canvasWidth').value = '';
+                        document.getElementById('canvasHeight').value = '';
+                        
+                        // Reset container size
+                        container.style.width = '';
+                        container.style.height = '';
+                        container.style.flexGrow = '1';
+                        
+                        updateDataBounds();
+                        draw();
+                    };
+                    
+                    // Close settings panel when clicking outside
+                    document.addEventListener('click', function(e) {
+                        if (!settingsPanel.contains(e.target) && e.target !== btnSettings) {
+                            settingsPanel.style.display = 'none';
+                        }
+                    });
 
                     // Initial draw with a small delay to ensure layout is ready
                     updateDataBounds();

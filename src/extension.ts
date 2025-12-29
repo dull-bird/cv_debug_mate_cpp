@@ -6,7 +6,7 @@ import { drawPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -182,9 +182,11 @@ export function activate(context: vscode.ExtensionContext) {
       const isMatType = isMat(variableInfo);
       const is1DMatType = isLikely1DMat(variableInfo);
       const vector1D = is1DVector(variableInfo);
+      const set1D = is1DSet(variableInfo);
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
+      console.log(`is1DSet result: isSet=${set1D.isSet}, elementType=${set1D.elementType}, size=${set1D.size}`);
       console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
@@ -200,11 +202,11 @@ export function activate(context: vscode.ExtensionContext) {
             reason = "Point cloud is empty";
           }
         }
-      } else if (vector1D.is1D || is1DMatType.is1D || confirmed1DSize !== undefined) {
-        let size = confirmed1DSize || (vector1D.is1D ? vector1D.size : is1DMatType.size);
+      } else if (vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
+        let size = confirmed1DSize || (vector1D.is1D ? vector1D.size : (set1D.isSet ? set1D.size : is1DMatType.size));
         
         // If size is 0, try to get it via evaluate (especially for LLDB where value string may not contain size)
-        if (size === 0 && vector1D.is1D) {
+        if (size === 0 && (vector1D.is1D || set1D.isSet)) {
           // Try different expressions for different debuggers
           const sizeExpressions = debugSession.type === "lldb" 
             ? [`${variableName}.size()`, `(long long)${variableName}.size()`]
@@ -220,11 +222,11 @@ export function activate(context: vscode.ExtensionContext) {
               const parsed = parseInt(sizeResp.result);
               if (!isNaN(parsed) && parsed > 0) {
                 size = parsed;
-                console.log(`Got vector size via evaluate (${expr}): ${size}`);
+                console.log(`Got container size via evaluate (${expr}): ${size}`);
                 break;
               }
             } catch (e) {
-              console.log(`Failed to get vector size via ${expr}:`, e);
+              console.log(`Failed to get container size via ${expr}:`, e);
             }
           }
         }
@@ -254,7 +256,7 @@ export function activate(context: vscode.ExtensionContext) {
       let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
       if (point3Info.isPoint3) {
         viewType = "3DPointViewer";
-      } else if (vector1D.is1D || is1DMatType.is1D || confirmed1DSize !== undefined) {
+      } else if (vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
         viewType = "CurvePlotViewer";
       }
 
@@ -289,11 +291,13 @@ export function activate(context: vscode.ExtensionContext) {
           await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal, shouldForce);
         }
       } else if (vector1D.is1D) {
-        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce, variableInfo);
+        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce, variableInfo, false);
+      } else if (set1D.isSet) {
+        await drawPlot(debugSession, variableName, set1D.elementType, reveal, shouldForce, variableInfo, true);
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(
-            "Variable is not visualizable (supported: cv::Mat, Point3 vector, or 1D numeric vector)."
+            "Variable is not visualizable (supported: cv::Mat, Point3 vector, 1D numeric vector, or 1D numeric set)."
           );
         }
       }

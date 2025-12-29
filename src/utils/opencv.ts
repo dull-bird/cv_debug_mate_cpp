@@ -93,6 +93,29 @@ export function isLikely1DMat(variableInfo: any): { is1D: boolean; size: number 
   return { is1D: false, size: 0 };
 }
 
+// Basic numeric types that can be plotted
+const BASIC_NUMERIC_TYPES = [
+  'int', 'float', 'double', 'char', 'unsigned char', 'uchar', 
+  'short', 'unsigned short', 'ushort', 'long', 'unsigned long',
+  'long long', 'unsigned long long', 'int32_t', 'uint32_t', 
+  'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
+];
+
+function isBasicNumericType(elementType: string): boolean {
+  return BASIC_NUMERIC_TYPES.some(t => 
+    elementType === t || 
+    elementType === `class ${t}` || 
+    elementType === `struct ${t}` ||
+    (elementType.startsWith('unsigned ') && BASIC_NUMERIC_TYPES.includes(elementType.replace('unsigned ', '')))
+  );
+}
+
+function parseSizeFromValue(variableInfo: any): number {
+  const val = variableInfo.value || variableInfo.result || "";
+  const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
+  return sizeMatch ? parseInt(sizeMatch[1]) : 0;
+}
+
 // Function to check if the variable is a standard 1D vector (int, float, double, uchar, etc.)
 export function is1DVector(variableInfo: any): { is1D: boolean; elementType: string; size: number } {
   const type = variableInfo.type || "";
@@ -102,33 +125,33 @@ export function is1DVector(variableInfo: any): { is1D: boolean; elementType: str
   
   if (vectorMatch) {
     const elementType = vectorMatch[1].trim();
-    const basicTypes = [
-      'int', 'float', 'double', 'char', 'unsigned char', 'uchar', 
-      'short', 'unsigned short', 'ushort', 'long', 'unsigned long',
-      'long long', 'unsigned long long', 'int32_t', 'uint32_t', 
-      'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
-    ];
     
-    // Check if it's a basic numeric type
-    const isBasic = basicTypes.some(t => 
-      elementType === t || 
-      elementType === `class ${t}` || 
-      elementType === `struct ${t}` ||
-      (elementType.startsWith('unsigned ') && basicTypes.includes(elementType.replace('unsigned ', '')))
-    );
-    
-    if (isBasic) {
-      // Try to parse size from value string (check both value and result fields)
-      let size = 0;
-      const val = variableInfo.value || variableInfo.result || "";
-      const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
-      if (sizeMatch) size = parseInt(sizeMatch[1]);
-      
+    if (isBasicNumericType(elementType)) {
+      const size = parseSizeFromValue(variableInfo);
       return { is1D: true, elementType, size };
     }
   }
   
   return { is1D: false, elementType: "", size: 0 };
+}
+
+// Function to check if the variable is a std::set of numeric types
+export function is1DSet(variableInfo: any): { isSet: boolean; elementType: string; size: number } {
+  const type = variableInfo.type || "";
+  
+  // Match std::set<T> where T is a basic numeric type
+  const setMatch = type.match(/std::(?:__1::)?set<\s*([^,>]+?)\s*(?:,.*)?>/);
+  
+  if (setMatch) {
+    const elementType = setMatch[1].trim();
+    
+    if (isBasicNumericType(elementType)) {
+      const size = parseSizeFromValue(variableInfo);
+      return { isSet: true, elementType, size };
+    }
+  }
+  
+  return { isSet: false, elementType: "", size: 0 };
 }
 
 // Get bytes per element based on depth
