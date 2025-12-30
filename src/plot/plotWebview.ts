@@ -216,7 +216,8 @@ export function getWebviewContentForPlot(
                 flex-shrink: 0;
             }
             .settings-row input[type="number"],
-            .settings-row input[type="text"] {
+            .settings-row input[type="text"],
+            .settings-row select {
                 width: 70px;
                 padding: 4px 6px;
                 background: #333;
@@ -224,6 +225,11 @@ export function getWebviewContentForPlot(
                 border-radius: 3px;
                 color: #ccc;
                 font-size: 11px;
+            }
+            .settings-row select {
+                width: auto;
+                min-width: 100px;
+                cursor: pointer;
             }
             .settings-row input[type="text"].wide {
                 width: 140px;
@@ -328,9 +334,24 @@ export function getWebviewContentForPlot(
                     <label>Bin Count:</label>
                     <input type="number" id="binCount" value="50" min="5" max="500" step="5">
                 </div>
+                <div class="settings-row">
+                    <label>Y Axis:</label>
+                    <select id="histYMode">
+                        <option value="freq" selected>Frequency (Count)</option>
+                        <option value="density">Density (Normalized)</option>
+                    </select>
+                </div>
             </div>
             <div class="settings-section">
-                <div class="settings-title">📐 Axis Limits</div>
+                <div class="settings-title">📐 Axis Settings</div>
+                <div class="settings-row">
+                    <label>X Label:</label>
+                    <input type="text" id="xLabel" class="wide" placeholder="auto">
+                </div>
+                <div class="settings-row">
+                    <label>Y Label:</label>
+                    <input type="text" id="yLabel" class="wide" placeholder="auto">
+                </div>
                 <div class="settings-row">
                     <label>X Range:</label>
                     <div class="range-inputs">
@@ -424,8 +445,16 @@ export function getWebviewContentForPlot(
                         lineWidth: 1.5,
                         pointSize: 3,
                         binCount: 50,
+                        histYMode: 'freq', // 'freq' or 'density'
                         fontSize: 15,
                         customTitle: '',
+                        // Core label concepts:
+                        // - variableLabel: the data variable (Y in plot/scatter, X in hist)
+                        // - indexLabel: the index/x-axis variable (X in plot/scatter)
+                        // - histYLabel: the histogram Y-axis label (Frequency/Density)
+                        variableLabel: '',
+                        indexLabel: '',
+                        histYLabel: '',
                         xMin: null,
                         xMax: null,
                         yMin: null,
@@ -600,32 +629,77 @@ export function getWebviewContentForPlot(
                         ctx.lineTo(width - padding.right, height - padding.bottom);
                         ctx.stroke();
 
+                        // Tick label offsets
+                        const yTickOffset = 8;
+                        const xTickOffset = 8;
+                        const xLabelHeight = axisFontSize + 4;
+                        
+                        // For histogram mode, we need different tick values
+                        // Calculate histogram data range here for tick labels
+                        let histDataMin = 0, histDataMax = 1, histDataRange = 1;
+                        let histMaxY = 1;
+                        if (plotMode === 'hist') {
+                            histDataMin = Math.min(...dataY);
+                            histDataMax = Math.max(...dataY);
+                            histDataRange = (histDataMax - histDataMin) || 1;
+                            
+                            // Calculate bins to get max Y
+                            const numBins = settings.binCount || 50;
+                            const binWidth = histDataRange / numBins;
+                            const bins = new Array(numBins).fill(0);
+                            for (let i = 0; i < dataY.length; i++) {
+                                let binIdx = Math.floor((dataY[i] - histDataMin) / binWidth);
+                                if (binIdx >= numBins) binIdx = numBins - 1;
+                                if (binIdx < 0) binIdx = 0;
+                                bins[binIdx]++;
+                            }
+                            if (settings.histYMode === 'density') {
+                                const totalArea = dataY.length * binWidth;
+                                histMaxY = Math.max(...bins.map(b => b / totalArea));
+                            } else {
+                                histMaxY = Math.max(...bins);
+                            }
+                        }
+                        
                         // Y-axis tick labels with custom font size
                         ctx.fillStyle = '#888';
                         ctx.font = axisFontSize + 'px Arial';
                         ctx.textAlign = 'right';
                         ctx.textBaseline = 'middle';
-                        const yTickOffset = 8; // Space between tick and label
                         for (let i = 0; i <= 5; i++) {
-                            const val = minY + (rangeY * i / 5);
-                            const y = toScreenY(val);
-                            if (y >= padding.top && y <= height - padding.bottom) {
-                                ctx.fillText(val.toFixed(2), padding.left - yTickOffset, y);
-                                ctx.beginPath(); ctx.moveTo(padding.left - 4, y); ctx.lineTo(padding.left, y); ctx.stroke();
+                            let val, yPos;
+                            if (plotMode === 'hist') {
+                                // In histogram: Y-axis shows frequency/density from 0 to max
+                                val = (histMaxY * i / 5);
+                                yPos = height - padding.bottom - (i / 5) * innerHeight;
+                            } else {
+                                val = minY + (rangeY * i / 5);
+                                yPos = toScreenY(val);
+                            }
+                            if (yPos >= padding.top && yPos <= height - padding.bottom) {
+                                const label = (plotMode === 'hist' && settings.histYMode === 'density') 
+                                    ? val.toFixed(4) : val.toFixed(2);
+                                ctx.fillText(label, padding.left - yTickOffset, yPos);
+                                ctx.beginPath(); ctx.moveTo(padding.left - 4, yPos); ctx.lineTo(padding.left, yPos); ctx.stroke();
                             }
                         }
 
                         // X-axis tick labels
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'top';
-                        const xTickOffset = 8; // Space between axis and tick label
-                        const xLabelHeight = axisFontSize + 4; // Height of tick labels
                         for (let i = 0; i <= 5; i++) {
-                            const val = minX + (rangeX * i / 5);
-                            const x = toScreenX(val);
-                            if (x >= padding.left && x <= width - padding.right) {
-                                ctx.fillText(val.toFixed(2), x, height - padding.bottom + xTickOffset);
-                                ctx.beginPath(); ctx.moveTo(x, height - padding.bottom); ctx.lineTo(x, height - padding.bottom + 4); ctx.stroke();
+                            let val, xPos;
+                            if (plotMode === 'hist') {
+                                // In histogram: X-axis shows data value range
+                                val = histDataMin + (histDataRange * i / 5);
+                                xPos = padding.left + (i / 5) * innerWidth;
+                            } else {
+                                val = minX + (rangeX * i / 5);
+                                xPos = toScreenX(val);
+                            }
+                            if (xPos >= padding.left && xPos <= width - padding.right) {
+                                ctx.fillText(val.toFixed(2), xPos, height - padding.bottom + xTickOffset);
+                                ctx.beginPath(); ctx.moveTo(xPos, height - padding.bottom); ctx.lineTo(xPos, height - padding.bottom + 4); ctx.stroke();
                             }
                         }
 
@@ -644,12 +718,29 @@ export function getWebviewContentForPlot(
                         ctx.textAlign = 'center';
                         // X-axis label - position below tick labels with extra margin
                         const xAxisLabelY = height - padding.bottom + xTickOffset + xLabelHeight + 8;
-                        ctx.fillText(currentVariableNameX, padding.left + innerWidth / 2, xAxisLabelY);
+                        
+                        // Determine axis labels based on mode using core label concepts:
+                        // - variableLabel: data variable (plot/scatter Y, hist X)
+                        // - indexLabel: index variable (plot/scatter X)
+                        // - histYLabel: histogram Y (Frequency/Density)
+                        let xLabelText, yLabelText;
+                        if (plotMode === 'hist') {
+                            // Hist: X = variableLabel, Y = histYLabel or default
+                            xLabelText = settings.variableLabel || currentVariableNameY;
+                            const defaultHistY = (settings.histYMode === 'density') ? 'Density' : 'Frequency';
+                            yLabelText = settings.histYLabel || defaultHistY;
+                        } else {
+                            // Plot/Scatter: X = indexLabel, Y = variableLabel
+                            xLabelText = settings.indexLabel || currentVariableNameX;
+                            yLabelText = settings.variableLabel || currentVariableNameY;
+                        }
+                        
+                        ctx.fillText(xLabelText, padding.left + innerWidth / 2, xAxisLabelY);
                         // Y-axis label - rotated on left side
                         ctx.save();
                         ctx.translate(12, padding.top + innerHeight / 2);
                         ctx.rotate(-Math.PI / 2);
-                        ctx.fillText(currentVariableNameY, 0, 0);
+                        ctx.fillText(yLabelText, 0, 0);
                         ctx.restore();
 
                         // Clip to plot area
@@ -682,28 +773,45 @@ export function getWebviewContentForPlot(
                             }
                         } else if (plotMode === 'hist') {
                             // Histogram with custom bin count
+                            // Get data range from dataY (the original Y values become X axis in histogram)
+                            const histDataMin = Math.min(...dataY);
+                            const histDataMax = Math.max(...dataY);
+                            const histDataRange = (histDataMax - histDataMin) || 1;
+                            
                             const numBins = settings.binCount || 50;
-                            const binWidth = rangeY / numBins;
+                            const binWidth = histDataRange / numBins;
                             const bins = new Array(numBins).fill(0);
+                            
                             for (let i = 0; i < dataY.length; i++) {
-                                let binIdx = Math.floor((dataY[i] - minY) / binWidth);
+                                let binIdx = Math.floor((dataY[i] - histDataMin) / binWidth);
                                 if (binIdx >= numBins) binIdx = numBins - 1;
                                 if (binIdx < 0) binIdx = 0;
                                 bins[binIdx]++;
                             }
-                            const maxBin = Math.max(...bins);
+                            
+                            // Calculate Y values based on mode (frequency or density)
+                            let yValues;
+                            if (settings.histYMode === 'density') {
+                                // Density: normalize so that the integral equals 1
+                                const totalArea = dataY.length * binWidth;
+                                yValues = bins.map(b => b / totalArea);
+                            } else {
+                                // Frequency: raw counts
+                                yValues = bins;
+                            }
+                            const maxY = Math.max(...yValues);
                             
                             ctx.fillStyle = 'rgba(74, 158, 255, 0.7)';
                             ctx.strokeStyle = '#4a9eff';
                             ctx.lineWidth = 1;
                             
-                            const barWidth = innerWidth / numBins;
+                            const barWidthPx = innerWidth / numBins;
                             for (let i = 0; i < numBins; i++) {
-                                const barHeight = maxBin > 0 ? (bins[i] / maxBin) * innerHeight : 0;
-                                const x = padding.left + i * barWidth;
+                                const barHeight = maxY > 0 ? (yValues[i] / maxY) * innerHeight : 0;
+                                const x = padding.left + i * barWidthPx;
                                 const y = height - padding.bottom - barHeight;
-                                ctx.fillRect(x, y, barWidth - 1, barHeight);
-                                ctx.strokeRect(x, y, barWidth - 1, barHeight);
+                                ctx.fillRect(x, y, barWidthPx - 1, barHeight);
+                                ctx.strokeRect(x, y, barWidthPx - 1, barHeight);
                             }
                         }
                         ctx.restore();
@@ -896,6 +1004,28 @@ export function getWebviewContentForPlot(
                         plotSettingsSection.style.display = plotMode === 'plot' ? 'block' : 'none';
                         scatterSettingsSection.style.display = plotMode === 'scatter' ? 'block' : 'none';
                         histSettingsSection.style.display = plotMode === 'hist' ? 'block' : 'none';
+                        
+                        // Update axis label inputs based on mode
+                        // Core mapping:
+                        // - variableLabel: data variable (plot/scatter Y, hist X)
+                        // - indexLabel: index variable (plot/scatter X)
+                        // - histYLabel: histogram Y (Frequency/Density)
+                        const xLabelInput = document.getElementById('xLabel');
+                        const yLabelInput = document.getElementById('yLabel');
+                        
+                        if (plotMode === 'hist') {
+                            // In hist mode: X = variableLabel, Y = histYLabel
+                            xLabelInput.value = settings.variableLabel;
+                            xLabelInput.placeholder = currentVariableNameY;
+                            yLabelInput.value = settings.histYLabel;
+                            yLabelInput.placeholder = (settings.histYMode === 'density') ? 'Density' : 'Frequency';
+                        } else {
+                            // In plot/scatter mode: X = indexLabel, Y = variableLabel
+                            xLabelInput.value = settings.indexLabel;
+                            xLabelInput.placeholder = currentVariableNameX;
+                            yLabelInput.value = settings.variableLabel;
+                            yLabelInput.placeholder = currentVariableNameY;
+                        }
                     }
                     
                     btnSettings.onclick = function(e) {
@@ -930,8 +1060,12 @@ export function getWebviewContentForPlot(
                         lineWidth: 1.5,
                         pointSize: 3,
                         binCount: 50,
+                        histYMode: 'freq',
                         fontSize: 15,
                         customTitle: '',
+                        variableLabel: '',
+                        indexLabel: '',
+                        histYLabel: '',
                         xMin: null,
                         xMax: null,
                         yMin: null,
@@ -945,8 +1079,22 @@ export function getWebviewContentForPlot(
                         settings.lineWidth = parseFloat(document.getElementById('lineWidth').value) || 1.5;
                         settings.pointSize = parseFloat(document.getElementById('pointSize').value) || 3;
                         settings.binCount = parseInt(document.getElementById('binCount').value) || 50;
+                        settings.histYMode = document.getElementById('histYMode').value || 'freq';
                         settings.fontSize = parseInt(document.getElementById('fontSize').value) || 15;
                         settings.customTitle = document.getElementById('customTitle').value || '';
+                        
+                        // Map UI labels to core labels based on current mode
+                        const xLabelValue = document.getElementById('xLabel').value || '';
+                        const yLabelValue = document.getElementById('yLabel').value || '';
+                        if (plotMode === 'hist') {
+                            // In hist mode: X = variableLabel, Y = histYLabel
+                            settings.variableLabel = xLabelValue;
+                            settings.histYLabel = yLabelValue;
+                        } else {
+                            // In plot/scatter mode: X = indexLabel, Y = variableLabel
+                            settings.indexLabel = xLabelValue;
+                            settings.variableLabel = yLabelValue;
+                        }
                         
                         const xMinVal = document.getElementById('xMin').value;
                         const xMaxVal = document.getElementById('xMax').value;
@@ -981,8 +1129,15 @@ export function getWebviewContentForPlot(
                         document.getElementById('lineWidth').value = defaultSettings.lineWidth;
                         document.getElementById('pointSize').value = defaultSettings.pointSize;
                         document.getElementById('binCount').value = defaultSettings.binCount;
+                        document.getElementById('histYMode').value = defaultSettings.histYMode;
                         document.getElementById('fontSize').value = defaultSettings.fontSize;
                         document.getElementById('customTitle').value = '';
+                        // Reset core labels
+                        settings.variableLabel = '';
+                        settings.indexLabel = '';
+                        settings.histYLabel = '';
+                        document.getElementById('xLabel').value = '';
+                        document.getElementById('yLabel').value = '';
                         document.getElementById('xMin').value = '';
                         document.getElementById('xMax').value = '';
                         document.getElementById('yMin').value = '';
