@@ -974,6 +974,7 @@ export function getWebviewContentForMat(
 
                 function resetView() {
                     const MIN_DISPLAY_SIZE = 400; // 最小显示尺寸
+                    const MAX_AUTO_SCALE = 100;    // 与 setZoom 的上限保持一致（100x = 10000%）
                     
                     // 确保 viewW/viewH 已初始化
                     if (viewW === 0 || viewH === 0) {
@@ -986,8 +987,8 @@ export function getWebviewContentForMat(
                     const minDimension = Math.min(cols, rows);
                     const minScale = MIN_DISPLAY_SIZE / minDimension;
                     
-                    // 如果图像本身就很大，使用 1.0；否则使用 minScale
-                    scale = Math.max(1, minScale);
+                    // 如果图像本身就很大，使用 1.0；否则使用 minScale，并限制不超过最大缩放
+                    scale = Math.max(1, Math.min(MAX_AUTO_SCALE, minScale));
                     
                     // 居中显示
                     offsetX = (viewW - cols * scale) / 2;
