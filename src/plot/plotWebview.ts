@@ -1090,6 +1090,8 @@ export function getWebviewContentForPlot(
                             // In hist mode: X = variableLabel, Y = histYLabel
                             settings.variableLabel = xLabelValue;
                             settings.histYLabel = yLabelValue;
+                            // Update placeholder when histYMode changes
+                            document.getElementById('yLabel').placeholder = (settings.histYMode === 'density') ? 'Density' : 'Frequency';
                         } else {
                             // In plot/scatter mode: X = indexLabel, Y = variableLabel
                             settings.indexLabel = xLabelValue;
@@ -1114,8 +1116,8 @@ export function getWebviewContentForPlot(
                         draw();
                     }
                     
-                    // Add real-time listeners to all setting inputs
-                    const settingInputs = settingsPanel.querySelectorAll('input');
+                    // Add real-time listeners to all setting inputs (including select elements)
+                    const settingInputs = settingsPanel.querySelectorAll('input, select');
                     settingInputs.forEach(function(input) {
                         input.addEventListener('input', updateSettingsFromInputs);
                         input.addEventListener('change', updateSettingsFromInputs);
