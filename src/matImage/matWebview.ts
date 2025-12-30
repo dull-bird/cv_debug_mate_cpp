@@ -973,9 +973,26 @@ export function getWebviewContentForMat(
                 }
 
                 function resetView() {
-                    scale = 1;
-                    offsetX = 0;
-                    offsetY = 0;
+                    const MIN_DISPLAY_SIZE = 400; // 最小显示尺寸
+                    
+                    // 确保 viewW/viewH 已初始化
+                    if (viewW === 0 || viewH === 0) {
+                        const containerRect = container.getBoundingClientRect();
+                        viewW = containerRect.width;
+                        viewH = containerRect.height;
+                    }
+                    
+                    // 计算使图像至少达到 MIN_DISPLAY_SIZE 的缩放比例
+                    const minDimension = Math.min(cols, rows);
+                    const minScale = MIN_DISPLAY_SIZE / minDimension;
+                    
+                    // 如果图像本身就很大，使用 1.0；否则使用 minScale
+                    scale = Math.max(1, minScale);
+                    
+                    // 居中显示
+                    offsetX = (viewW - cols * scale) / 2;
+                    offsetY = (viewH - rows * scale) / 2;
+                    
                     requestRenderWithSync();
                 }
 
