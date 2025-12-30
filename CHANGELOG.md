@@ -4,6 +4,23 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.25] - 2025-12-30
+
+### Added
+
+- **Jet Colormap**: New render mode for `cv::Mat`, colorized by grayscale (or mean RGB)
+- **Matx support**: Detect and visualize `cv::Matx` fixed-size matrices (e.g., `Matx33f`, `Matx44d`)
+- **Small-image auto-scale**: Mats auto-zoom to a minimum 400px display size for tiny images (e.g., 3x3)
+
+### Fixed
+
+- **GDB STL parsing**: More robust size detection for vectors/sets/Point3 under gdb pretty-printers
+- **Empty variables guard**: Prevent opening empty/zero-sized variables from the panel or context menu
+
+### Changed
+
+- Documentation updated (EN/CN) for Jet Colormap, Matx support, and small-image auto-scale
+
 ## [0.0.24] - 2024-12-29
 
 ### Added

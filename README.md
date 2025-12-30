@@ -35,8 +35,10 @@ A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ 
   - `Float * 255 → Byte`: Map [0, 1] floats to bytes
   - `[min, max] → [0, 255]`: Auto-normalize based on data range
   - `Clamp → [0, 255]`: Saturated mapping
+  - `Jet Colormap`: Colorize by grayscale (or mean RGB) using Jet
 - **Flexible Value Formatting**: Display pixel values as Fixed(3), Fixed(6), or Scientific notation
 - **UI Scaling**: Adjustable scale for high-DPI monitors (Auto, 1x, 1.25x, 1.5x, 2x)
+- **Small Image Auto-Scale**: Mats are auto-zoomed to a minimum 400px display size
 - Zoom in/out with mouse wheel (up to 100x)
 - Pan by dragging
 - Pixel value display on hover
@@ -116,6 +118,7 @@ A Visual Studio Code extension for visualizing 1/2/3Ddata structures during C++ 
 ### Image
 
 - `cv::Mat` & `cv::Mat_<T>`
+- `cv::Matx` fixed-size matrices (e.g., `Matx33f`, `Matx44d`)
 - Grayscale images (1 channel)
 - Color images (3 channels, BGR)
 - RGBA images (4 channels)
