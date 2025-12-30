@@ -423,7 +423,7 @@ export function getWebviewContentForMat(
                     if (renderMode === 'norm01') {
                         return clampByte(v * 255);
                     }
-                    if (renderMode === 'minmax') {
+                    if (renderMode === 'minmax' || renderMode === 'jet') {
                         const mm = getMinMax();
                         const denom = (mm.max - mm.min) || 1;
                         return clampByte(((v - mm.min) / denom) * 255);
@@ -435,16 +435,79 @@ export function getWebviewContentForMat(
                     return clampByte(v);
                 }
 
+                // Jet colormap: maps a normalized value (0-1) to RGB
+                // Blue -> Cyan -> Green -> Yellow -> Red
+                function jetColormap(t) {
+                    // t is in [0, 1]
+                    let r, g, b;
+                    if (t < 0.125) {
+                        r = 0;
+                        g = 0;
+                        b = 0.5 + t * 4; // 0.5 -> 1.0
+                    } else if (t < 0.375) {
+                        r = 0;
+                        g = (t - 0.125) * 4; // 0 -> 1
+                        b = 1;
+                    } else if (t < 0.625) {
+                        r = (t - 0.375) * 4; // 0 -> 1
+                        g = 1;
+                        b = 1 - (t - 0.375) * 4; // 1 -> 0
+                    } else if (t < 0.875) {
+                        r = 1;
+                        g = 1 - (t - 0.625) * 4; // 1 -> 0
+                        b = 0;
+                    } else {
+                        r = 1 - (t - 0.875) * 4; // 1 -> 0.5
+                        g = 0;
+                        b = 0;
+                    }
+                    return {
+                        r: clampByte(r * 255),
+                        g: clampByte(g * 255),
+                        b: clampByte(b * 255)
+                    };
+                }
+
                 function updateOffscreenFromRaw() {
                     if (!rawData) return;
                     // Fill image data based on selected render mode
                     cachedMinMax = null;
-                    if (renderMode === 'minmax') getMinMax();
+                    if (renderMode === 'minmax' || renderMode === 'jet') getMinMax();
 
                     const data = imgData.data;
                     const len = rows * cols;
                     
-                    if (depth === 0 && renderMode === 'byte') {
+                    if (renderMode === 'jet') {
+                        // Jet colormap mode: convert to grayscale first, then apply colormap
+                        const mm = getMinMax();
+                        const denom = (mm.max - mm.min) || 1;
+                        
+                        for (let i = 0; i < len; i++) {
+                            const outIdx = i << 2;
+                            let grayValue;
+                            
+                            if (channels === 1) {
+                                grayValue = rawData[i];
+                            } else {
+                                // For multi-channel, compute average (grayscale)
+                                const inIdx = i * channels;
+                                let sum = 0;
+                                for (let c = 0; c < channels; c++) {
+                                    sum += rawData[inIdx + c];
+                                }
+                                grayValue = sum / channels;
+                            }
+                            
+                            // Normalize to [0, 1]
+                            const t = (grayValue - mm.min) / denom;
+                            const color = jetColormap(Math.max(0, Math.min(1, t)));
+                            
+                            data[outIdx] = color.r;
+                            data[outIdx + 1] = color.g;
+                            data[outIdx + 2] = color.b;
+                            data[outIdx + 3] = 255;
+                        }
+                    } else if (depth === 0 && renderMode === 'byte') {
                         // Fast path for CV_8U + byte mode
                         if (channels === 1) {
                             for (let i = 0; i < len; i++) {
@@ -593,6 +656,7 @@ export function getWebviewContentForMat(
                         { value: 'norm01', label: 'Float * 255 → Byte' },
                         { value: 'minmax', label: '[min, max] → [0, 255]' },
                         { value: 'clamp255', label: 'Clamp → [0, 255]' },
+                        { value: 'jet', label: 'Jet Colormap' },
                     ],
                     () => renderMode,
                     (v) => { renderMode = v; updateOffscreenFromRaw(); requestRender(); }

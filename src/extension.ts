@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { getEvaluateContext } from "./utils/debugger";
 import { drawPointCloud } from "./pointCloud/pointCloudProvider";
-import { drawMatImage } from "./matImage/matProvider";
+import { drawMatImage, drawMatxImage } from "./matImage/matProvider";
 import { drawPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -180,6 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
+      const matxInfo = isMatx(variableInfo);
       const is1DMatType = isLikely1DMat(variableInfo);
       const vector1D = is1DVector(variableInfo);
       const set1D = is1DSet(variableInfo);
@@ -187,6 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
       console.log(`is1DSet result: isSet=${set1D.isSet}, elementType=${set1D.elementType}, size=${set1D.size}`);
+      console.log(`isMatx result: isMatx=${matxInfo.isMatx}, rows=${matxInfo.rows}, cols=${matxInfo.cols}, depth=${matxInfo.depth}`);
       console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
@@ -246,6 +248,12 @@ export function activate(context: vscode.ExtensionContext) {
             reason = "Mat is empty";
           }
         }
+      } else if (matxInfo.isMatx) {
+        // Matx is never really empty if detected, but check dimensions
+        if (matxInfo.rows === 0 || matxInfo.cols === 0) {
+          isEmpty = true;
+          reason = "Matx has no dimensions";
+        }
       }
 
       if (isEmpty) {
@@ -262,6 +270,9 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (point3Info.isPoint3) {
         await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal, shouldForce);
+      } else if (matxInfo.isMatx) {
+        // Handle cv::Matx types
+        await drawMatxImage(debugSession, variableInfo, frameId, variableName, matxInfo, reveal, shouldForce);
       } else if (isMatType) {
         // Confirm if it's really 1D Mat
         let matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
@@ -297,7 +308,7 @@ export function activate(context: vscode.ExtensionContext) {
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(
-            "Variable is not visualizable (supported: cv::Mat, Point3 vector, 1D numeric vector, or 1D numeric set)."
+            "Variable is not visualizable (supported: cv::Mat, cv::Matx, Point3 vector, 1D numeric vector, or 1D numeric set)."
           );
         }
       }

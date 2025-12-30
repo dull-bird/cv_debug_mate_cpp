@@ -1,3 +1,59 @@
+// Basic numeric types that can be plotted
+const BASIC_NUMERIC_TYPES = [
+  'int', 'float', 'double', 'char', 'unsigned char', 'uchar', 
+  'short', 'unsigned short', 'ushort', 'long', 'unsigned long',
+  'long long', 'unsigned long long', 'int32_t', 'uint32_t', 
+  'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
+];
+
+function isBasicNumericType(elementType: string): boolean {
+  return BASIC_NUMERIC_TYPES.some(t => 
+    elementType === t || 
+    elementType === `class ${t}` || 
+    elementType === `struct ${t}` ||
+    (elementType.startsWith('unsigned ') && BASIC_NUMERIC_TYPES.includes(elementType.replace('unsigned ', '')))
+  );
+}
+
+function parseSizeFromValue(variableInfo: any): number {
+  const val = variableInfo.value || variableInfo.result || "";
+  
+  // Common patterns:
+  // MSVC/cppvsdbg: "{ size=5 }" or "[5]"
+  // LLDB: "size=5" or "([5])"
+  // GDB pretty-print: "std::vector of length 5, capacity 8 = {...}"
+  // GDB pretty-print: "vector of length 5"
+  // GDB alternative: "{...}" with no size info
+  
+  const sizeMatch = 
+    val.match(/size=(\d+)/) || 
+    val.match(/length=(\d+)/) ||
+    val.match(/of length (\d+)/) ||  // GDB pretty-print format
+    val.match(/\[(\d+)\]/) ||
+    val.match(/^(\d+)$/);  // Just a number
+  
+  if (sizeMatch) {
+    return parseInt(sizeMatch[1]);
+  }
+  
+  // GDB fallback: count elements in {...} if present
+  // e.g., "{1, 2, 3, 4, 5}" -> 5 elements
+  const braceMatch = val.match(/\{([^}]+)\}/);
+  if (braceMatch) {
+    const content = braceMatch[1].trim();
+    if (content === "..." || content === "") {
+      return 0; // Unknown or empty
+    }
+    // Count commas + 1 to estimate size
+    const elements = content.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0 && s !== '...');
+    if (elements.length > 0) {
+      return elements.length;
+    }
+  }
+  
+  return 0;
+}
+
 // Function to check if the variable is a vector of cv::Point3f or cv::Point3d
 // Returns: { isPoint3: boolean, isDouble: boolean, size: number }
 // isDouble: true for Point3d (double), false for Point3f (float)
@@ -31,9 +87,7 @@ export function isPoint3Vector(variableInfo: any): { isPoint3: boolean; isDouble
   
   let size = 0;
   if (isPoint3) {
-    const val = variableInfo.value || "";
-    const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
-    if (sizeMatch) size = parseInt(sizeMatch[1]);
+    size = parseSizeFromValue(variableInfo);
   }
 
   console.log(`isPoint3Vector result: isPoint3=${isPoint3}, isDouble=${isDouble}, size=${size}`);
@@ -45,6 +99,12 @@ export function isMat(variableInfo: any): boolean {
   console.log("Checking if variable is Mat");
   const type = variableInfo.type || "";
   console.log("Variable type string:", type);
+  
+  // Exclude cv::Matx types (they are handled separately)
+  if (/cv::Matx\d*[fdis]?\b/.test(type) || /cv::Matx</.test(type)) {
+    console.log("isMat result: false (is Matx type)");
+    return false;
+  }
   
   const result = 
     type.includes("cv::Mat") ||
@@ -59,6 +119,86 @@ export function isMat(variableInfo: any): boolean {
   
   console.log("isMat result:", result);
   return result;
+}
+
+// Function to check if the variable is a cv::Matx (fixed-size matrix)
+// Returns: { isMatx: boolean, rows: number, cols: number, depth: number }
+// Matx types: Matx<T, m, n>, Matx21f, Matx33f, Matx44d, etc.
+export function isMatx(variableInfo: any): { isMatx: boolean; rows: number; cols: number; depth: number } {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is Matx, type:", type);
+  
+  let rows = 0, cols = 0, depth = 5; // default to float (CV_32F)
+  
+  // Pattern 1: cv::Matx<T, m, n> (template form)
+  const templateMatch = type.match(/cv::Matx<\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*>/);
+  if (templateMatch) {
+    const elementType = templateMatch[1];
+    rows = parseInt(templateMatch[2]);
+    cols = parseInt(templateMatch[3]);
+    depth = getDepthFromElementType(elementType);
+    console.log(`isMatx (template): rows=${rows}, cols=${cols}, depth=${depth}`);
+    return { isMatx: true, rows, cols, depth };
+  }
+  
+  // Pattern 2: cv::Matx{rows}{cols}{type} (typedef form like Matx33f, Matx44d, Matx21f)
+  // Format: Matx{m}{n}{suffix} where suffix is f (float), d (double), i (int), s (short)
+  const typedefMatch = type.match(/cv::Matx(\d)(\d)([fdis])\b/);
+  if (typedefMatch) {
+    rows = parseInt(typedefMatch[1]);
+    cols = parseInt(typedefMatch[2]);
+    const suffix = typedefMatch[3];
+    switch (suffix) {
+      case 'f': depth = 5; break; // CV_32F
+      case 'd': depth = 6; break; // CV_64F
+      case 'i': depth = 4; break; // CV_32S
+      case 's': depth = 3; break; // CV_16S
+    }
+    console.log(`isMatx (typedef): rows=${rows}, cols=${cols}, depth=${depth}`);
+    return { isMatx: true, rows, cols, depth };
+  }
+  
+  // Pattern 3: Generic cv::Matx without dimensions (rare, but check)
+  if (/cv::Matx\b/.test(type) && !templateMatch && !typedefMatch) {
+    // Try to extract from value string
+    const val = variableInfo.value || variableInfo.result || "";
+    // Look for patterns like "val = {...}" with element count
+    const braceMatch = val.match(/\{([^}]+)\}/);
+    if (braceMatch) {
+      const elements = braceMatch[1].split(',').filter((s: string) => s.trim().length > 0);
+      // Common Matx sizes: 2x1, 3x1, 4x1, 2x2, 3x3, 4x4, etc.
+      const count = elements.length;
+      // Guess dimensions based on common sizes
+      if (count === 4) { rows = 2; cols = 2; }
+      else if (count === 9) { rows = 3; cols = 3; }
+      else if (count === 16) { rows = 4; cols = 4; }
+      else if (count === 2) { rows = 2; cols = 1; }
+      else if (count === 3) { rows = 3; cols = 1; }
+      else if (count === 6) { rows = 2; cols = 3; }
+      else { rows = count; cols = 1; } // Treat as column vector
+      
+      if (count > 0) {
+        console.log(`isMatx (guessed from value): rows=${rows}, cols=${cols}`);
+        return { isMatx: true, rows, cols, depth };
+      }
+    }
+  }
+  
+  console.log("isMatx result: false");
+  return { isMatx: false, rows: 0, cols: 0, depth: 0 };
+}
+
+// Helper to get CV depth from C++ type name
+function getDepthFromElementType(elementType: string): number {
+  const t = elementType.toLowerCase();
+  if (t.includes('double')) return 6; // CV_64F
+  if (t.includes('float')) return 5;  // CV_32F
+  if (t.includes('int') || t === 'int32_t') return 4; // CV_32S
+  if (t.includes('short') || t === 'int16_t') return 3; // CV_16S
+  if (t.includes('ushort') || t === 'uint16_t') return 2; // CV_16U
+  if (t.includes('char') || t === 'int8_t') return 1; // CV_8S
+  if (t.includes('uchar') || t === 'uint8_t') return 0; // CV_8U
+  return 5; // default to float
 }
 
 // Function to check if a cv::Mat is likely 1D (n*1 or 1*n) based on its summary/value string
@@ -91,29 +231,6 @@ export function isLikely1DMat(variableInfo: any): { is1D: boolean; size: number 
   }
 
   return { is1D: false, size: 0 };
-}
-
-// Basic numeric types that can be plotted
-const BASIC_NUMERIC_TYPES = [
-  'int', 'float', 'double', 'char', 'unsigned char', 'uchar', 
-  'short', 'unsigned short', 'ushort', 'long', 'unsigned long',
-  'long long', 'unsigned long long', 'int32_t', 'uint32_t', 
-  'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
-];
-
-function isBasicNumericType(elementType: string): boolean {
-  return BASIC_NUMERIC_TYPES.some(t => 
-    elementType === t || 
-    elementType === `class ${t}` || 
-    elementType === `struct ${t}` ||
-    (elementType.startsWith('unsigned ') && BASIC_NUMERIC_TYPES.includes(elementType.replace('unsigned ', '')))
-  );
-}
-
-function parseSizeFromValue(variableInfo: any): number {
-  const val = variableInfo.value || variableInfo.result || "";
-  const sizeMatch = val.match(/size=(\d+)/) || val.match(/length=(\d+)/) || val.match(/\[(\d+)\]/);
-  return sizeMatch ? parseInt(sizeMatch[1]) : 0;
 }
 
 // Function to check if the variable is a standard 1D vector (int, float, double, uchar, etc.)
@@ -237,4 +354,3 @@ export function parseNumericResult(result: string, depth: number): number {
   }
   return value;
 }
-

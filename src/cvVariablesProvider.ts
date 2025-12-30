@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -186,6 +186,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                 for (const v of variablesResponse.variables) {
                     const variableName = v.evaluateName || v.name;
                     const isM = isMat(v);
+                    const matxInfo = isMatx(v);
                     const point3 = isPoint3Vector(v);
                     const vector1D = is1DVector(v);
                     const set1D = is1DSet(v);
@@ -248,7 +249,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             } catch (e) {}
                         }
 
-                        if (isM || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
+                        if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
@@ -256,15 +257,46 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             if (point3.isPoint3) {
                                 kind = 'pointcloud';
                                 size = point3.size || 0;
+                                // Try to extract size from value if available
                                 if (size === 0) {
-                                    const sizeMatch = v.value.match(/size=(\d+)/) || v.value.match(/\[(\d+)\]/);
+                                    const sizeMatch = v.value.match(/size=(\d+)/) || 
+                                                      v.value.match(/of length (\d+)/) ||
+                                                      v.value.match(/\[(\d+)\]/);
                                     if (sizeMatch) size = parseInt(sizeMatch[1]);
+                                }
+                                // GDB fallback: try evaluate
+                                if (size === 0) {
+                                    try {
+                                        const sizeResp = await debugSession.customRequest("evaluate", {
+                                            expression: `(long long)${variableName}.size()`,
+                                            frameId,
+                                            context: "watch"
+                                        });
+                                        const parsed = parseInt(sizeResp.result);
+                                        if (!isNaN(parsed) && parsed > 0) size = parsed;
+                                    } catch (e) {}
                                 }
                                 sizeInfo = size > 0 ? `${size} points` : '';
                             } else if (vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
                                 kind = 'plot';
                                 size = confirmed1DSize || (vector1D.is1D ? vector1D.size : (set1D.isSet ? set1D.size : is1DM.size));
+                                // GDB fallback: try evaluate for vectors/sets
+                                if (size === 0 && (vector1D.is1D || set1D.isSet)) {
+                                    try {
+                                        const sizeResp = await debugSession.customRequest("evaluate", {
+                                            expression: `(long long)${variableName}.size()`,
+                                            frameId,
+                                            context: "watch"
+                                        });
+                                        const parsed = parseInt(sizeResp.result);
+                                        if (!isNaN(parsed) && parsed > 0) size = parsed;
+                                    } catch (e) {}
+                                }
                                 sizeInfo = size > 0 ? `${size} elements` : '';
+                            } else if (matxInfo.isMatx) {
+                                kind = 'mat';
+                                size = matxInfo.rows * matxInfo.cols;
+                                sizeInfo = `${matxInfo.rows}x${matxInfo.cols}`;
                             } else if (isM) {
                                 kind = 'mat';
                                 size = r * c;

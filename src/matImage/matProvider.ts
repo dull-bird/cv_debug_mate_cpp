@@ -482,3 +482,188 @@ export async function readMatDataForLLDB(
   }
 }
 
+// Function to draw cv::Matx (fixed-size matrix)
+export async function drawMatxImage(
+  debugSession: vscode.DebugSession,
+  variableInfo: any,
+  frameId: number,
+  variableName: string,
+  matxInfo: { isMatx: boolean; rows: number; cols: number; depth: number },
+  reveal: boolean = true,
+  force: boolean = false
+) {
+  try {
+    const { rows, cols, depth } = matxInfo;
+    const channels = 1; // Matx is always single-channel (the element type determines this)
+    const dataSize = rows * cols;
+    const bytesPerElement = getBytesPerElement(depth);
+    const totalBytes = dataSize * bytesPerElement;
+    
+    console.log(`Drawing Matx image: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
+    
+    const panelTitle = `View: ${variableName}`;
+    
+    // Get data pointer from the 'val' member of Matx
+    let dataPtr: string | null = null;
+    
+    // Try to get the val member's address
+    // Matx stores data in: T val[m*n]
+    const valExpressions = [
+      `&${variableName}.val[0]`,
+      `(void*)&${variableName}.val[0]`,
+      `${variableName}.val`
+    ];
+    
+    for (const expr of valExpressions) {
+      try {
+        const valResp = await debugSession.customRequest("evaluate", {
+          expression: expr,
+          frameId,
+          context: "watch"
+        });
+        const ptrMatch = valResp.result?.match(/0x[0-9a-fA-F]+/);
+        if (ptrMatch) {
+          dataPtr = ptrMatch[0];
+          console.log(`Got Matx data pointer via ${expr}: ${dataPtr}`);
+          break;
+        }
+      } catch (e) {
+        console.log(`Failed to get Matx data pointer via ${expr}`);
+      }
+    }
+    
+    // Fallback: try to get from variablesReference
+    if (!dataPtr && variableInfo.variablesReference > 0) {
+      try {
+        const varsResp = await debugSession.customRequest("variables", {
+          variablesReference: variableInfo.variablesReference
+        });
+        for (const v of varsResp.variables) {
+          if (v.name === "val") {
+            if (v.memoryReference) {
+              dataPtr = v.memoryReference;
+              console.log("Got Matx data pointer from val.memoryReference:", dataPtr);
+              break;
+            }
+            const ptrMatch = v.value?.match(/0x[0-9a-fA-F]+/);
+            if (ptrMatch) {
+              dataPtr = ptrMatch[0];
+              console.log("Got Matx data pointer from val.value:", dataPtr);
+              break;
+            }
+            // Try to expand val array
+            if (v.variablesReference > 0) {
+              const valVars = await debugSession.customRequest("variables", {
+                variablesReference: v.variablesReference
+              });
+              if (valVars.variables.length > 0) {
+                const firstElem = valVars.variables[0];
+                if (firstElem.memoryReference) {
+                  dataPtr = firstElem.memoryReference;
+                  console.log("Got Matx data pointer from val[0].memoryReference:", dataPtr);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log("Failed to get Matx data pointer from variablesReference:", e);
+      }
+    }
+    
+    if (!dataPtr) {
+      throw new Error("Cannot get data pointer from Matx. Make sure it's a valid cv::Matx.");
+    }
+    
+    // Check if panel is fresh
+    const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+    const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
+    
+    const panel = PanelManager.getOrCreatePanel(
+      "MatImageViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`Matx panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+    
+    // Read data with progress indicator
+    const dataResult = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Loading cv::Matx (${rows}x${cols})`,
+        cancellable: false
+      },
+      async (progress) => {
+        progress.report({ message: `Reading ${totalBytes} bytes...` });
+        const buffer = await readMemoryChunked(debugSession, dataPtr!, totalBytes, progress);
+        return { buffer };
+      }
+    );
+    
+    // Update state token
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    
+    // If panel already has content, only send data
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("Matx panel already has HTML, sending only data");
+      const buffer = dataResult.buffer;
+      if (buffer) {
+        await panel.webview.postMessage({
+          command: 'completeData',
+          data: new Uint8Array(buffer),
+          rows, cols, channels, depth
+        });
+        return;
+      }
+    }
+    
+    panel.webview.html = getWebviewContentForMat(
+      panel.webview,
+      rows,
+      cols,
+      channels,
+      depth,
+      { base64: "" }
+    );
+    
+    SyncManager.registerPanel(variableName, panel);
+    
+    if ((panel as any)._syncListener) {
+      (panel as any)._syncListener.dispose();
+    }
+    
+    (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+        }
+      }
+    );
+    
+    const buffer = dataResult.buffer;
+    if (!buffer) {
+      throw new Error("Failed to read Matx data");
+    }
+    
+    console.log(`Sending ${buffer.length} bytes to Matx webview`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      data: new Uint8Array(buffer)
+    });
+    
+    console.log('Matx data sent to webview');
+  } catch (error) {
+    console.error("Error drawing Matx image:", error);
+    throw error;
+  }
+}
+
