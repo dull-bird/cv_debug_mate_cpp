@@ -8,13 +8,37 @@ import {
   tryGetDataPointer, 
   readMemoryChunked,
   getMemorySample,
-  getVectorSize
+  getVectorSize,
+  getStdArrayDataPointer
 } from "../utils/debugger";
 import { getWebviewContentForPlot } from "./plotWebview";
 import { PanelManager } from "../utils/panelManager";
 import * as fs from 'fs';
 import { getMatInfoFromVariables } from "../matImage/matProvider";
-import { getBytesPerElement } from "../utils/opencv";
+import { getBytesPerElement, is1DStdArray } from "../utils/opencv";
+
+/**
+ * Helper to detect 1D std::array from type string and extract info
+ */
+function parse1DStdArrayFromType(type: string): { is1DArray: boolean; elementType: string; size: number } {
+  // Match patterns like std::array<int, 10>, std::__1::array<float, 100>
+  // But NOT 2D arrays (std::array<std::array<...>>)
+  if (/std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array/.test(type)) {
+    return { is1DArray: false, elementType: "", size: 0 };
+  }
+  
+  // Match 1D array pattern
+  const pattern1D = /std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>/;
+  const match = type.match(pattern1D);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const size = parseInt(match[2]);
+    return { is1DArray: true, elementType, size };
+  }
+  
+  return { is1DArray: false, elementType: "", size: 0 };
+}
 
 export async function drawPlot(
   debugSession: vscode.DebugSession,
@@ -155,24 +179,29 @@ export async function drawPlot(
                             }
 
                             // Otherwise evaluate once
-                            let size = 0;
+                            let evalSize = 0;
+                            const arrayInfo = parse1DStdArrayFromType(v.type);
+                            
                             if (v.type.includes("cv::Mat")) {
                                 const matSizeResp = await debugSession.customRequest("evaluate", {
                                     expression: `(int)${v.evaluateName}.rows * (int)${v.evaluateName}.cols`,
                                     frameId: frameId,
                                     context: context
                                 });
-                                size = parseInt(matSizeResp.result);
+                                evalSize = parseInt(matSizeResp.result);
+                            } else if (arrayInfo.is1DArray) {
+                                // std::array size is known from type
+                                evalSize = arrayInfo.size;
                             } else {
                                 const sizeResp = await debugSession.customRequest("evaluate", {
                                     expression: `(int)${v.evaluateName}.size()`,
                                     frameId: frameId,
                                     context: context
                                 });
-                                size = parseInt(sizeResp.result);
+                                evalSize = parseInt(sizeResp.result);
                             }
                             
-                            if (size === currentSize) {
+                            if (evalSize === currentSize) {
                                 return v.name;
                             }
                         } catch (e) {
@@ -195,10 +224,16 @@ export async function drawPlot(
             const targetVar = variables?.find(v => v.name === message.name);
             if (targetVar) {
                 let newData: number[] | null = null;
+                const arrayInfo = parse1DStdArrayFromType(targetVar.type);
+                
                 if (targetVar.type.includes("cv::Mat")) {
                     const frameId = await getCurrentFrameId(debugSession);
                     const matInfo = await getMatInfoFromVariables(debugSession, targetVar.variablesReference);
                     newData = await readMatDataInternal(debugSession, targetVar.evaluateName, matInfo);
+                } else if (arrayInfo.is1DArray) {
+                    // Handle std::array types
+                    const result = await read1DStdArrayData(debugSession, targetVar.evaluateName, arrayInfo.elementType, arrayInfo.size, targetVar);
+                    newData = result ? result.data : null;
                 } else {
                     // Pass targetVar as variableInfo to support LLDB size detection
                     const result = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData!.length, targetVar);
@@ -735,4 +770,297 @@ async function readSetDataInternal(
 
     console.log(`Successfully read ${data.length} elements from set`);
     return { data };
+}
+
+// ============== std::array Support ==============
+
+/**
+ * Read data from 1D std::array
+ */
+export async function read1DStdArrayData(
+    debugSession: vscode.DebugSession,
+    variableName: string,
+    elementType: string,
+    size: number,
+    variableInfo?: any
+): Promise<{ data: number[], dataPtr: string | null } | null> {
+    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+
+    console.log(`read1DStdArrayData: variableName="${variableName}", elementType="${elementType}", size=${size}`);
+
+    if (size <= 0) {
+        console.log("std::array size is 0 or invalid");
+        return null;
+    }
+
+    // Determine element size and read function
+    let bytesPerElement = 4;
+    let readMethod: (buffer: Buffer, offset: number) => number = (b, o) => b.readFloatLE(o);
+
+    const typeLower = elementType.toLowerCase();
+    if (typeLower.includes("double")) {
+        bytesPerElement = 8;
+        readMethod = (b, o) => b.readDoubleLE(o);
+    } else if (typeLower.includes("float")) {
+        bytesPerElement = 4;
+        readMethod = (b, o) => b.readFloatLE(o);
+    } else if (typeLower.includes("unsigned char") || typeLower.includes("uchar") || typeLower.includes("uint8_t")) {
+        bytesPerElement = 1;
+        readMethod = (b, o) => b.readUInt8(o);
+    } else if (typeLower.includes("char") || typeLower.includes("int8_t")) {
+        bytesPerElement = 1;
+        readMethod = (b, o) => b.readInt8(o);
+    } else if (typeLower.includes("unsigned short") || typeLower.includes("ushort") || typeLower.includes("uint16_t")) {
+        bytesPerElement = 2;
+        readMethod = (b, o) => b.readUInt16LE(o);
+    } else if (typeLower.includes("short") || typeLower.includes("int16_t")) {
+        bytesPerElement = 2;
+        readMethod = (b, o) => b.readInt16LE(o);
+    } else if (typeLower.includes("unsigned int") || typeLower.includes("uint32_t")) {
+        bytesPerElement = 4;
+        readMethod = (b, o) => b.readUInt32LE(o);
+    } else if (typeLower.includes("int") || typeLower.includes("int32_t")) {
+        bytesPerElement = 4;
+        readMethod = (b, o) => b.readInt32LE(o);
+    } else if (typeLower.includes("unsigned long long") || typeLower.includes("uint64_t")) {
+        bytesPerElement = 8;
+        readMethod = (b, o) => Number(b.readBigUInt64LE(o));
+    } else if (typeLower.includes("long long") || typeLower.includes("int64_t")) {
+        bytesPerElement = 8;
+        readMethod = (b, o) => Number(b.readBigInt64LE(o));
+    } else if (typeLower.includes("unsigned long")) {
+        bytesPerElement = 4;
+        readMethod = (b, o) => b.readUInt32LE(o);
+    } else if (typeLower.includes("long")) {
+        bytesPerElement = 4;
+        readMethod = (b, o) => b.readInt32LE(o);
+    }
+
+    // Get data pointer using std::array specific function
+    const dataPtr = await getStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+
+    if (!dataPtr) {
+        vscode.window.showErrorMessage(`Could not get data pointer for std::array ${variableName}.`);
+        return null;
+    }
+
+    // Read memory
+    const totalBytes = size * bytesPerElement;
+    console.log(`Reading ${size} elements (${totalBytes} bytes) from ${dataPtr}`);
+    const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
+
+    if (!buffer) {
+        vscode.window.showErrorMessage(`Failed to read memory for std::array ${variableName}.`);
+        return null;
+    }
+
+    // Convert to numbers
+    const data: number[] = [];
+    for (let i = 0; i < size; i++) {
+        data.push(readMethod(buffer, i * bytesPerElement));
+    }
+    console.log(`Successfully read ${data.length} elements from std::array`);
+    return { data, dataPtr };
+}
+
+/**
+ * Draw plot for 1D std::array
+ */
+export async function drawStdArrayPlot(
+    debugSession: vscode.DebugSession,
+    variableName: string,
+    elementType: string,
+    size: number,
+    reveal: boolean = true,
+    force: boolean = false,
+    variableInfo?: any
+) {
+    try {
+        console.log(`Drawing plot for std::array: ${variableName}, elementType=${elementType}, size=${size}`);
+        
+        const panelTitle = `View: ${variableName}`;
+
+        // Get data pointer first
+        const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+        const dataPtr = await getStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+
+        // Determine bytes per element
+        let bytesPerElement = 4;
+        const typeLower = elementType.toLowerCase();
+        if (typeLower.includes("double") || typeLower.includes("long long") || typeLower.includes("int64_t") || typeLower.includes("uint64_t")) {
+            bytesPerElement = 8;
+        } else if (typeLower.includes("short") || typeLower.includes("int16_t") || typeLower.includes("uint16_t")) {
+            bytesPerElement = 2;
+        } else if (typeLower.includes("char") || typeLower.includes("int8_t") || typeLower.includes("uint8_t")) {
+            bytesPerElement = 1;
+        }
+
+        // Get or create panel
+        const panel = PanelManager.getOrCreatePanel(
+            "CurvePlotViewer",
+            panelTitle,
+            debugSession.id,
+            variableName,
+            reveal
+        );
+
+        // Check if panel is fresh
+        if (!force && size > 0 && dataPtr) {
+            const totalBytes = size * bytesPerElement;
+            const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+            const stateToken = `${size}|${dataPtr}|${sample}`;
+            
+            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+                console.log(`std::array plot panel is already up-to-date`);
+                return;
+            }
+        }
+
+        // Read data
+        const result = await read1DStdArrayData(debugSession, variableName, elementType, size, variableInfo);
+        if (!result) return;
+
+        const { data: initialData, dataPtr: dataPtrForToken } = result;
+
+        // Update state token
+        const totalBytes = initialData.length * bytesPerElement;
+        const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
+        const stateToken = `${initialData.length}|${dataPtrForToken}|${sample}`;
+        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
+
+        // If panel already has content, only send data
+        if (panel.webview.html && panel.webview.html.length > 0) {
+            console.log("std::array plot panel already has HTML, sending only data");
+            await panel.webview.postMessage({
+                command: 'updateInitialData',
+                data: initialData
+            });
+            return;
+        }
+
+        panel.webview.html = getWebviewContentForPlot(variableName, initialData);
+
+        // Dispose old listener
+        if ((panel as any)._messageListener) {
+            (panel as any)._messageListener.dispose();
+        }
+
+        (panel as any)._messageListener = panel.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'requestOptions') {
+                // Get other plot variables of the same size for X axis selection
+                const variables = await vscode.commands.executeCommand<any[]>('cv-debugmate.getVariables');
+                if (variables) {
+                    const currentSize = initialData.length;
+                    const frameId = await getCurrentFrameId(debugSession);
+                    const context = getEvaluateContext(debugSession);
+                    
+                    const validOptions: string[] = [];
+                    
+                    const sizePromises = variables
+                        .filter(v => v.kind === 'plot')
+                        .map(async (v) => {
+                            try {
+                                // If size is already known and non-zero, use it
+                                if (v.size && v.size > 0) {
+                                    if (v.size === currentSize) return v.name;
+                                    return null;
+                                }
+
+                                // Otherwise evaluate once
+                                let evalSize = 0;
+                                const arrayInfo = parse1DStdArrayFromType(v.type);
+                                
+                                if (v.type.includes("cv::Mat")) {
+                                    const matSizeResp = await debugSession.customRequest("evaluate", {
+                                        expression: `(int)${v.evaluateName}.rows * (int)${v.evaluateName}.cols`,
+                                        frameId: frameId,
+                                        context: context
+                                    });
+                                    evalSize = parseInt(matSizeResp.result);
+                                } else if (arrayInfo.is1DArray) {
+                                    // std::array size is known from type
+                                    evalSize = arrayInfo.size;
+                                } else {
+                                    const sizeResp = await debugSession.customRequest("evaluate", {
+                                        expression: `(int)${v.evaluateName}.size()`,
+                                        frameId: frameId,
+                                        context: context
+                                    });
+                                    evalSize = parseInt(sizeResp.result);
+                                }
+                                
+                                if (evalSize === currentSize) {
+                                    return v.name;
+                                }
+                            } catch (e) {
+                                return null;
+                            }
+                            return null;
+                        });
+                    
+                    const results = await Promise.all(sizePromises);
+                    results.forEach(name => {
+                        if (name && name !== variableName) {
+                            validOptions.push(name);
+                        }
+                    });
+
+                    panel.webview.postMessage({ command: 'updateOptions', options: validOptions });
+                }
+            } else if (message.command === 'requestData') {
+                // Load data for selected X axis variable
+                const variables = await vscode.commands.executeCommand<any[]>('cv-debugmate.getVariables');
+                const targetVar = variables?.find(v => v.name === message.name);
+                if (targetVar) {
+                    let newData: number[] | null = null;
+                    const arrayInfo = parse1DStdArrayFromType(targetVar.type);
+                    
+                    if (targetVar.type.includes("cv::Mat")) {
+                        const frameId = await getCurrentFrameId(debugSession);
+                        const matInfo = await getMatInfoFromVariables(debugSession, targetVar.variablesReference);
+                        newData = await readMatDataInternal(debugSession, targetVar.evaluateName, matInfo);
+                    } else if (arrayInfo.is1DArray) {
+                        // Handle std::array types
+                        const result = await read1DStdArrayData(debugSession, targetVar.evaluateName, arrayInfo.elementType, arrayInfo.size, targetVar);
+                        newData = result ? result.data : null;
+                    } else {
+                        // Handle std::vector types
+                        const result = await readVectorDataInternal(debugSession, targetVar.evaluateName, targetVar.type, initialData.length, targetVar);
+                        newData = result ? result.data : null;
+                    }
+                    
+                    if (newData) {
+                        panel.webview.postMessage({ 
+                            command: 'updateData', 
+                            target: message.target, 
+                            data: newData, 
+                            name: message.name 
+                        });
+                    }
+                }
+            } else if (message.command === 'reload') {
+                await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+            } else if (message.command === 'saveFile') {
+                const options: vscode.SaveDialogOptions = {
+                    defaultUri: vscode.Uri.file(message.defaultName),
+                    filters: message.type === 'png' ? { 'Images': ['png'] } : { 'Data': ['csv'] }
+                };
+
+                const fileUri = await vscode.window.showSaveDialog(options);
+                if (fileUri) {
+                    if (message.type === 'png') {
+                        const base64Data = message.data.replace(/^data:image\/png;base64,/, "");
+                        fs.writeFileSync(fileUri.fsPath, base64Data, 'base64');
+                    } else {
+                        fs.writeFileSync(fileUri.fsPath, message.data);
+                    }
+                    vscode.window.showInformationMessage(`File saved to ${fileUri.fsPath}`);
+                }
+            }
+        });
+
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`Failed to draw std::array plot: ${error.message}`);
+        console.error(error);
+    }
 }

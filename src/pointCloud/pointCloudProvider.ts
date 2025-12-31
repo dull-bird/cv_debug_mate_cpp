@@ -8,7 +8,8 @@ import {
   tryGetDataPointer, 
   readMemoryChunked,
   getMemorySample,
-  getVectorSize
+  getVectorSize,
+  getStdArrayDataPointer
 } from "../utils/debugger";
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
@@ -484,5 +485,154 @@ export async function getPointCloudViaReadMemory(
   }
   
   return { points, dataPtr };
+}
+
+// ============== std::array<Point3f/d> Support ==============
+
+/**
+ * Draw point cloud from std::array<cv::Point3f> or std::array<cv::Point3d>
+ */
+export async function drawStdArrayPointCloud(
+  debugSession: vscode.DebugSession,
+  variableInfo: any,
+  variableName: string,
+  size: number,
+  isDouble: boolean = false,
+  reveal: boolean = true,
+  force: boolean = false
+) {
+  try {
+    console.log(`Drawing std::array point cloud: ${variableName}, size=${size}, isDouble=${isDouble}`);
+
+    const panelTitle = `View: ${variableName}`;
+    const bytesPerPoint = isDouble ? 24 : 12; // Point3d: 3*8=24, Point3f: 3*4=12
+
+    // Get frame ID
+    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+
+    // Get data pointer
+    const dataPtr = await getStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+
+    // Get or create panel
+    const panel = PanelManager.getOrCreatePanel(
+      "3DPointViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    // Check if panel is fresh
+    if (!force && dataPtr && size > 0) {
+      const totalBytes = size * bytesPerPoint;
+      const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+      const stateToken = `${size}|${dataPtr}|${sample}`;
+      
+      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+        console.log(`std::array PointCloud panel is already up-to-date`);
+        return;
+      }
+    }
+
+    // Read point cloud data
+    let points: { x: number; y: number; z: number }[] = [];
+    let dataPtrForToken = dataPtr || "";
+
+    if (dataPtr && size > 0) {
+      const totalBytes = size * bytesPerPoint;
+      console.log(`Reading ${size} points (${totalBytes} bytes) from ${dataPtr}`);
+      
+      const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
+      
+      if (buffer) {
+        if (isDouble) {
+          // Point3d: 3 doubles = 24 bytes per point
+          for (let i = 0; i < size && i * 24 + 23 < buffer.length; i++) {
+            const offset = i * 24;
+            const x = buffer.readDoubleLE(offset);
+            const y = buffer.readDoubleLE(offset + 8);
+            const z = buffer.readDoubleLE(offset + 16);
+            points.push({ x, y, z });
+          }
+        } else {
+          // Point3f: 3 floats = 12 bytes per point
+          for (let i = 0; i < size && i * 12 + 11 < buffer.length; i++) {
+            const offset = i * 12;
+            const x = buffer.readFloatLE(offset);
+            const y = buffer.readFloatLE(offset + 4);
+            const z = buffer.readFloatLE(offset + 8);
+            points.push({ x, y, z });
+          }
+        }
+        console.log(`Loaded ${points.length} points from std::array via readMemory`);
+      }
+    }
+
+    if (points.length === 0) {
+      vscode.window.showWarningMessage("No points found in the std::array. Make sure it's not empty.");
+      return;
+    }
+
+    // Update state token
+    const totalBytes = points.length * bytesPerPoint;
+    const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
+    const stateToken = `${points.length}|${dataPtrForToken}|${sample}`;
+    PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, stateToken);
+
+    // If panel already has content, only send data
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("std::array PointCloud panel already has HTML, sending only data");
+      await panel.webview.postMessage({
+        command: 'updateData',
+        points: points
+      });
+      return;
+    }
+
+    panel.webview.html = getWebviewContentForPointCloud(points);
+    
+    SyncManager.registerPanel(variableName, panel);
+
+    // Dispose previous listener
+    if ((panel as any)._messageListener) {
+      (panel as any)._messageListener.dispose();
+    }
+
+    // Handle messages from webview
+    (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === "savePLY") {
+          try {
+            const plyData = generatePLYContent(points, message.format);
+            const uri = await vscode.window.showSaveDialog({
+              defaultUri: vscode.Uri.file(`${variableName}.ply`),
+              filters: {
+                "PLY Files": ["ply"],
+                "All Files": ["*"]
+              }
+            });
+            
+            if (uri) {
+              await vscode.workspace.fs.writeFile(uri, plyData);
+              const formatLabel = message.format === 'ascii' ? 'ASCII' : 'Binary';
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${formatLabel} format)`);
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
+            console.error("Error saving PLY:", error);
+          }
+        } else if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+        }
+      },
+      undefined,
+      undefined
+    );
+  } catch (error) {
+    console.error("Error in drawStdArrayPointCloud:", error);
+    throw error;
+  }
 }
 

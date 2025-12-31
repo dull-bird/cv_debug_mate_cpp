@@ -308,3 +308,323 @@ export async function getVectorSize(
   return 0;
 }
 
+// ============== std::array Support ==============
+
+/**
+ * Get data pointer for std::array.
+ * For std::array, the data is stored inline, so we need to get the address of the first element.
+ * 
+ * Internal structure varies by implementation:
+ * - GCC libstdc++: _M_elems array member
+ * - Clang libc++: __elems_ array member  
+ * - MSVC: _Elems array member
+ * 
+ * Note: std::array.data() returns the pointer to the first element.
+ */
+export async function getStdArrayDataPointer(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<string | null> {
+  const context = getEvaluateContext(debugSession);
+  console.log(`getStdArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}`);
+  
+  let dataPtr: string | null = null;
+  
+  // Try variables approach first (most reliable for LLDB)
+  if (variableInfo && variableInfo.variablesReference > 0) {
+    try {
+      const varsResponse = await debugSession.customRequest("variables", {
+        variablesReference: variableInfo.variablesReference
+      });
+      
+      if (varsResponse.variables && varsResponse.variables.length > 0) {
+        console.log(`Found ${varsResponse.variables.length} variables in std::array`);
+        
+        // Look for internal data member
+        // libc++: __elems_, libstdc++: _M_elems, MSVC: _Elems
+        for (const v of varsResponse.variables) {
+          const varName = v.name;
+          if (varName === "__elems_" || varName === "_M_elems" || varName === "_Elems") {
+            console.log(`Found internal array member: ${varName}`);
+            
+            // Get memoryReference from this member
+            if (v.memoryReference) {
+              dataPtr = v.memoryReference;
+              console.log(`Got data pointer from ${varName}.memoryReference: ${dataPtr}`);
+              break;
+            }
+            
+            // Try to expand and get first element
+            if (v.variablesReference > 0) {
+              const elemVars = await debugSession.customRequest("variables", {
+                variablesReference: v.variablesReference
+              });
+              if (elemVars.variables && elemVars.variables.length > 0) {
+                const firstElem = elemVars.variables[0];
+                if (firstElem.memoryReference) {
+                  dataPtr = firstElem.memoryReference;
+                  console.log(`Got data pointer from ${varName}[0].memoryReference: ${dataPtr}`);
+                  break;
+                }
+              }
+            }
+          }
+        }
+        
+        // Fallback: look for [0] element directly
+        if (!dataPtr) {
+          const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
+          if (firstElement) {
+            console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
+            
+            if (firstElement.memoryReference) {
+              dataPtr = firstElement.memoryReference;
+              console.log(`Got data pointer from [0].memoryReference: ${dataPtr}`);
+            } else if (firstElement.value) {
+              const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
+              if (ptrMatch) {
+                dataPtr = ptrMatch[0];
+                console.log(`Extracted pointer from [0] value: ${dataPtr}`);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Failed to get std::array data pointer through variables:", e);
+    }
+  }
+  
+  // Try evaluate expressions if variables approach didn't work
+  if (!dataPtr) {
+    let expressions: string[];
+    
+    if (isUsingMSVC(debugSession)) {
+      expressions = [
+        `(long long)${variableName}.data()`,
+        `(long long)&${variableName}[0]`,
+        `(long long)&${variableName}._Elems[0]`,
+        `reinterpret_cast<long long>(${variableName}.data())`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else if (isUsingLLDB(debugSession)) {
+      expressions = [
+        `${variableName}.data()`,
+        `&${variableName}[0]`,
+        `${variableName}.__elems_`,
+        `&${variableName}.__elems_[0]`,
+        `reinterpret_cast<long long>(${variableName}.data())`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else if (isUsingCppdbg(debugSession)) {
+      // GDB
+      expressions = [
+        `(long long)${variableName}.data()`,
+        `(long long)&${variableName}[0]`,
+        `(long long)&${variableName}._M_elems[0]`,
+        `(long long)${variableName}._M_elems`,
+        `reinterpret_cast<long long>(${variableName}.data())`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else {
+      // Fallback
+      expressions = [
+        `${variableName}.data()`,
+        `&${variableName}[0]`,
+        `(void*)${variableName}.data()`,
+        `(void*)&${variableName}[0]`
+      ];
+    }
+    
+    dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
+  }
+  
+  console.log(`getStdArrayDataPointer result: ${dataPtr}`);
+  return dataPtr;
+}
+
+/**
+ * Get data pointer for 2D std::array (array of arrays).
+ * The data is stored contiguously in row-major order.
+ * We need to get the address of the first element of the first inner array.
+ */
+export async function get2DStdArrayDataPointer(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<string | null> {
+  const context = getEvaluateContext(debugSession);
+  console.log(`get2DStdArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}`);
+  
+  let dataPtr: string | null = null;
+  
+  // Try variables approach first
+  if (variableInfo && variableInfo.variablesReference > 0) {
+    try {
+      const varsResponse = await debugSession.customRequest("variables", {
+        variablesReference: variableInfo.variablesReference
+      });
+      
+      if (varsResponse.variables && varsResponse.variables.length > 0) {
+        console.log(`Found ${varsResponse.variables.length} variables in 2D std::array`);
+        
+        // Look for internal data member or [0] element
+        for (const v of varsResponse.variables) {
+          const varName = v.name;
+          
+          // Check for internal array member
+          if (varName === "__elems_" || varName === "_M_elems" || varName === "_Elems") {
+            console.log(`Found internal array member: ${varName}`);
+            
+            // Expand to get first row
+            if (v.variablesReference > 0) {
+              const rowVars = await debugSession.customRequest("variables", {
+                variablesReference: v.variablesReference
+              });
+              if (rowVars.variables && rowVars.variables.length > 0) {
+                const firstRow = rowVars.variables[0];
+                console.log(`First row [0]: value="${firstRow.value}", memRef="${firstRow.memoryReference}"`);
+                
+                // Get memory reference of first row
+                if (firstRow.variablesReference > 0) {
+                  // Expand first row to get first element
+                  const elemVars = await debugSession.customRequest("variables", {
+                    variablesReference: firstRow.variablesReference
+                  });
+                  
+                  // Look for [0][0] or internal array
+                  for (const ev of elemVars.variables) {
+                    if (ev.name === "[0]" || ev.name === "__elems_" || ev.name === "_M_elems" || ev.name === "_Elems") {
+                      if (ev.memoryReference) {
+                        dataPtr = ev.memoryReference;
+                        console.log(`Got 2D data pointer from first element: ${dataPtr}`);
+                        break;
+                      }
+                      // If it's the internal array, expand further
+                      if (ev.variablesReference > 0 && (ev.name === "__elems_" || ev.name === "_M_elems" || ev.name === "_Elems")) {
+                        const innerVars = await debugSession.customRequest("variables", {
+                          variablesReference: ev.variablesReference
+                        });
+                        if (innerVars.variables && innerVars.variables.length > 0 && innerVars.variables[0].memoryReference) {
+                          dataPtr = innerVars.variables[0].memoryReference;
+                          console.log(`Got 2D data pointer from inner first element: ${dataPtr}`);
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  if (dataPtr) break;
+                }
+                
+                // Try first row's memoryReference
+                if (!dataPtr && firstRow.memoryReference) {
+                  dataPtr = firstRow.memoryReference;
+                  console.log(`Got 2D data pointer from first row memRef: ${dataPtr}`);
+                  break;
+                }
+              }
+            }
+          }
+          
+          // Check for [0] element (first row)
+          if (!dataPtr && varName === "[0]") {
+            console.log(`Found [0] (first row): value="${v.value}", memRef="${v.memoryReference}"`);
+            
+            if (v.variablesReference > 0) {
+              // Expand first row to get first element [0][0]
+              const elemVars = await debugSession.customRequest("variables", {
+                variablesReference: v.variablesReference
+              });
+              
+              // Look for [0] in the first row
+              const firstElem = elemVars.variables?.find((ev: any) => ev.name === "[0]");
+              if (firstElem) {
+                if (firstElem.memoryReference) {
+                  dataPtr = firstElem.memoryReference;
+                  console.log(`Got 2D data pointer from [0][0].memoryReference: ${dataPtr}`);
+                  break;
+                }
+              }
+              
+              // Look for internal array member
+              for (const ev of elemVars.variables || []) {
+                if (ev.name === "__elems_" || ev.name === "_M_elems" || ev.name === "_Elems") {
+                  if (ev.memoryReference) {
+                    dataPtr = ev.memoryReference;
+                    console.log(`Got 2D data pointer from [0].${ev.name}: ${dataPtr}`);
+                    break;
+                  }
+                  if (ev.variablesReference > 0) {
+                    const innerVars = await debugSession.customRequest("variables", {
+                      variablesReference: ev.variablesReference
+                    });
+                    if (innerVars.variables && innerVars.variables.length > 0 && innerVars.variables[0].memoryReference) {
+                      dataPtr = innerVars.variables[0].memoryReference;
+                      console.log(`Got 2D data pointer from [0].${ev.name}[0]: ${dataPtr}`);
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Fallback: use [0]'s memoryReference
+            if (!dataPtr && v.memoryReference) {
+              dataPtr = v.memoryReference;
+              console.log(`Got 2D data pointer from [0] memRef: ${dataPtr}`);
+            }
+          }
+          
+          if (dataPtr) break;
+        }
+      }
+    } catch (e) {
+      console.log("Failed to get 2D std::array data pointer through variables:", e);
+    }
+  }
+  
+  // Try evaluate expressions if variables approach didn't work
+  if (!dataPtr) {
+    let expressions: string[];
+    
+    if (isUsingMSVC(debugSession)) {
+      expressions = [
+        `(long long)&${variableName}[0][0]`,
+        `(long long)${variableName}[0].data()`,
+        `(long long)&${variableName}._Elems[0]._Elems[0]`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else if (isUsingLLDB(debugSession)) {
+      expressions = [
+        `&${variableName}[0][0]`,
+        `${variableName}[0].data()`,
+        `&${variableName}.__elems_[0].__elems_[0]`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else if (isUsingCppdbg(debugSession)) {
+      // GDB
+      expressions = [
+        `(long long)&${variableName}[0][0]`,
+        `(long long)${variableName}[0].data()`,
+        `(long long)&${variableName}._M_elems[0]._M_elems[0]`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else {
+      // Fallback
+      expressions = [
+        `&${variableName}[0][0]`,
+        `${variableName}[0].data()`,
+        `(void*)&${variableName}[0][0]`
+      ];
+    }
+    
+    dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
+  }
+  
+  console.log(`get2DStdArrayDataPointer result: ${dataPtr}`);
+  return dataPtr;
+}
+

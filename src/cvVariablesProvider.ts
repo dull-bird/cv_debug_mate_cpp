@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -190,6 +190,10 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                     const point3 = isPoint3Vector(v);
                     const vector1D = is1DVector(v);
                     const set1D = is1DSet(v);
+                    // std::array detection
+                    const stdArray2D = is2DStdArray(v);
+                    const stdArray1D = is1DStdArray(v);
+                    const stdArrayPoint3 = isPoint3StdArray(v);
 
                     const checkVariable = async (): Promise<CVVariable | null> => {
                         let is1DM = isLikely1DMat(v);
@@ -249,12 +253,20 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             } catch (e) {}
                         }
 
-                        if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
+                        if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined ||
+                            stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
 
-                            if (point3.isPoint3) {
+                            // std::array<Point3f/d> - point cloud
+                            if (stdArrayPoint3.isPoint3Array) {
+                                kind = 'pointcloud';
+                                size = stdArrayPoint3.size;
+                                sizeInfo = size > 0 ? `${size} points` : '';
+                            }
+                            // std::vector<Point3f/d> - point cloud
+                            else if (point3.isPoint3) {
                                 kind = 'pointcloud';
                                 size = point3.size || 0;
                                 // Try to extract size from value if available
@@ -277,7 +289,15 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     } catch (e) {}
                                 }
                                 sizeInfo = size > 0 ? `${size} points` : '';
-                            } else if (vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
+                            }
+                            // 1D std::array - plot
+                            else if (stdArray1D.is1DArray) {
+                                kind = 'plot';
+                                size = stdArray1D.size;
+                                sizeInfo = size > 0 ? `${size} elements` : '';
+                            }
+                            // 1D vector/set/Mat - plot
+                            else if (vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined) {
                                 kind = 'plot';
                                 size = confirmed1DSize || (vector1D.is1D ? vector1D.size : (set1D.isSet ? set1D.size : is1DM.size));
                                 // GDB fallback: try evaluate for vectors/sets
@@ -293,11 +313,21 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     } catch (e) {}
                                 }
                                 sizeInfo = size > 0 ? `${size} elements` : '';
-                            } else if (matxInfo.isMatx) {
+                            }
+                            // 2D std::array - image
+                            else if (stdArray2D.is2DArray) {
+                                kind = 'mat';
+                                size = stdArray2D.rows * stdArray2D.cols;
+                                sizeInfo = `${stdArray2D.rows}x${stdArray2D.cols}`;
+                            }
+                            // cv::Matx - image
+                            else if (matxInfo.isMatx) {
                                 kind = 'mat';
                                 size = matxInfo.rows * matxInfo.cols;
                                 sizeInfo = `${matxInfo.rows}x${matxInfo.cols}`;
-                            } else if (isM) {
+                            }
+                            // cv::Mat - image
+                            else if (isM) {
                                 kind = 'mat';
                                 size = r * c;
                                 sizeInfo = (r > 0 && c > 0) ? `${r}x${c}` : '';

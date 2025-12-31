@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { getEvaluateContext } from "./utils/debugger";
-import { drawPointCloud } from "./pointCloud/pointCloudProvider";
-import { drawMatImage, drawMatxImage } from "./matImage/matProvider";
-import { drawPlot } from "./plot/plotProvider";
+import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
+import { drawMatImage, drawMatxImage, draw2DStdArrayImage } from "./matImage/matProvider";
+import { drawPlot, drawStdArrayPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -186,16 +186,46 @@ export function activate(context: vscode.ExtensionContext) {
       const set1D = is1DSet(variableInfo);
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
       
+      // std::array detection
+      const stdArray2D = is2DStdArray(variableInfo);
+      const stdArray1D = is1DStdArray(variableInfo);
+      const stdArrayPoint3 = isPoint3StdArray(variableInfo);
+      
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
       console.log(`is1DSet result: isSet=${set1D.isSet}, elementType=${set1D.elementType}, size=${set1D.size}`);
       console.log(`isMatx result: isMatx=${matxInfo.isMatx}, rows=${matxInfo.rows}, cols=${matxInfo.cols}, depth=${matxInfo.depth}`);
+      console.log(`is2DStdArray result: is2DArray=${stdArray2D.is2DArray}, rows=${stdArray2D.rows}, cols=${stdArray2D.cols}`);
+      console.log(`is1DStdArray result: is1DArray=${stdArray1D.is1DArray}, elementType=${stdArray1D.elementType}, size=${stdArray1D.size}`);
+      console.log(`isPoint3StdArray result: isPoint3Array=${stdArrayPoint3.isPoint3Array}, isDouble=${stdArrayPoint3.isDouble}, size=${stdArrayPoint3.size}`);
       console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
       let isEmpty = false;
       let reason = "";
 
-      if (point3Info.isPoint3) {
+      // std::array<Point3f/d> empty check
+      if (stdArrayPoint3.isPoint3Array) {
+        if (stdArrayPoint3.size === 0) {
+          isEmpty = true;
+          reason = "std::array Point cloud is empty";
+        }
+      }
+      // std::array 1D empty check
+      else if (stdArray1D.is1DArray) {
+        if (stdArray1D.size === 0) {
+          isEmpty = true;
+          reason = "std::array plot data is empty";
+        }
+      }
+      // std::array 2D empty check
+      else if (stdArray2D.is2DArray) {
+        if (stdArray2D.rows === 0 || stdArray2D.cols === 0) {
+          isEmpty = true;
+          reason = "2D std::array is empty";
+        }
+      }
+      // std::vector<Point3f/d> empty check
+      else if (point3Info.isPoint3) {
         let point3Size = point3Info.size;
         if (point3Size === 0) {
           // Try to extract from value string if size is 0
@@ -292,13 +322,26 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
-      if (point3Info.isPoint3) {
+      if (stdArrayPoint3.isPoint3Array || point3Info.isPoint3) {
         viewType = "3DPointViewer";
-      } else if (vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
+      } else if (stdArray1D.is1DArray || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
         viewType = "CurvePlotViewer";
       }
 
-      if (point3Info.isPoint3) {
+      // std::array<Point3f/d> - point cloud
+      if (stdArrayPoint3.isPoint3Array) {
+        await drawStdArrayPointCloud(debugSession, variableInfo, variableName, stdArrayPoint3.size, stdArrayPoint3.isDouble, reveal, shouldForce);
+      }
+      // std::array 1D - plot
+      else if (stdArray1D.is1DArray) {
+        await drawStdArrayPlot(debugSession, variableName, stdArray1D.elementType, stdArray1D.size, reveal, shouldForce, variableInfo);
+      }
+      // std::array 2D - image
+      else if (stdArray2D.is2DArray) {
+        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, stdArray2D, reveal, shouldForce);
+      }
+      // std::vector<Point3f/d> - point cloud
+      else if (point3Info.isPoint3) {
         await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal, shouldForce);
       } else if (matxInfo.isMatx) {
         // Handle cv::Matx types
@@ -338,7 +381,7 @@ export function activate(context: vscode.ExtensionContext) {
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(
-            "Variable is not visualizable (supported: cv::Mat, cv::Matx, Point3 vector, 1D numeric vector, or 1D numeric set)."
+            "Variable is not visualizable (supported: cv::Mat, cv::Matx, Point3 vector, 1D/2D std::array, 1D numeric vector, or 1D numeric set)."
           );
         }
       }

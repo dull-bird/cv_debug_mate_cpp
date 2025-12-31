@@ -3,7 +3,8 @@ import {
   evaluateWithTimeout, 
   isUsingLLDB, 
   readMemoryChunked,
-  getMemorySample
+  getMemorySample,
+  get2DStdArrayDataPointer
 } from "../utils/debugger";
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
@@ -663,6 +664,125 @@ export async function drawMatxImage(
     console.log('Matx data sent to webview');
   } catch (error) {
     console.error("Error drawing Matx image:", error);
+    throw error;
+  }
+}
+
+// Function to draw 2D std::array as an image
+export async function draw2DStdArrayImage(
+  debugSession: vscode.DebugSession,
+  variableInfo: any,
+  frameId: number,
+  variableName: string,
+  arrayInfo: { is2DArray: boolean; rows: number; cols: number; elementType: string; depth: number },
+  reveal: boolean = true,
+  force: boolean = false
+) {
+  try {
+    const { rows, cols, depth } = arrayInfo;
+    const channels = 1; // 2D array is treated as single-channel
+    const dataSize = rows * cols;
+    const bytesPerElement = getBytesPerElement(depth);
+    const totalBytes = dataSize * bytesPerElement;
+    
+    console.log(`Drawing 2D std::array image: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
+    
+    const panelTitle = `View: ${variableName}`;
+    
+    // Get data pointer
+    const dataPtr = await get2DStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+    
+    if (!dataPtr) {
+      throw new Error("Cannot get data pointer from 2D std::array. Make sure it's a valid std::array.");
+    }
+    
+    // Check if panel is fresh
+    const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+    const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
+    
+    const panel = PanelManager.getOrCreatePanel(
+      "MatImageViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`2D std::array panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+    
+    // Read data with progress indicator
+    const dataResult = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Loading 2D std::array (${rows}x${cols})`,
+        cancellable: false
+      },
+      async (progress) => {
+        progress.report({ message: `Reading ${totalBytes} bytes...` });
+        const buffer = await readMemoryChunked(debugSession, dataPtr!, totalBytes, progress);
+        return { buffer };
+      }
+    );
+    
+    // Update state token
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    
+    // If panel already has content, only send data
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("2D std::array panel already has HTML, sending only data");
+      const buffer = dataResult.buffer;
+      if (buffer) {
+        await panel.webview.postMessage({
+          command: 'completeData',
+          data: new Uint8Array(buffer),
+          rows, cols, channels, depth
+        });
+        return;
+      }
+    }
+    
+    panel.webview.html = getWebviewContentForMat(
+      panel.webview,
+      rows,
+      cols,
+      channels,
+      depth,
+      { base64: "" }
+    );
+    
+    SyncManager.registerPanel(variableName, panel);
+    
+    if ((panel as any)._syncListener) {
+      (panel as any)._syncListener.dispose();
+    }
+    
+    (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+        }
+      }
+    );
+    
+    const buffer = dataResult.buffer;
+    if (!buffer) {
+      throw new Error("Failed to read 2D std::array data");
+    }
+    
+    console.log(`Sending ${buffer.length} bytes to 2D std::array webview`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      data: new Uint8Array(buffer)
+    });
+    
+    console.log('2D std::array data sent to webview');
+  } catch (error) {
+    console.error("Error drawing 2D std::array image:", error);
     throw error;
   }
 }

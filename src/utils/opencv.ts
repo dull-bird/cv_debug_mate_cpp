@@ -354,3 +354,151 @@ export function parseNumericResult(result: string, depth: number): number {
   }
   return value;
 }
+
+// ============== std::array Support ==============
+
+/**
+ * Check if the variable is a 2D std::array (std::array<std::array<T, cols>, rows>)
+ * Returns: { is2DArray: boolean, rows: number, cols: number, elementType: string, depth: number }
+ */
+export function is2DStdArray(variableInfo: any): { 
+  is2DArray: boolean; 
+  rows: number; 
+  cols: number; 
+  elementType: string; 
+  depth: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is 2D std::array, type:", type);
+  
+  // Match patterns like:
+  // std::array<std::array<int, 4>, 3>
+  // std::__1::array<std::__1::array<float, 4>, 3>
+  // class std::array<class std::array<double, 4>, 3>
+  // std::array<std::array<unsigned char, 4>, 3>
+  const pattern2D = /std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>\s*,\s*(\d+)\s*>/;
+  const match = type.match(pattern2D);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const cols = parseInt(match[2]);
+    const rows = parseInt(match[3]);
+    
+    // Get depth from element type
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`is2DStdArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
+    return { is2DArray: true, rows, cols, elementType, depth };
+  }
+  
+  console.log("is2DStdArray result: false");
+  return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+}
+
+/**
+ * Check if the variable is a 1D std::array of basic numeric types
+ * Returns: { is1DArray: boolean, elementType: string, size: number }
+ */
+export function is1DStdArray(variableInfo: any): { 
+  is1DArray: boolean; 
+  elementType: string; 
+  size: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is 1D std::array, type:", type);
+  
+  // First check it's NOT a 2D array (array of arrays)
+  if (/std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array/.test(type)) {
+    console.log("is1DStdArray result: false (is 2D array)");
+    return { is1DArray: false, elementType: "", size: 0 };
+  }
+  
+  // Check it's NOT a Point3 array (handled separately)
+  if (/std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3/.test(type)) {
+    console.log("is1DStdArray result: false (is Point3 array)");
+    return { is1DArray: false, elementType: "", size: 0 };
+  }
+  
+  // Match patterns like:
+  // std::array<int, 10>
+  // std::__1::array<float, 100>
+  // class std::array<double, 50>
+  // std::array<unsigned char, 256>
+  const pattern1D = /std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>/;
+  const match = type.match(pattern1D);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const size = parseInt(match[2]);
+    
+    // Check if element type is a basic numeric type
+    if (isBasicNumericType(elementType)) {
+      console.log(`is1DStdArray result: is1DArray=true, elementType=${elementType}, size=${size}`);
+      return { is1DArray: true, elementType, size };
+    }
+  }
+  
+  console.log("is1DStdArray result: false");
+  return { is1DArray: false, elementType: "", size: 0 };
+}
+
+/**
+ * Check if the variable is a 1D std::array of cv::Point3f or cv::Point3d
+ * Returns: { isPoint3Array: boolean, isDouble: boolean, size: number }
+ */
+export function isPoint3StdArray(variableInfo: any): { 
+  isPoint3Array: boolean; 
+  isDouble: boolean; 
+  size: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is Point3 std::array, type:", type);
+  
+  // Check for Point3d (double) first
+  // Patterns:
+  // std::array<cv::Point3d, 100>
+  // std::array<cv::Point3_<double>, 100>
+  // std::__1::array<cv::Point3d, 100>
+  const isDouble = 
+    /std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3d\s*,\s*(\d+)\s*>/.test(type) ||
+    /std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3_<double>\s*,\s*(\d+)\s*>/.test(type);
+  
+  // Check for Point3f (float)
+  const isFloat = 
+    /std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3f\s*,\s*(\d+)\s*>/.test(type) ||
+    /std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3_<float>\s*,\s*(\d+)\s*>/.test(type);
+  
+  const isPoint3Array = isDouble || isFloat;
+  
+  let size = 0;
+  if (isPoint3Array) {
+    // Extract size from type
+    const sizeMatch = type.match(/std::(?:__1::)?array\s*<\s*(?:class\s+)?cv::Point3[fd_<>a-z]*\s*,\s*(\d+)\s*>/i);
+    if (sizeMatch) {
+      size = parseInt(sizeMatch[1]);
+    }
+  }
+  
+  console.log(`isPoint3StdArray result: isPoint3Array=${isPoint3Array}, isDouble=${isDouble}, size=${size}`);
+  return { isPoint3Array, isDouble, size };
+}
+
+/**
+ * Helper to get OpenCV depth from C++ type name
+ */
+function getDepthFromCppType(cppType: string): number {
+  const t = cppType.toLowerCase().trim();
+  
+  if (t === 'double' || t.includes('double')) return 6; // CV_64F
+  if (t === 'float' || t.includes('float')) return 5;  // CV_32F
+  if (t === 'int' || t === 'int32_t' || t.includes('int32_t')) return 4; // CV_32S
+  if (t === 'short' || t === 'int16_t' || t.includes('int16_t')) return 3; // CV_16S
+  if (t === 'unsigned short' || t === 'ushort' || t === 'uint16_t' || t.includes('uint16_t')) return 2; // CV_16U
+  if (t === 'char' || t === 'signed char' || t === 'int8_t' || t.includes('int8_t')) return 1; // CV_8S
+  if (t === 'unsigned char' || t === 'uchar' || t === 'uint8_t' || t.includes('uint8_t')) return 0; // CV_8U
+  if (t.includes('unsigned') && t.includes('int')) return 4; // treat as CV_32S (could be unsigned but we only have signed 32)
+  if (t.includes('long long')) return 6; // CV_64F (approximate for 64-bit int)
+  if (t.includes('long')) return 4; // CV_32S (assuming 32-bit long, platform dependent)
+  
+  return 0; // default to CV_8U
+}
