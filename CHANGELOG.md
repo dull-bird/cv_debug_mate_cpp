@@ -4,6 +4,12 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.27] - 2025-12-31
+
+### Fixed
+
+- **Linux/GDB point cloud empty bug**: Add fallback to get real size of the vector of Point3f/3d.
+
 ## [0.0.25] - 2025-12-30
 
 ### Added

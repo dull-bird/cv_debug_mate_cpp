@@ -196,13 +196,43 @@ export function activate(context: vscode.ExtensionContext) {
       let reason = "";
 
       if (point3Info.isPoint3) {
-        if (point3Info.size === 0) {
+        let point3Size = point3Info.size;
+        if (point3Size === 0) {
           // Try to extract from value string if size is 0
-          const sizeMatch = variableInfo.result?.match(/size=(\d+)/) || variableInfo.result?.match(/\[(\d+)\]/);
-          if (!sizeMatch || parseInt(sizeMatch[1]) === 0) {
-            isEmpty = true;
-            reason = "Point cloud is empty";
+          const sizeMatch = variableInfo.result?.match(/size=(\d+)/) || 
+                            variableInfo.result?.match(/of length (\d+)/) ||
+                            variableInfo.result?.match(/\[(\d+)\]/);
+          if (sizeMatch) {
+            point3Size = parseInt(sizeMatch[1]);
           }
+        }
+        // GDB fallback: try evaluate (same logic as cvVariablesProvider.ts)
+        if (point3Size === 0) {
+          const sizeExpressions = debugSession.type === "lldb"
+            ? [`${variableName}.size()`, `(long long)${variableName}.size()`]
+            : [`(long long)${variableName}.size()`, `(int)${variableName}.size()`];
+          
+          for (const expr of sizeExpressions) {
+            try {
+              const sizeResp = await debugSession.customRequest("evaluate", {
+                expression: expr,
+                frameId: frameId,
+                context: getEvaluateContext(debugSession)
+              });
+              const parsed = parseInt(sizeResp.result);
+              if (!isNaN(parsed) && parsed > 0) {
+                point3Size = parsed;
+                console.log(`Got Point3 vector size via evaluate (${expr}): ${point3Size}`);
+                break;
+              }
+            } catch (e) {
+              console.log(`Failed to get Point3 vector size via ${expr}:`, e);
+            }
+          }
+        }
+        if (point3Size === 0) {
+          isEmpty = true;
+          reason = "Point cloud is empty";
         }
       } else if (vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
         let size = confirmed1DSize || (vector1D.is1D ? vector1D.size : (set1D.isSet ? set1D.size : is1DMatType.size));
