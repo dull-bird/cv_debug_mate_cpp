@@ -26,6 +26,56 @@ export async function drawPlot(
   isSet: boolean = false
 ) {
   try {
+    const panelTitle = `View: ${variableName}`;
+
+    // Step 1: Get metadata only (size + dataPtr) without reading full data
+    let metadata: { size: number; dataPtr: string | null; bytesPerElement: number } = { size: 0, dataPtr: null, bytesPerElement: 4 };
+    
+    if (typeof elementTypeOrMat === 'string') {
+        if (isSet) {
+            // For sets, we can only get size (no contiguous memory)
+            const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+            const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
+            metadata = { size, dataPtr: null, bytesPerElement: 4 };
+        } else {
+            // For vectors, get size and dataPtr
+            const result = await getVectorMetadata(debugSession, variableName, elementTypeOrMat, variableInfo);
+            metadata = result;
+        }
+    } else {
+        // For 1D Mat, we already have the info
+        metadata = {
+            size: elementTypeOrMat.rows * elementTypeOrMat.cols,
+            dataPtr: elementTypeOrMat.dataPtr,
+            bytesPerElement: getBytesPerElement(elementTypeOrMat.depth)
+        };
+    }
+
+    // Step 2: Get or create panel (will reveal if needed)
+    const panel = PanelManager.getOrCreatePanel(
+      "CurvePlotViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    // Step 3: Check if panel is fresh (only when not force)
+    if (!force && metadata.size > 0) {
+        const totalBytes = metadata.size * metadata.bytesPerElement;
+        const sample = metadata.dataPtr ? await getMemorySample(debugSession, metadata.dataPtr, totalBytes) : "";
+        // For sets without dataPtr, use size-only token (less accurate but still useful)
+        const stateToken = metadata.dataPtr 
+            ? `${metadata.size}|${metadata.dataPtr}|${sample}`
+            : `set:${metadata.size}`;
+        
+        if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+            console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
+            return;
+        }
+    }
+
+    // Step 4: Now read full data since we need to update
     let initialData: number[] | null = null;
     let dataPtrForToken = "";
     
@@ -53,31 +103,17 @@ export async function drawPlot(
 
     if (!initialData) return;
 
-    const panelTitle = `View: ${variableName}`;
-    // Check if panel is already fresh with this hard state token
-    // For plots, we can determine the sample bytes based on the element type
-    let totalBytes = initialData.length * 4; // Default to 4 bytes per element
+    // Update state token with actual data
+    let totalBytes = initialData.length * 4;
     if (typeof elementTypeOrMat !== 'string') {
         totalBytes = initialData.length * getBytesPerElement(elementTypeOrMat.depth);
     }
-    
-    const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
-    const stateToken = `${initialData.length}|${dataPtrForToken}|${sample}`;
-    
-    const panel = PanelManager.getOrCreatePanel(
-      "CurvePlotViewer",
-      panelTitle,
-      debugSession.id,
-      variableName,
-      reveal
-    );
-
-    if (!force && PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
-      console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
-      return;
-    }
-
-    // Update state token
+    const sample = dataPtrForToken && !dataPtrForToken.startsWith('set:') 
+        ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) 
+        : "";
+    const stateToken = dataPtrForToken.startsWith('set:')
+        ? dataPtrForToken
+        : `${initialData.length}|${dataPtrForToken}|${sample}`;
     PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
 
     // If panel already has content, only send data to preserve view state
@@ -203,6 +239,143 @@ export async function drawPlot(
     vscode.window.showErrorMessage(`Failed to draw plot: ${error.message}`);
     console.error(error);
   }
+}
+
+// Get vector metadata only (size + dataPtr) without reading full data
+async function getVectorMetadata(
+    debugSession: vscode.DebugSession,
+    variableName: string,
+    type: string,
+    variableInfo?: any
+): Promise<{ size: number; dataPtr: string | null; bytesPerElement: number }> {
+    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+    const context = getEvaluateContext(debugSession);
+
+    console.log(`getVectorMetadata: variableName="${variableName}", type="${type}"`);
+
+    // Check if it's actually a Mat
+    if (type.includes("cv::Mat")) {
+        return { size: 0, dataPtr: null, bytesPerElement: 4 };
+    }
+
+    // Get vector size
+    const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
+    if (isNaN(size) || size <= 0) {
+        return { size: 0, dataPtr: null, bytesPerElement: 4 };
+    }
+
+    // Determine bytes per element from type
+    let bytesPerElement = 4;
+    const typeLower = type.toLowerCase();
+    if (typeLower.includes("double")) {
+        bytesPerElement = 8;
+    } else if (typeLower.includes("float")) {
+        bytesPerElement = 4;
+    } else if (typeLower.includes("unsigned char") || typeLower.includes("uchar") || typeLower.includes("uint8_t")) {
+        bytesPerElement = 1;
+    } else if (typeLower.includes("char") || typeLower.includes("int8_t")) {
+        bytesPerElement = 1;
+    } else if (typeLower.includes("unsigned short") || typeLower.includes("ushort") || typeLower.includes("uint16_t")) {
+        bytesPerElement = 2;
+    } else if (typeLower.includes("short") || typeLower.includes("int16_t")) {
+        bytesPerElement = 2;
+    } else if (typeLower.includes("unsigned long long") || typeLower.includes("uint64_t") || 
+               typeLower.includes("long long") || typeLower.includes("int64_t")) {
+        bytesPerElement = 8;
+    }
+
+    // Get data pointer
+    let dataPtr: string | null = null;
+    
+    if (isUsingLLDB(debugSession)) {
+        // Try variables approach first
+        if (variableInfo && variableInfo.variablesReference > 0) {
+            try {
+                const varsResponse = await debugSession.customRequest("variables", {
+                    variablesReference: variableInfo.variablesReference
+                });
+                
+                if (varsResponse.variables && varsResponse.variables.length > 0) {
+                    // Look for __begin_
+                    for (const v of varsResponse.variables) {
+                        if (v.name === "__begin_" || v.name.includes("__begin")) {
+                            if (v.value) {
+                                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
+                                if (ptrMatch) {
+                                    dataPtr = ptrMatch[0];
+                                    break;
+                                }
+                            }
+                            if (!dataPtr && v.memoryReference) {
+                                dataPtr = v.memoryReference;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Try [0] element
+                    if (!dataPtr) {
+                        const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
+                        if (firstElement) {
+                            if (firstElement.memoryReference) {
+                                dataPtr = firstElement.memoryReference;
+                            } else if (firstElement.value) {
+                                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
+                                if (ptrMatch) {
+                                    dataPtr = ptrMatch[0];
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log("Failed to get data pointer through variables:", e);
+            }
+        }
+        
+        if (!dataPtr) {
+            const lldbExpressions = [
+                `${variableName}.__begin_`,
+                `reinterpret_cast<long long>(${variableName}.__begin_)`,
+                `${variableName}.data()`,
+                `reinterpret_cast<long long>(${variableName}.data())`,
+                `&${variableName}[0]`,
+                `reinterpret_cast<long long>(&${variableName}[0])`
+            ];
+            dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
+        }
+        
+    } else if (isUsingMSVC(debugSession)) {
+        const msvcExpressions = [
+            `(long long)&${variableName}[0]`,
+            `reinterpret_cast<long long>(&${variableName}[0])`,
+            `(long long)${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, msvcExpressions, frameId, context);
+        
+    } else if (isUsingCppdbg(debugSession)) {
+        const gdbExpressions = [
+            `(long long)${variableName}._M_impl._M_start`,
+            `reinterpret_cast<long long>(${variableName}._M_impl._M_start)`,
+            `(long long)${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`,
+            `(long long)&${variableName}[0]`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, gdbExpressions, frameId, context);
+        
+    } else {
+        const ptrExprs = [
+            `${variableName}.data()`, 
+            `&${variableName}[0]`, 
+            `(void*)${variableName}.data()`,
+            `(void*)&${variableName}[0]`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, ptrExprs, frameId, context);
+    }
+
+    console.log(`getVectorMetadata result: size=${size}, dataPtr=${dataPtr}, bytesPerElement=${bytesPerElement}`);
+    return { size, dataPtr, bytesPerElement };
 }
 
 async function readMatDataInternal(
