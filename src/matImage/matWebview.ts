@@ -920,7 +920,7 @@ export function getWebviewContentForMat(
                     const x = offsetX;
                     const y = offsetY;
                     
-                    ctx.imageSmoothingEnabled = scale < 4; // Disable smoothing when zoomed in
+                    ctx.imageSmoothingEnabled = false; // Disable smoothing
                     ctx.drawImage(offscreenCanvas, x, y, scaledWidth, scaledHeight);
                     
                     // Draw grid when zoomed in
