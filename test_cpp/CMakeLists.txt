@@ -3,61 +3,63 @@ project(cv_debugmate_test)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Find OpenCV - use different paths based on compiler
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # For GCC (MSYS2), let CMake find OpenCV automatically
-    # OpenCV is installed at C:/msys64/ucrt64
-    message(STATUS "Using GCC - searching for MSYS2 OpenCV")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    # For Clang (MSYS2 Clang64), use MinGW/Clang compatible OpenCV
-    # MSVC compiled OpenCV (.lib) is NOT compatible with Clang's lld linker
-    message(STATUS "Using Clang - searching for compatible OpenCV")
-    
-    # Option 1: Use MSYS2 installed OpenCV (recommended)
-    # Install via: pacman -S mingw-w64-clang-x86_64-opencv
-    # Then CMake should find it automatically
-    
-    # Option 2: If you have MinGW/GCC compiled OpenCV, you can try using it
-    # (MinGW libraries are usually compatible with Clang)
-    # Uncomment and set the path:
-    # set(OpenCV_DIR "C:/msys64/ucrt64/lib/cmake/opencv4")
-    
-    # Option 3: If you have a Clang-compiled OpenCV, set the path here
-    # set(OpenCV_DIR "path/to/clang/opencv/lib/cmake/opencv4")
+# ============================================================
+# OpenCV Configuration
+# ============================================================
+# Option 1: Auto-detect (works for most setups)
+# Option 2: Set OpenCV_DIR manually if not found:
+#   cmake -DOpenCV_DIR=/path/to/opencv/lib/cmake/opencv4 ..
+
+# Platform-specific hints
+if(WIN32)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        # MSVC: Set your OpenCV path here if needed
+        # set(OpenCV_DIR "C:/opencv/build/x64/vc16/lib")
+        message(STATUS "Compiler: MSVC")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # MSYS2 UCRT64 GCC
+        message(STATUS "Compiler: GCC (MSYS2)")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        # MSYS2 Clang64
+        message(STATUS "Compiler: Clang (MSYS2)")
+    endif()
 else()
-    # For MSVC only, use prebuilt OpenCV
-    set(OpenCV_DIR "D:/work/repos/3rdParty/OpenCV/opencv4/build/x64/vc15/lib")
-    message(STATUS "Using MSVC - using prebuilt OpenCV")
+    # macOS / Linux: Usually auto-detected via brew or apt
+    message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
 find_package(OpenCV REQUIRED)
-message(STATUS "OpenCV found: ${OpenCV_VERSION} at ${OpenCV_DIR}")
+message(STATUS "OpenCV: ${OpenCV_VERSION} at ${OpenCV_DIR}")
 
+# ============================================================
+# Build Target
+# ============================================================
 add_executable(test_debugmate main.cpp)
 target_link_libraries(test_debugmate ${OpenCV_LIBS})
 
-# 为 Release 模式添加调试符号
+# ============================================================
+# Debug Symbols (for all build types)
+# ============================================================
 if(MSVC)
-    # /Zi 生成调试信息 PDB 文件
-    target_compile_options(test_debugmate PRIVATE $<$<CONFIG:Release>:/Zi>)
-    # /DEBUG 告诉链接器生成 PDB
-    target_link_options(test_debugmate PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+    target_compile_options(test_debugmate PRIVATE /Zi)
+    target_link_options(test_debugmate PRIVATE /DEBUG)
 else()
-    # 对于 GCC 和 Clang，添加 -g 选项
-    target_compile_options(test_debugmate PRIVATE $<$<CONFIG:Release>:-g>)
+    # GCC / Clang
+    target_compile_options(test_debugmate PRIVATE -g)
 endif()
 
-# Auto copy OpenCV DLLs to output directory (only for MSVC builds)
+# ============================================================
+# Copy DLLs (Windows MSVC only)
+# ============================================================
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    # Get OpenCV bin directory (where DLLs are located)
     get_filename_component(OpenCV_BIN_DIR "${OpenCV_DIR}/../bin" ABSOLUTE)
-    
-    # Copy OpenCV DLLs after build
-    add_custom_command(TARGET test_debugmate POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${OpenCV_BIN_DIR}/opencv_world451$<$<CONFIG:Debug>:d>.dll"
-            $<TARGET_FILE_DIR:test_debugmate>
-        COMMENT "Copying OpenCV DLLs to output directory"
-    )
+    file(GLOB OPENCV_DLLS "${OpenCV_BIN_DIR}/*.dll")
+    if(OPENCV_DLLS)
+        add_custom_command(TARGET test_debugmate POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OPENCV_DLLS} $<TARGET_FILE_DIR:test_debugmate>
+            COMMENT "Copying OpenCV DLLs"
+        )
+    endif()
 endif()
