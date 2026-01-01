@@ -63,6 +63,25 @@ export function getWebviewContentForMat(
                 align-items: center;
                 flex-wrap: wrap;
             }
+            #controls.collapsed .ctrl-group,
+            #controls.collapsed .dd {
+                display: none;
+            }
+            #controls.collapsed {
+                padding: 6px 10px;
+            }
+            .toggle-btn {
+                background: transparent;
+                border: none;
+                color: #555;
+                font-size: 14px;
+                cursor: pointer;
+                padding: 2px 6px;
+                margin-right: 4px;
+            }
+            .toggle-btn:hover {
+                color: #111;
+            }
             #controls label { color: #111; font-weight: 400; font-size: 12px; }
             .ctrl-group {
                 display: inline-flex;
@@ -179,6 +198,110 @@ export function getWebviewContentForMat(
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
+            /* Jet Colorbar Panel */
+            #jetColorbar {
+                position: absolute;
+                bottom: 60px;
+                right: 10px;
+                background: rgba(0, 0, 0, 0.85);
+                color: white;
+                padding: 12px;
+                border-radius: 6px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+                z-index: 1000;
+                display: none;
+                width: 80px;
+                user-select: none;
+            }
+            #jetColorbar.visible { display: block; }
+            .colorbar-title {
+                font-size: 11px;
+                color: #aaa;
+                text-align: center;
+                margin-bottom: 8px;
+            }
+            .colorbar-container {
+                display: flex;
+                gap: 8px;
+            }
+            .colorbar-gradient {
+                width: 20px;
+                height: 150px;
+                background: linear-gradient(to top, 
+                    rgb(0, 0, 128) 0%,
+                    rgb(0, 0, 255) 12.5%,
+                    rgb(0, 255, 255) 37.5%,
+                    rgb(0, 255, 0) 50%,
+                    rgb(255, 255, 0) 62.5%,
+                    rgb(255, 0, 0) 87.5%,
+                    rgb(128, 0, 0) 100%
+                );
+                border: 1px solid #555;
+                border-radius: 2px;
+                position: relative;
+            }
+            .colorbar-slider-track {
+                position: relative;
+                width: 100%;
+                height: 150px;
+            }
+            .colorbar-slider {
+                position: absolute;
+                left: -4px;
+                width: 28px;
+                height: 6px;
+                background: #fff;
+                border: 1px solid #333;
+                border-radius: 2px;
+                cursor: ns-resize;
+                z-index: 10;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+            }
+            .colorbar-slider:hover {
+                background: #4a9eff;
+            }
+            .colorbar-slider.dragging {
+                background: #4a9eff;
+            }
+            .colorbar-labels {
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                height: 150px;
+                font-size: 10px;
+                min-width: 40px;
+            }
+            .colorbar-label {
+                text-align: right;
+            }
+            .colorbar-label input {
+                width: 50px;
+                background: #333;
+                border: 1px solid #555;
+                color: white;
+                font-size: 10px;
+                padding: 2px 4px;
+                border-radius: 2px;
+                text-align: right;
+            }
+            .colorbar-label input:focus {
+                outline: none;
+                border-color: #4a9eff;
+            }
+            .colorbar-reset {
+                margin-top: 8px;
+                width: 100%;
+                padding: 4px;
+                font-size: 10px;
+                background: #444;
+                border: 1px solid #555;
+                color: #ccc;
+                border-radius: 3px;
+                cursor: pointer;
+            }
+            .colorbar-reset:hover {
+                background: #555;
+            }
         </style>
     </head>
     <body>
@@ -192,6 +315,7 @@ export function getWebviewContentForMat(
             <canvas id="text-canvas"></canvas>
         </div>
         <div id="controls">
+            <button class="toggle-btn" id="toggleControls" title="Hide/Show Controls">▼</button>
             <span class="ctrl-group" id="zoomGroup">
                 <button id="reload" title="强制从内存重新读取数据 (保持缩放)">🔄 Reload</button>
                 <button id="zoomIn">Zoom In</button>
@@ -227,6 +351,22 @@ export function getWebviewContentForMat(
             </span>
         </div>
         <div id="pixelInfo"></div>
+        <div id="jetColorbar">
+            <div class="colorbar-title">Jet Range</div>
+            <div class="colorbar-container">
+                <div class="colorbar-gradient">
+                    <div class="colorbar-slider-track">
+                        <div class="colorbar-slider" id="sliderMax" style="top: 0px;"></div>
+                        <div class="colorbar-slider" id="sliderMin" style="bottom: 0px; top: auto;"></div>
+                    </div>
+                </div>
+                <div class="colorbar-labels">
+                    <div class="colorbar-label"><input type="text" id="jetMaxInput" value="1.0"></div>
+                    <div class="colorbar-label"><input type="text" id="jetMinInput" value="0.0"></div>
+                </div>
+            </div>
+            <button class="colorbar-reset" id="jetResetBtn">Reset Range</button>
+        </div>
         <script nonce="${nonce}">
             (function() {
                 const container = document.getElementById('container');
@@ -331,6 +471,12 @@ export function getWebviewContentForMat(
                 let uiScale = 1;
                 let cachedMinMax = null; // {min:number, max:number}
                 
+                // Jet colorbar custom limits
+                let jetCustomMin = null; // null = use auto
+                let jetCustomMax = null; // null = use auto
+                let jetDebounceTimer = null;
+                const JET_DEBOUNCE_MS = 300;
+                
                 let scale = 1;
                 let isDragging = false;
                 let startX = 0;
@@ -374,6 +520,14 @@ export function getWebviewContentForMat(
                     controlsDragging = false;
                 });
 
+                // Toggle controls visibility
+                const toggleControlsBtn = document.getElementById('toggleControls');
+                toggleControlsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isCollapsed = controls.classList.toggle('collapsed');
+                    toggleControlsBtn.textContent = isCollapsed ? '▶' : '▼';
+                });
+
                 // Create off-screen canvas for the original image
                 const offscreenCanvas = document.createElement('canvas');
                 offscreenCanvas.width = cols;
@@ -394,6 +548,7 @@ export function getWebviewContentForMat(
                     
                     isInitialized = true;
                     requestRender();
+                    updateJetColorbarVisibility();
                 }
 
                 function clampByte(v) {
@@ -480,7 +635,10 @@ export function getWebviewContentForMat(
                     if (renderMode === 'jet') {
                         // Jet colormap mode: convert to grayscale first, then apply colormap
                         const mm = getMinMax();
-                        const denom = (mm.max - mm.min) || 1;
+                        // Use custom limits if set, otherwise use auto
+                        const effectiveMin = (jetCustomMin !== null) ? jetCustomMin : mm.min;
+                        const effectiveMax = (jetCustomMax !== null) ? jetCustomMax : mm.max;
+                        const denom = (effectiveMax - effectiveMin) || 1;
                         
                         for (let i = 0; i < len; i++) {
                             const outIdx = i << 2;
@@ -499,7 +657,7 @@ export function getWebviewContentForMat(
                             }
                             
                             // Normalize to [0, 1]
-                            const t = (grayValue - mm.min) / denom;
+                            const t = (grayValue - effectiveMin) / denom;
                             const color = jetColormap(Math.max(0, Math.min(1, t)));
                             
                             data[outIdx] = color.r;
@@ -659,7 +817,7 @@ export function getWebviewContentForMat(
                         { value: 'jet', label: 'Jet Colormap' },
                     ],
                     () => renderMode,
-                    (v) => { renderMode = v; updateOffscreenFromRaw(); requestRender(); }
+                    (v) => { renderMode = v; updateOffscreenFromRaw(); requestRender(); updateJetColorbarVisibility(); }
                 );
                 initDropdown(
                     ddValueFormat,
@@ -673,6 +831,138 @@ export function getWebviewContentForMat(
                     () => valueFormat,
                     (v) => { valueFormat = v; requestRender(); }
                 );
+
+                // Jet Colorbar logic
+                const jetColorbar = document.getElementById('jetColorbar');
+                const sliderMax = document.getElementById('sliderMax');
+                const sliderMin = document.getElementById('sliderMin');
+                const jetMaxInput = document.getElementById('jetMaxInput');
+                const jetMinInput = document.getElementById('jetMinInput');
+                const jetResetBtn = document.getElementById('jetResetBtn');
+                const SLIDER_TRACK_HEIGHT = 150;
+                
+                function updateJetColorbarVisibility() {
+                    if (renderMode === 'jet' && isInitialized) {
+                        jetColorbar.classList.add('visible');
+                        updateJetColorbarValues();
+                    } else {
+                        jetColorbar.classList.remove('visible');
+                    }
+                }
+                
+                function updateJetColorbarValues() {
+                    const mm = getMinMax();
+                    const minVal = (jetCustomMin !== null) ? jetCustomMin : mm.min;
+                    const maxVal = (jetCustomMax !== null) ? jetCustomMax : mm.max;
+                    
+                    jetMinInput.value = minVal.toPrecision(4);
+                    jetMaxInput.value = maxVal.toPrecision(4);
+                    
+                    // Update slider positions based on values relative to auto range
+                    const range = mm.max - mm.min || 1;
+                    const maxPos = Math.max(0, Math.min(1, (mm.max - maxVal) / range));
+                    const minPos = Math.max(0, Math.min(1, (minVal - mm.min) / range));
+                    
+                    sliderMax.style.top = (maxPos * (SLIDER_TRACK_HEIGHT - 6)) + 'px';
+                    sliderMin.style.top = 'auto';
+                    sliderMin.style.bottom = (minPos * (SLIDER_TRACK_HEIGHT - 6)) + 'px';
+                }
+                
+                function applyJetLimitsDebounced() {
+                    if (jetDebounceTimer) clearTimeout(jetDebounceTimer);
+                    jetDebounceTimer = setTimeout(() => {
+                        updateOffscreenFromRaw();
+                        requestRender();
+                    }, JET_DEBOUNCE_MS);
+                }
+                
+                // Slider dragging
+                let draggingSlider = null;
+                let sliderStartY = 0;
+                let sliderStartTop = 0;
+                
+                function onSliderMouseDown(e, slider, isMax) {
+                    e.preventDefault();
+                    draggingSlider = { slider, isMax };
+                    slider.classList.add('dragging');
+                    sliderStartY = e.clientY;
+                    const rect = slider.getBoundingClientRect();
+                    const trackRect = slider.parentElement.getBoundingClientRect();
+                    sliderStartTop = rect.top - trackRect.top;
+                }
+                
+                sliderMax.addEventListener('mousedown', (e) => onSliderMouseDown(e, sliderMax, true));
+                sliderMin.addEventListener('mousedown', (e) => onSliderMouseDown(e, sliderMin, false));
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (!draggingSlider) return;
+                    
+                    const { slider, isMax } = draggingSlider;
+                    const deltaY = e.clientY - sliderStartY;
+                    let newTop = sliderStartTop + deltaY;
+                    
+                    // Clamp to track bounds
+                    newTop = Math.max(0, Math.min(SLIDER_TRACK_HEIGHT - 6, newTop));
+                    
+                    if (isMax) {
+                        slider.style.top = newTop + 'px';
+                    } else {
+                        slider.style.top = 'auto';
+                        slider.style.bottom = (SLIDER_TRACK_HEIGHT - 6 - newTop) + 'px';
+                    }
+                    
+                    // Calculate value from position
+                    const mm = getMinMax();
+                    const range = mm.max - mm.min || 1;
+                    const normalizedPos = newTop / (SLIDER_TRACK_HEIGHT - 6);
+                    
+                    if (isMax) {
+                        // Max slider: top=0 means max value, top=full means min value
+                        jetCustomMax = mm.max - normalizedPos * range;
+                        jetMaxInput.value = jetCustomMax.toPrecision(4);
+                    } else {
+                        // Min slider: top=0 means max value, top=full means min value
+                        jetCustomMin = mm.max - normalizedPos * range;
+                        jetMinInput.value = jetCustomMin.toPrecision(4);
+                    }
+                    
+                    applyJetLimitsDebounced();
+                });
+                
+                document.addEventListener('mouseup', () => {
+                    if (draggingSlider) {
+                        draggingSlider.slider.classList.remove('dragging');
+                        draggingSlider = null;
+                    }
+                });
+                
+                // Input field change handlers
+                jetMaxInput.addEventListener('change', () => {
+                    const val = parseFloat(jetMaxInput.value);
+                    if (!isNaN(val)) {
+                        jetCustomMax = val;
+                        updateJetColorbarValues();
+                        applyJetLimitsDebounced();
+                    }
+                });
+                
+                jetMinInput.addEventListener('change', () => {
+                    const val = parseFloat(jetMinInput.value);
+                    if (!isNaN(val)) {
+                        jetCustomMin = val;
+                        updateJetColorbarValues();
+                        applyJetLimitsDebounced();
+                    }
+                });
+                
+                // Reset button
+                jetResetBtn.addEventListener('click', () => {
+                    jetCustomMin = null;
+                    jetCustomMax = null;
+                    updateJetColorbarValues();
+                    updateOffscreenFromRaw();
+                    requestRender();
+                });
 
                 // Defaults
                 btnSaveFormat.textContent = 'PNG';

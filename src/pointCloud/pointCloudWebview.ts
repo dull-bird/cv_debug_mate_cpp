@@ -48,15 +48,50 @@ export function getWebviewContentForPointCloud(
                 }
                 #controls button:hover { background: #3a8eef; }
                 #controls button.active { background: #2a7edf; }
-                #controls label { font-size: 12px; margin-right: 5px; }
+                #controls.collapsed .ctrl-row,
+                #controls.collapsed button:not(.toggle-btn) {
+                    display: none;
+                }
+                #controls.collapsed {
+                    padding: 6px 10px;
+                }
+                .toggle-btn {
+                    background: transparent;
+                    border: none;
+                    color: #aaa;
+                    font-size: 14px;
+                    cursor: pointer;
+                    padding: 2px 6px;
+                    margin: 0;
+                }
+                .toggle-btn:hover {
+                    color: #fff;
+                }
+                #controls label { font-size: 11px; margin-right: 3px; color: #aaa; }
                 #controls input[type="number"] {
-                    width: 60px;
-                    padding: 4px;
+                    width: 50px;
+                    padding: 3px;
                     border: 1px solid #555;
                     border-radius: 3px;
                     background: #333;
                     color: white;
-                    font-size: 12px;
+                    font-size: 11px;
+                }
+                .ctrl-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 6px;
+                    flex-wrap: wrap;
+                }
+                .ctrl-row select {
+                    padding: 3px;
+                    font-size: 11px;
+                }
+                .ctrl-row .save-btn {
+                    padding: 4px 8px;
+                    font-size: 11px;
+                    margin: 0;
                 }
                 #axisView {
                     position: absolute;
@@ -78,26 +113,87 @@ export function getWebviewContentForPointCloud(
                     position: absolute;
                     bottom: 140px;
                     right: 10px;
-                    background: rgba(0, 0, 0, 0.7);
+                    background: rgba(0, 0, 0, 0.85);
                     color: white;
-                    padding: 10px;
-                    border-radius: 5px;
+                    padding: 12px;
+                    border-radius: 6px;
                     display: none;
+                    user-select: none;
                 }
+                .colorbar-title {
+                    font-size: 11px;
+                    color: #aaa;
+                    text-align: center;
+                    margin-bottom: 8px;
+                }
+                #colorbar-container { display: flex; gap: 8px; }
                 #colorbar-gradient {
                     width: 20px;
-                    height: 120px;
+                    height: 150px;
                     background: linear-gradient(to top, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000);
-                    margin-right: 10px;
+                    border: 1px solid #555;
+                    border-radius: 2px;
+                    position: relative;
+                }
+                .colorbar-slider-track {
+                    position: relative;
+                    width: 100%;
+                    height: 150px;
+                }
+                .colorbar-slider {
+                    position: absolute;
+                    left: -4px;
+                    width: 28px;
+                    height: 6px;
+                    background: #fff;
+                    border: 1px solid #333;
+                    border-radius: 2px;
+                    cursor: ns-resize;
+                    z-index: 10;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+                }
+                .colorbar-slider:hover {
+                    background: #4a9eff;
+                }
+                .colorbar-slider.dragging {
+                    background: #4a9eff;
                 }
                 #colorbar-labels {
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
-                    height: 120px;
-                    font-size: 11px;
+                    height: 150px;
+                    font-size: 10px;
+                    min-width: 50px;
                 }
-                #colorbar-container { display: flex; }
+                .colorbar-label input {
+                    width: 50px;
+                    background: #333;
+                    border: 1px solid #555;
+                    color: white;
+                    font-size: 10px;
+                    padding: 2px 4px;
+                    border-radius: 2px;
+                    text-align: right;
+                }
+                .colorbar-label input:focus {
+                    outline: none;
+                    border-color: #4a9eff;
+                }
+                .colorbar-reset {
+                    margin-top: 8px;
+                    width: 100%;
+                    padding: 4px;
+                    font-size: 10px;
+                    background: #444;
+                    border: 1px solid #555;
+                    color: #ccc;
+                    border-radius: 3px;
+                    cursor: pointer;
+                }
+                .colorbar-reset:hover {
+                    background: #555;
+                }
             </style>
             <script type="importmap">
             {
@@ -117,35 +213,41 @@ export function getWebviewContentForPointCloud(
                 <p>Z (Up): <span id="boundsZ">-</span></p>
             </div>
             <div id="controls">
-                <div style="margin-bottom: 8px;">
-                    <label>Point Size:</label>
+                <button class="toggle-btn" id="toggleControls" title="Hide/Show Controls">▼</button>
+                <div class="ctrl-row">
+                    <label>Size:</label>
                     <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
-                </div>
-                <div style="margin-bottom: 8px;">
-                    <label>PLY Format:</label>
-                    <select id="plyFormatSelect" style="background: #333; color: white; border: 1px solid #555; border-radius: 3px; font-size: 12px; padding: 2px;">
+                    <label>PLY:</label>
+                    <select id="plyFormatSelect" style="background: #333; color: white; border: 1px solid #555; border-radius: 3px;">
                         <option value="binary" selected>Binary</option>
                         <option value="ascii">ASCII</option>
                     </select>
+                    <button id="btnSavePLY" class="save-btn" style="background: #28a745;">Save</button>
                 </div>
-                <button id="btnSolid">Solid Color</button>
-                <button id="btnHeightZ">Color by Z</button>
-                <button id="btnHeightY">Color by Y</button>
-                <button id="btnHeightX">Color by X</button>
-                <button id="btnResetView">Reset View</button>
-                <button id="btnReload" title="强制从内存重新读取数据 (保持视角)">🔄 Reload</button>
-                <button id="btnSavePLY" style="margin-top: 8px; background: #28a745;">Save PLY</button>
+                <button id="btnSolid">Solid</button>
+                <button id="btnHeightZ">Z</button>
+                <button id="btnHeightY">Y</button>
+                <button id="btnHeightX">X</button>
+                <button id="btnResetView">Reset</button>
+                <button id="btnReload" title="强制从内存重新读取数据 (保持视角)">🔄</button>
             </div>
             <div id="axisView"></div>
             <div id="colorbar">
+                <div class="colorbar-title" id="colorbar-title">Color Range</div>
                 <div id="colorbar-container">
-                    <div id="colorbar-gradient"></div>
+                    <div id="colorbar-gradient">
+                        <div class="colorbar-slider-track">
+                            <div class="colorbar-slider" id="sliderMax" style="top: 0px;"></div>
+                            <div class="colorbar-slider" id="sliderMin" style="bottom: 0px; top: auto;"></div>
+                        </div>
+                    </div>
                     <div id="colorbar-labels">
-                        <span id="colorbar-max">1.0</span>
-                        <span id="colorbar-mid">0.5</span>
-                        <span id="colorbar-min">0.0</span>
+                        <div class="colorbar-label"><input type="text" id="colorbar-max-input" value="1.0"></div>
+                        <div class="colorbar-label" style="text-align: center;"><span id="colorbar-mid">0.5</span></div>
+                        <div class="colorbar-label"><input type="text" id="colorbar-min-input" value="0.0"></div>
                     </div>
                 </div>
+                <button class="colorbar-reset" id="colorbar-reset">Reset Range</button>
             </div>
             <script type="module">
                 import * as THREE from 'three';
@@ -154,6 +256,14 @@ export function getWebviewContentForPointCloud(
                 let points = ${pointsArray};
                 let isInitialized = false;
                 let pendingSyncState = null;
+                
+                // Colorbar custom limits
+                let colorCustomMin = null;
+                let colorCustomMax = null;
+                let currentColorMode = 'solid';
+                let colorDebounceTimer = null;
+                const COLOR_DEBOUNCE_MS = 300;
+                const SLIDER_TRACK_HEIGHT = 150;
                 
                 // Main scene
                 const scene = new THREE.Scene();
@@ -345,54 +455,101 @@ export function getWebviewContentForPointCloud(
                     resetView();
                 }
 
-                function updateColors(mode) {
+                function getAxisBounds(mode) {
+                    if (mode === 'x') return { min: minX, max: maxX };
+                    if (mode === 'y') return { min: minY, max: maxY };
+                    if (mode === 'z') return { min: minZ, max: maxZ };
+                    return { min: 0, max: 1 };
+                }
+                
+                function updateColorbarUI() {
+                    if (currentColorMode === 'solid') return;
+                    
+                    const bounds = getAxisBounds(currentColorMode);
+                    const effectiveMin = (colorCustomMin !== null) ? colorCustomMin : bounds.min;
+                    const effectiveMax = (colorCustomMax !== null) ? colorCustomMax : bounds.max;
+                    
+                    const colorbarMaxInput = document.getElementById('colorbar-max-input');
+                    const colorbarMinInput = document.getElementById('colorbar-min-input');
+                    const colorbarMid = document.getElementById('colorbar-mid');
+                    const sliderMax = document.getElementById('sliderMax');
+                    const sliderMin = document.getElementById('sliderMin');
+                    
+                    colorbarMaxInput.value = effectiveMax.toPrecision(4);
+                    colorbarMinInput.value = effectiveMin.toPrecision(4);
+                    colorbarMid.textContent = ((effectiveMin + effectiveMax) / 2).toPrecision(4);
+                    
+                    // Update slider positions
+                    const range = bounds.max - bounds.min || 1;
+                    const maxPos = Math.max(0, Math.min(1, (bounds.max - effectiveMax) / range));
+                    const minPos = Math.max(0, Math.min(1, (effectiveMin - bounds.min) / range));
+                    
+                    sliderMax.style.top = (maxPos * (SLIDER_TRACK_HEIGHT - 6)) + 'px';
+                    sliderMin.style.top = 'auto';
+                    sliderMin.style.bottom = (minPos * (SLIDER_TRACK_HEIGHT - 6)) + 'px';
+                }
+                
+                function applyColorsWithLimits() {
+                    if (currentColorMode === 'solid') return;
+                    
+                    const colorAttr = geometry.attributes.color;
+                    const bounds = getAxisBounds(currentColorMode);
+                    const effectiveMin = (colorCustomMin !== null) ? colorCustomMin : bounds.min;
+                    const effectiveMax = (colorCustomMax !== null) ? colorCustomMax : bounds.max;
+                    const range = effectiveMax - effectiveMin || 1;
+                    
+                    for (let i = 0; i < points.length; i++) {
+                        const p = points[i];
+                        let val;
+                        if (currentColorMode === 'x') val = p.x;
+                        else if (currentColorMode === 'y') val = p.y;
+                        else if (currentColorMode === 'z') val = p.z;
+                        
+                        const t = Math.max(0, Math.min(1, (val - effectiveMin) / range));
+                        
+                        // Jet-like colormap
+                        let jetR = 0, jetG = 0, jetB = 0;
+                        if (t < 0.25) { jetR = 0; jetG = 4 * t; jetB = 1; }
+                        else if (t < 0.5) { jetR = 0; jetG = 1; jetB = 1 - 4 * (t - 0.25); }
+                        else if (t < 0.75) { jetR = 4 * (t - 0.5); jetG = 1; jetB = 0; }
+                        else { jetR = 1; jetG = 1 - 4 * (t - 0.75); jetB = 0; }
+                        
+                        colorAttr.setXYZ(i, jetR, jetG, jetB);
+                    }
+                    colorAttr.needsUpdate = true;
+                }
+                
+                function applyColorsDebounced() {
+                    if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
+                    colorDebounceTimer = setTimeout(() => {
+                        applyColorsWithLimits();
+                    }, COLOR_DEBOUNCE_MS);
+                }
+                
+                function updateColors(mode, resetLimits = true) {
                     const colorAttr = geometry.attributes.color;
                     const colorbar = document.getElementById('colorbar');
-                    const colorbarMax = document.getElementById('colorbar-max');
-                    const colorbarMid = document.getElementById('colorbar-mid');
-                    const colorbarMin = document.getElementById('colorbar-min');
+                    const colorbarTitle = document.getElementById('colorbar-title');
+                    
+                    currentColorMode = mode;
+                    
+                    if (resetLimits) {
+                        colorCustomMin = null;
+                        colorCustomMax = null;
+                    }
                     
                     if (mode === 'solid') {
                         colorbar.style.display = 'none';
                         for (let i = 0; i < points.length; i++) {
                             colorAttr.setXYZ(i, 0.5, 0.7, 1.0);
                         }
+                        colorAttr.needsUpdate = true;
                     } else {
                         colorbar.style.display = 'block';
-                        let min, max;
-                        if (mode === 'x') { min = minX; max = maxX; }
-                        else if (mode === 'y') { min = minY; max = maxY; }
-                        else if (mode === 'z') { min = minZ; max = maxZ; }
-                        
-                        colorbarMax.textContent = max.toFixed(2);
-                        colorbarMid.textContent = ((min + max) / 2).toFixed(2);
-                        colorbarMin.textContent = min.toFixed(2);
-                        
-                        const range = max - min || 1;
-                        for (let i = 0; i < points.length; i++) {
-                            const p = points[i];
-                            let val;
-                            if (mode === 'x') val = p.x;
-                            else if (mode === 'y') val = p.y;
-                            else if (mode === 'z') val = p.z;
-                            
-                            const t = (val - min) / range;
-                            // Rainbow color map
-                            const r = Math.max(0, Math.min(1, 4 * t - 3, 4 * (1 - t)));
-                            const g = Math.max(0, Math.min(1, 4 * t - 1, 4 * (2 - t)));
-                            const b = Math.max(0, Math.min(1, 4 * t + 1, 4 * (3 - t)));
-                            
-                            // Using a more standard jet-like colormap
-                            let jetR = 0, jetG = 0, jetB = 0;
-                            if (t < 0.25) { jetR = 0; jetG = 4 * t; jetB = 1; }
-                            else if (t < 0.5) { jetR = 0; jetG = 1; jetB = 1 - 4 * (t - 0.25); }
-                            else if (t < 0.75) { jetR = 4 * (t - 0.5); jetG = 1; jetB = 0; }
-                            else { jetR = 1; jetG = 1 - 4 * (t - 0.75); jetB = 0; }
-                            
-                            colorAttr.setXYZ(i, jetR, jetG, jetB);
-                        }
+                        colorbarTitle.textContent = 'Color by ' + mode.toUpperCase();
+                        updateColorbarUI();
+                        applyColorsWithLimits();
                     }
-                    colorAttr.needsUpdate = true;
                 }
 
                 document.getElementById('btnSolid').onclick = () => updateColors('solid');
@@ -406,6 +563,115 @@ export function getWebviewContentForPointCloud(
                 document.getElementById('pointSizeInput').oninput = (e) => {
                     material.size = parseFloat(e.target.value);
                 };
+                
+                // Toggle controls visibility
+                const controlsEl = document.getElementById('controls');
+                const toggleControlsBtn = document.getElementById('toggleControls');
+                toggleControlsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isCollapsed = controlsEl.classList.toggle('collapsed');
+                    toggleControlsBtn.textContent = isCollapsed ? '▶' : '▼';
+                });
+                
+                // Colorbar slider dragging
+                let draggingSlider = null;
+                let sliderStartY = 0;
+                let sliderStartTop = 0;
+                
+                function onSliderMouseDown(e, slider, isMax) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    draggingSlider = { slider, isMax };
+                    slider.classList.add('dragging');
+                    sliderStartY = e.clientY;
+                    const rect = slider.getBoundingClientRect();
+                    const trackRect = slider.parentElement.getBoundingClientRect();
+                    sliderStartTop = rect.top - trackRect.top;
+                }
+                
+                const sliderMaxEl = document.getElementById('sliderMax');
+                const sliderMinEl = document.getElementById('sliderMin');
+                
+                sliderMaxEl.addEventListener('mousedown', (e) => onSliderMouseDown(e, sliderMaxEl, true));
+                sliderMinEl.addEventListener('mousedown', (e) => onSliderMouseDown(e, sliderMinEl, false));
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (!draggingSlider) return;
+                    
+                    const { slider, isMax } = draggingSlider;
+                    const deltaY = e.clientY - sliderStartY;
+                    let newTop = sliderStartTop + deltaY;
+                    
+                    // Clamp to track bounds
+                    newTop = Math.max(0, Math.min(SLIDER_TRACK_HEIGHT - 6, newTop));
+                    
+                    if (isMax) {
+                        slider.style.top = newTop + 'px';
+                    } else {
+                        slider.style.top = 'auto';
+                        slider.style.bottom = (SLIDER_TRACK_HEIGHT - 6 - newTop) + 'px';
+                    }
+                    
+                    // Calculate value from position
+                    const bounds = getAxisBounds(currentColorMode);
+                    const range = bounds.max - bounds.min || 1;
+                    const normalizedPos = newTop / (SLIDER_TRACK_HEIGHT - 6);
+                    
+                    const colorbarMaxInput = document.getElementById('colorbar-max-input');
+                    const colorbarMinInput = document.getElementById('colorbar-min-input');
+                    const colorbarMid = document.getElementById('colorbar-mid');
+                    
+                    if (isMax) {
+                        colorCustomMax = bounds.max - normalizedPos * range;
+                        colorbarMaxInput.value = colorCustomMax.toPrecision(4);
+                    } else {
+                        colorCustomMin = bounds.max - normalizedPos * range;
+                        colorbarMinInput.value = colorCustomMin.toPrecision(4);
+                    }
+                    
+                    // Update mid value
+                    const effectiveMin = (colorCustomMin !== null) ? colorCustomMin : bounds.min;
+                    const effectiveMax = (colorCustomMax !== null) ? colorCustomMax : bounds.max;
+                    colorbarMid.textContent = ((effectiveMin + effectiveMax) / 2).toPrecision(4);
+                    
+                    applyColorsDebounced();
+                });
+                
+                document.addEventListener('mouseup', () => {
+                    if (draggingSlider) {
+                        draggingSlider.slider.classList.remove('dragging');
+                        draggingSlider = null;
+                        // Apply final colors immediately
+                        applyColorsWithLimits();
+                    }
+                });
+                
+                // Input field change handlers
+                document.getElementById('colorbar-max-input').addEventListener('change', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                        colorCustomMax = val;
+                        updateColorbarUI();
+                        applyColorsWithLimits();
+                    }
+                });
+                
+                document.getElementById('colorbar-min-input').addEventListener('change', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                        colorCustomMin = val;
+                        updateColorbarUI();
+                        applyColorsWithLimits();
+                    }
+                });
+                
+                // Reset button
+                document.getElementById('colorbar-reset').addEventListener('click', () => {
+                    colorCustomMin = null;
+                    colorCustomMax = null;
+                    updateColorbarUI();
+                    applyColorsWithLimits();
+                });
                 
                 const vscode = acquireVsCodeApi();
 

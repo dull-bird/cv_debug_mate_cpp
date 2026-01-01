@@ -5,3 +5,4 @@ node_modules
 *.vsix
 test_cpp/build*/
 *.ply
+*cache*/

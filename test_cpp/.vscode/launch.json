@@ -32,8 +32,20 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug (lldb)",
+            "name": "Debug (lldb + windows)",
             "program": "${workspaceFolder}/build_clang_native/test_debugmate.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "env": {
+                "PATH": "C:\\msys64\\clang64\\bin;${env:PATH}"
+            },
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug (lldb + mac)",
+            "program": "${workspaceFolder}/build/test_debugmate",
             "args": [],
             "cwd": "${workspaceFolder}",
             "stopOnEntry": false,

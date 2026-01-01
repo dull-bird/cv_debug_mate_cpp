@@ -49,6 +49,23 @@ export function getWebviewContentForPlot(
                 flex-wrap: nowrap;
                 height: 30px;
             }
+            #toolbar.collapsed > *:not(.toggle-btn) {
+                display: none;
+            }
+            .toggle-btn {
+                background: transparent;
+                border: none;
+                color: #888;
+                font-size: 14px;
+                cursor: pointer;
+                padding: 2px 6px;
+                height: 28px;
+                display: flex;
+                align-items: center;
+            }
+            .toggle-btn:hover {
+                color: #fff;
+            }
             .btn-group {
                 display: flex;
                 gap: 2px;
@@ -152,8 +169,6 @@ export function getWebviewContentForPlot(
                 position: absolute;
                 top: 0;
                 left: 0;
-                width: 100%;
-                height: 100%;
             }
             #tooltip {
                 position: fixed;
@@ -267,6 +282,7 @@ export function getWebviewContentForPlot(
         <div id="header">
             <div id="title">View: ${variableName}</div>
             <div id="toolbar">
+                <button class="toggle-btn" id="toggleToolbar" title="Hide/Show Toolbar">▼</button>
                 <div class="btn-group">
                     <button id="btnBack" class="btn" title="Previous View" disabled>⬅️</button>
                     <button id="btnForward" class="btn" title="Next View" disabled>➡️</button>
@@ -433,6 +449,15 @@ export function getWebviewContentForPlot(
                     const btnScatter = document.getElementById('btnScatter');
                     const btnHist = document.getElementById('btnHist');
                     
+                    // Toggle toolbar visibility
+                    const toolbar = document.getElementById('toolbar');
+                    const toggleToolbarBtn = document.getElementById('toggleToolbar');
+                    toggleToolbarBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const isCollapsed = toolbar.classList.toggle('collapsed');
+                        toggleToolbarBtn.textContent = isCollapsed ? '▶' : '▼';
+                    });
+                    
                     // Settings panel elements
                     const btnSettings = document.getElementById('btnSettings');
                     const settingsPanel = document.getElementById('settingsPanel');
@@ -537,8 +562,14 @@ export function getWebviewContentForPlot(
                             container.style.flexGrow = '1';
                         }
                         
+                        // Set canvas buffer size (for HiDPI rendering)
                         canvas.width = Math.floor(width * dpr);
                         canvas.height = Math.floor(height * dpr);
+                        
+                        // Set explicit CSS dimensions to prevent stretching
+                        canvas.style.width = width + 'px';
+                        canvas.style.height = height + 'px';
+                        
                         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                         return true;
                     }
@@ -559,13 +590,18 @@ export function getWebviewContentForPlot(
                         const bY = getBounds(dataY);
                         const bX = getBounds(dataX);
                         
-                        // Apply custom limits if set, otherwise use auto
-                        minY = (settings.yMin !== null && !isNaN(settings.yMin)) ? settings.yMin : bY.min;
-                        maxY = (settings.yMax !== null && !isNaN(settings.yMax)) ? settings.yMax : bY.max;
+                        // Add 5% padding for auto limits so edge points are fully visible
+                        const MARGIN_RATIO = 0.05;
+                        const yPadding = (bY.max - bY.min) * MARGIN_RATIO || 0.1;
+                        const xPadding = (bX.max - bX.min) * MARGIN_RATIO || 0.1;
+                        
+                        // Apply custom limits if set, otherwise use auto with padding
+                        minY = (settings.yMin !== null && !isNaN(settings.yMin)) ? settings.yMin : (bY.min - yPadding);
+                        maxY = (settings.yMax !== null && !isNaN(settings.yMax)) ? settings.yMax : (bY.max + yPadding);
                         rangeY = (maxY - minY) || 1;
 
-                        minX = (settings.xMin !== null && !isNaN(settings.xMin)) ? settings.xMin : bX.min;
-                        maxX = (settings.xMax !== null && !isNaN(settings.xMax)) ? settings.xMax : bX.max;
+                        minX = (settings.xMin !== null && !isNaN(settings.xMin)) ? settings.xMin : (bX.min - xPadding);
+                        maxX = (settings.xMax !== null && !isNaN(settings.xMax)) ? settings.xMax : (bX.max + xPadding);
                         rangeX = (maxX - minX) || 1;
                     }
 
