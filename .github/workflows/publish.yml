@@ -1,0 +1,26 @@
+name: Publish Extension
+
+on:
+  push:
+    tags:
+      - "v*" # 当推送到 v 开头的 tag 时触发
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm install
+
+      # 发布到 VS Marketplace (官方)
+      # - name: Publish to VS Marketplace
+      #   run: npx vsce publish -p ${{ secrets.VSCE_TOKEN }}
+
+      # 发布到 Open VSX
+      - name: Publish to Open VSX
+        run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }}
