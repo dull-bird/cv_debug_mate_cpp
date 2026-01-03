@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as os from "os";
+import { getDepthFromCppType } from "./opencv";
 
 // Get the appropriate evaluate context for the debugger type
 export function getEvaluateContext(debugSession: vscode.DebugSession): string {
@@ -628,3 +629,439 @@ export async function get2DStdArrayDataPointer(
   return dataPtr;
 }
 
+/**
+ * Get type information for 2D arrays using debugger-specific commands.
+ * This uses different commands based on the debugger:
+ * - LLDB: frame variable --show-types --depth 0
+ * - GDB: ptype
+ * - MSVC: use variable,t format
+ */
+export async function getArrayTypeInfo(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number
+): Promise<{ rows: number; cols: number; elementType: string } | null> {
+  console.log(`Getting type info for variable: ${variableName}, debugger: ${debugSession.type}`);
+  
+  try {
+    let result;
+    let output = '';
+    
+    if (isUsingLLDB(debugSession)) {
+      // Try different approaches to execute the LLDB frame variable command
+      
+      // Approach 1: Using -exec prefix which is commonly used for LLDB commands
+      const command = `-exec frame variable --show-types --depth 0 ${variableName}`;
+      
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: command,
+          frameId: frameId,
+          context: 'repl'  // Use repl context for command execution
+        });
+      } catch (e) {
+        console.log('First approach failed, trying without -exec prefix:', e);
+        
+        // Approach 2: Try without -exec prefix
+        try {
+          result = await debugSession.customRequest('evaluate', {
+            expression: `frame variable --show-types --depth 0 ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+        } catch (e2) {
+          console.log('Second approach also failed:', e2);
+          
+          // Approach 3: Try with "expr" command
+          try {
+            result = await debugSession.customRequest('evaluate', {
+              expression: `-exec expr -T ${variableName}`,
+              frameId: frameId,
+              context: 'repl'
+            });
+          } catch (e3) {
+            console.log('All LLDB approaches failed:', e3);
+            return null;
+          }
+        }
+      }
+      
+      output = result.result || result.stdout || result.output || '';
+      
+    } else if (isUsingCppdbg(debugSession)) {
+      // For GDB, use ptype command
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: `-exec ptype ${variableName}`,
+          frameId: frameId,
+          context: 'repl'
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('GDB ptype command failed, trying alternative:', e);
+        try {
+          // Alternative: use set print elements 0 and then print
+          result = await debugSession.customRequest('evaluate', {
+            expression: `-exec whatis ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+          output = result.result || result.stdout || result.output || '';
+        } catch (e2) {
+          console.log('GDB whatis command also failed:', e2);
+          return null;
+        }
+      }
+      
+    } else if (isUsingMSVC(debugSession)) {
+      // For MSVC, try using format specifier
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: `${variableName},t`,  // ,t for type
+          frameId: frameId,
+          context: getEvaluateContext(debugSession)
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('MSVC type command failed:', e);
+        return null;
+      }
+      
+    } else {
+      // For other debuggers, try generic approach
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: variableName,
+          frameId: frameId,
+          context: getEvaluateContext(debugSession)
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('Generic evaluation failed:', e);
+        return null;
+      }
+    }
+    
+    console.log(`Debugger command result:`, output);
+    
+    // Parse the result to extract type information
+    // Different debuggers return different formats:
+    // LLDB: (int[2][3]) rawArr ={...}
+    // GDB: type = int [2][3]
+    // MSVC: may return type information in different format
+    
+    // Match LLDB format: (int[2][3]) rawArr ={...}
+    let typeMatch = output.match(/\(([^)]+)\)\s+\w+\s+=/);
+    if (typeMatch) {
+      const typeInfo = typeMatch[1];
+      console.log(`LLDB format extracted type info: ${typeInfo}`);
+      
+      // Parse array dimensions: e.g., int[2][3] -> rows=2, cols=3
+      const dimMatch = typeInfo.match(/([^\[\]]+)\[(\d+)\]\[(\d+)\]/);
+      if (dimMatch) {
+        const elementType = dimMatch[1];
+        const rows = parseInt(dimMatch[2]);
+        const cols = parseInt(dimMatch[3]);
+        
+        console.log(`Parsed LLDB dimensions: ${elementType}[${rows}][${cols}]`);
+        return { rows, cols, elementType };
+      }
+    }
+    
+    // Match GDB format: type = int [2][3] or int[2][3]
+    typeMatch = output.match(/(?:type\s*=\s*)?([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/);
+    if (typeMatch) {
+      const elementType = typeMatch[1].trim();
+      const rows = parseInt(typeMatch[2]);
+      const cols = parseInt(typeMatch[3]);
+      
+      console.log(`Parsed GDB dimensions: ${elementType}[${rows}][${cols}]`);
+      return { rows, cols, elementType };
+    }
+    
+    // If the above doesn't work, try alternative patterns
+    const altMatch = output.match(/([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/);
+    if (altMatch) {
+      const elementType = altMatch[1].trim();
+      const rows = parseInt(altMatch[2]);
+      const cols = parseInt(altMatch[3]);
+      
+      console.log(`Parsed dimensions (alt): ${elementType}[${rows}][${cols}]`);
+      return { rows, cols, elementType };
+    }
+    
+    // Try to parse from a different format like: int [2][3] variableName = { ... }
+    const altMatch2 = output.match(/([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[(\d+)\]\[(\d+)\]\s+\w+\s*=/);
+    if (altMatch2) {
+      const elementType = altMatch2[1].trim();
+      const rows = parseInt(altMatch2[2]);
+      const cols = parseInt(altMatch2[3]);
+      
+      console.log(`Parsed dimensions (alt2): ${elementType}[${rows}][${cols}]`);
+      return { rows, cols, elementType };
+    }
+    
+    console.log('Could not parse type info from debugger command output');
+    return null;
+  } catch (e) {
+    console.log('Error executing debugger command:', e);
+    return null;
+  }
+}
+
+/**
+ * Enhanced version that works with all debuggers to detect C-style 2D arrays
+ * using debugger-specific commands to get more accurate type information.
+ */
+export async function is2DCStyleArrayEnhanced(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<{ 
+  is2DArray: boolean; 
+  rows: number; 
+  cols: number; 
+  elementType: string; 
+  depth: number 
+}> {
+  console.log(`Checking C-style 2D array using debugger command for: ${variableName}`);
+  
+  // First, try to get type info using the debugger-specific command
+  const typeInfo = await getArrayTypeInfo(debugSession, variableName, frameId);
+  
+  if (typeInfo) {
+    // Successfully got type info from debugger command
+    const { rows, cols, elementType } = typeInfo;
+    
+    // Map C++ type to OpenCV depth
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`Debugger detected C-style 2D array: ${elementType}[${rows}][${cols}], depth=${depth}`);
+    return { 
+      is2DArray: true, 
+      rows, 
+      cols, 
+      elementType, 
+      depth 
+    };
+  } else {
+    // Fallback to the original method if debugger command failed
+    console.log('Debugger command failed, falling back to original method');
+    
+    // For now, just return the result from the basic detection
+    // The full implementation would require importing is2DCStyleArray from opencv
+    // but we can't do that directly in this file due to circular dependencies
+    // So we'll implement the same logic here
+    const type = variableInfo?.type || "";
+    console.log("Checking if variable is C-style 2D array, type:", type);
+    
+    // Match C-style array patterns like:
+    // int [2][3]
+    // float[4][5]
+    // double [10][20]
+    // char[100][50]
+    const cStylePattern = /([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/;
+    const match = type.match(cStylePattern);
+    
+    if (match) {
+      const elementType = match[1].trim();
+      const rows = parseInt(match[2]);
+      const cols = parseInt(match[3]);
+      
+      // Get depth from element type
+      const depth = getDepthFromCppType(elementType);
+      
+      console.log(`is2DCStyleArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
+      return { is2DArray: true, rows, cols, elementType, depth };
+    }
+    
+    console.log("is2DCStyleArray result: false");
+    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+  }
+}
+
+/**
+ * Enhanced detection for 2D std::array using debugger commands.
+ * This function uses debugger-specific commands to get more accurate type information
+ * for std::array compared to basic string matching.
+ */
+export async function is2DStdArrayLLDB(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<{ 
+  is2DArray: boolean; 
+  rows: number; 
+  cols: number; 
+  elementType: string; 
+  depth: number 
+}> {
+  console.log(`Checking 2D std::array using debugger command for: ${variableName}`);
+  
+  // First, try to get type info using the debugger-specific command
+  const typeInfo = await getArrayTypeInfo(debugSession, variableName, frameId);
+  
+  if (typeInfo) {
+    // Successfully got type info from debugger command
+    const { rows, cols, elementType } = typeInfo;
+    
+    // Map C++ type to OpenCV depth
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`Debugger detected 2D std::array: ${elementType}[${rows}][${cols}], depth=${depth}`);
+    return { 
+      is2DArray: true, 
+      rows, 
+      cols, 
+      elementType, 
+      depth 
+    };
+  } else {
+    // Fallback to the original method if debugger command failed
+    console.log('Debugger command failed, falling back to original method');
+    
+    // For now, just return the result from the basic detection
+    // The full implementation would require importing is2DStdArray from opencv
+    // but we can't do that directly in this file due to circular dependencies
+    // So we'll implement the same logic here
+    const type = variableInfo?.type || "";
+    console.log("Checking if variable is 2D std::array, type:", type);
+    
+    // Match patterns like:
+    // std::array<std::array<int, 4>, 3>
+    // std::__1::array<std::__1::array<float, 4>, 3>
+    // class std::array<class std::array<double, 4>, 3>
+    // std::array<std::array<unsigned char, 4>, 3>
+    const pattern2D = /std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>\s*,\s*(\d+)\s*>/;
+    const match = type.match(pattern2D);
+    
+    if (match) {
+      const elementType = match[1].trim();
+      const cols = parseInt(match[2]);
+      const rows = parseInt(match[3]);
+      
+      // Get depth from element type
+      const depth = getDepthFromCppType(elementType);
+      
+      console.log(`is2DStdArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
+      return { is2DArray: true, rows, cols, elementType, depth };
+    }
+    
+    console.log("is2DStdArray result: false");
+    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+  }
+}
+
+/**
+ * Get data pointer for C-style 2D array.
+ * C-style arrays are stored contiguously in row-major order.
+ * We need to get the address of the first element [0][0].
+ */
+export async function getCStyle2DArrayDataPointer(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<string | null> {
+  const context = getEvaluateContext(debugSession);
+  console.log(`getCStyle2DArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}`);
+  
+  let dataPtr: string | null = null;
+
+  // Try variables approach first
+  if (variableInfo && variableInfo.variablesReference > 0) {
+    try {
+      const varsResponse = await debugSession.customRequest("variables", {
+        variablesReference: variableInfo.variablesReference
+      });
+      
+      if (varsResponse.variables && varsResponse.variables.length > 0) {
+        console.log(`Found ${varsResponse.variables.length} variables in C-style 2D array`);
+        
+        // Look for [0] element (first row)
+        for (const v of varsResponse.variables) {
+          const varName = v.name;
+          
+          if (varName === "[0]") {
+            console.log(`Found [0] (first row): value="${v.value}", memRef="${v.memoryReference}"`);
+            
+            if (v.variablesReference > 0) {
+              // Expand first row to get first element [0][0]
+              const elemVars = await debugSession.customRequest("variables", {
+                variablesReference: v.variablesReference
+              });
+              
+              // Look for [0] in the first row (i.e., [0][0])
+              const firstElem = elemVars.variables?.find((ev: any) => ev.name === "[0]");
+              if (firstElem) {
+                if (firstElem.memoryReference) {
+                  dataPtr = firstElem.memoryReference;
+                  console.log(`Got C-style 2D array data pointer from [0][0].memoryReference: ${dataPtr}`);
+                  break;
+                } else if (firstElem.value) {
+                  const ptrMatch = firstElem.value.match(/0x[0-9a-fA-F]+/);
+                  if (ptrMatch) {
+                    dataPtr = ptrMatch[0];
+                    console.log(`Extracted pointer from [0][0] value: ${dataPtr}`);
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // Fallback: use [0]'s memoryReference
+            if (!dataPtr && v.memoryReference) {
+              dataPtr = v.memoryReference;
+              console.log(`Got C-style 2D array data pointer from [0] memRef: ${dataPtr}`);
+              break;
+            }
+          }
+          
+          if (dataPtr) break;
+        }
+      }
+    } catch (e) {
+      console.log("Failed to get C-style 2D array data pointer through variables:", e);
+    }
+  }
+
+  // Try evaluate expressions if variables approach didn't work
+  if (!dataPtr) {
+    let expressions: string[];
+    
+    if (isUsingMSVC(debugSession)) {
+      expressions = [
+        `(long long)&${variableName}[0][0]`,
+        `(long long)${variableName}[0].data()`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else if (isUsingLLDB(debugSession)) {
+      expressions = [
+        `&${variableName}[0][0]`,
+        `${variableName}[0].data()`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else if (isUsingCppdbg(debugSession)) {
+      // GDB
+      expressions = [
+        `(long long)&${variableName}[0][0]`,
+        `(long long)${variableName}[0].data()`,
+        `reinterpret_cast<long long>(&${variableName}[0][0])`
+      ];
+    } else {
+      // Fallback
+      expressions = [
+        `&${variableName}[0][0]`,
+        `${variableName}[0].data()`,
+        `(void*)&${variableName}[0][0]`
+      ];
+    }
+    
+    dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
+  }
+  
+  console.log(`getCStyle2DArrayDataPointer result: ${dataPtr}`);
+  return dataPtr;
+}

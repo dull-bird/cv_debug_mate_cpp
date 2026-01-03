@@ -84,6 +84,8 @@ void demo_2d_images() {
   std::cout << "  array_2d_int: 3x4 std::array<std::array<int,4>,3>"
             << std::endl;
 
+  int rawArr[2][3] = {{1, 2, 3}, {4, 5, 6}};
+
   // ===== BREAKPOINT HERE =====
   int bp1 = 0; // Set breakpoint here to view all 2D images
   (void)bp1;

@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
-import { getEvaluateContext } from "./utils/debugger";
+import { getEvaluateContext, is2DStdArrayLLDB, is2DCStyleArrayEnhanced } from "./utils/debugger";
 import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage, drawMatxImage, draw2DStdArrayImage } from "./matImage/matProvider";
 import { drawPlot, drawStdArrayPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -187,9 +187,23 @@ export function activate(context: vscode.ExtensionContext) {
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
       
       // std::array detection
-      const stdArray2D = is2DStdArray(variableInfo);
+      // For LLDB, use the enhanced function that uses frame variable command to get more accurate type info
+      let stdArray2D;
+      if (isLLDB) {
+        stdArray2D = await is2DStdArrayLLDB(debugSession, variableName, frameId, variableInfo);
+      } else {
+        stdArray2D = is2DStdArray(variableInfo);
+      }
       const stdArray1D = is1DStdArray(variableInfo);
       const stdArrayPoint3 = isPoint3StdArray(variableInfo);
+      
+      // C-style array detection
+      let cStyleArray2D;
+      if (isLLDB) {
+        cStyleArray2D = await is2DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+      } else {
+        cStyleArray2D = is2DCStyleArray(variableInfo);
+      }
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
       console.log(`is1DSet result: isSet=${set1D.isSet}, elementType=${set1D.elementType}, size=${set1D.size}`);
@@ -222,6 +236,13 @@ export function activate(context: vscode.ExtensionContext) {
         if (stdArray2D.rows === 0 || stdArray2D.cols === 0) {
           isEmpty = true;
           reason = "2D std::array is empty";
+        }
+      }
+      // C-style 2D array empty check
+      else if (cStyleArray2D.is2DArray) {
+        if (cStyleArray2D.rows === 0 || cStyleArray2D.cols === 0) {
+          isEmpty = true;
+          reason = "2D C-style array is empty";
         }
       }
       // std::vector<Point3f/d> empty check
@@ -339,6 +360,10 @@ export function activate(context: vscode.ExtensionContext) {
       // std::array 2D - image
       else if (stdArray2D.is2DArray) {
         await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, stdArray2D, reveal, shouldForce);
+      }
+      // C-style 2D array - image
+      else if (cStyleArray2D.is2DArray) {
+        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray2D, reveal, shouldForce);
       }
       // std::vector<Point3f/d> - point cloud
       else if (point3Info.isPoint3) {

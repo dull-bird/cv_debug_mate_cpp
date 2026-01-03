@@ -4,7 +4,8 @@ import {
   isUsingLLDB, 
   readMemoryChunked,
   getMemorySample,
-  get2DStdArrayDataPointer
+  get2DStdArrayDataPointer,
+  getCStyle2DArrayDataPointer
 } from "../utils/debugger";
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
@@ -690,7 +691,14 @@ export async function draw2DStdArrayImage(
     const panelTitle = `View: ${variableName}`;
     
     // Get data pointer
-    const dataPtr = await get2DStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+    // Determine if this is a C-style array or std::array based on type information
+    const isCStyleArray = variableInfo.type && /\s*\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(variableInfo.type);
+    let dataPtr: string | null;
+    if (isCStyleArray) {
+      dataPtr = await getCStyle2DArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+    } else {
+      dataPtr = await get2DStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+    }
     
     if (!dataPtr) {
       throw new Error("Cannot get data pointer from 2D std::array. Make sure it's a valid std::array.");

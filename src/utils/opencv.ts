@@ -486,7 +486,7 @@ export function isPoint3StdArray(variableInfo: any): {
 /**
  * Helper to get OpenCV depth from C++ type name
  */
-function getDepthFromCppType(cppType: string): number {
+export function getDepthFromCppType(cppType: string): number {
   const t = cppType.toLowerCase().trim();
   
   if (t === 'double' || t.includes('double')) return 6; // CV_64F
@@ -501,4 +501,42 @@ function getDepthFromCppType(cppType: string): number {
   if (t.includes('long')) return 4; // CV_32S (assuming 32-bit long, platform dependent)
   
   return 0; // default to CV_8U
+}
+
+/**
+ * Check if the variable is a C-style 2D array (e.g., int[2][3], float[4][5])
+ * Returns: { is2DArray: boolean, rows: number, cols: number, elementType: string, depth: number }
+ */
+export function is2DCStyleArray(variableInfo: any): { 
+  is2DArray: boolean; 
+  rows: number; 
+  cols: number; 
+  elementType: string; 
+  depth: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is C-style 2D array, type:", type);
+  
+  // Match C-style array patterns like:
+  // int [2][3]
+  // float[4][5]
+  // double [10][20]
+  // char[100][50]
+  const cStylePattern = /([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/;
+  const match = type.match(cStylePattern);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const rows = parseInt(match[2]);
+    const cols = parseInt(match[3]);
+    
+    // Get depth from element type
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`is2DCStyleArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
+    return { is2DArray: true, rows, cols, elementType, depth };
+  }
+  
+  console.log("is2DCStyleArray result: false");
+  return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
 }
