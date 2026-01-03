@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -196,6 +196,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                     const stdArrayPoint3 = isPoint3StdArray(v);
                     // C-style array detection
                     const cStyleArray2D = is2DCStyleArray(v);
+                    const cStyleArray1D = is1DCStyleArray(v);
 
                     const checkVariable = async (): Promise<CVVariable | null> => {
                         let is1DM = isLikely1DMat(v);
@@ -256,7 +257,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                         }
 
                         if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined ||
-                            stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array || cStyleArray2D.is2DArray) {
+                            stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array || cStyleArray2D.is2DArray || cStyleArray1D.is1DArray) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
@@ -296,6 +297,12 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             else if (stdArray1D.is1DArray) {
                                 kind = 'plot';
                                 size = stdArray1D.size;
+                                sizeInfo = size > 0 ? `${size} elements` : '';
+                            }
+                            // 1D C-style array - plot
+                            else if (cStyleArray1D.is1DArray) {
+                                kind = 'plot';
+                                size = cStyleArray1D.size;
                                 sizeInfo = size > 0 ? `${size} elements` : '';
                             }
                             // 1D vector/set/Mat - plot

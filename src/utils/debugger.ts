@@ -1,16 +1,55 @@
 import * as vscode from "vscode";
 import * as os from "os";
-import { getDepthFromCppType } from "./opencv";
+import { getDepthFromCppType, is2DStdArray, is2DCStyleArray, is1DCStyleArray } from "./opencv";
 
-// Get the appropriate evaluate context for the debugger type
+// ============== Debugger Type Detection ==============
+
+/**
+ * Supported debugger types:
+ * - "lldb": CodeLLDB extension (Clang on macOS/Linux, uses libc++)
+ * - "cppdbg": C/C++ extension with GDB (GCC on Linux/MinGW, uses libstdc++)
+ * - "cppvsdbg": C/C++ extension with MSVC debugger (Windows, uses MSVC STL)
+ */
+export type DebuggerType = "lldb" | "cppdbg" | "cppvsdbg" | string;
+
+// Helper function to check if we're using LLDB
+export function isUsingLLDB(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "lldb";
+}
+
+// Helper function to check if we're using cppdbg (GDB/MI)
+export function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "cppdbg";
+}
+
+// Helper function to check if we're using MSVC (cppvsdbg)
+export function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
+  return debugSession.type === "cppvsdbg";
+}
+
+/**
+ * Get the appropriate evaluate context for the debugger type.
+ * 
+ * CodeLLDB treats "repl" as command mode, so we need "watch" for expression evaluation.
+ * For cppdbg and cppvsdbg, "repl" works fine for expression evaluation.
+ */
 export function getEvaluateContext(debugSession: vscode.DebugSession): string {
-  // CodeLLDB treats "repl" as command mode, use "watch" for expression evaluation
-  if (debugSession.type === "lldb") {
+  if (isUsingLLDB(debugSession)) {
     return "watch";
   }
-  // For cppdbg and cppvsdbg, "repl" works fine
   return "repl";
 }
+
+// ============== STL Internal Member Names ==============
+
+/**
+ * Standard library implementations use different internal member names:
+ * - libc++ (Clang): __elems_, __begin_, etc.
+ * - libstdc++ (GCC): _M_elems, _M_start, etc.
+ * - MSVC STL: _Elems, _Myfirst, etc.
+ */
+export const STL_ARRAY_MEMBERS = ["__elems_", "_M_elems", "_Elems"];
+export const STL_VECTOR_DATA_MEMBERS = ["__begin_", "_M_start", "_Myfirst"];
 
 export async function evaluateWithTimeout(
   debugSession: vscode.DebugSession,
@@ -34,6 +73,72 @@ export async function evaluateWithTimeout(
     ),
   ]);
 }
+
+// ============== Debugger-Specific Expression Builders ==============
+
+/**
+ * Build expressions to get data pointer, adapted for each debugger type.
+ * Different debuggers require different cast syntax and expression formats.
+ */
+export function buildDataPointerExpressions(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  accessPath: string = ".data()"
+): string[] {
+  if (isUsingMSVC(debugSession)) {
+    return [
+      `(long long)${variableName}${accessPath}`,
+      `(long long)&${variableName}[0]`,
+      `reinterpret_cast<long long>(${variableName}${accessPath})`,
+    ];
+  } else if (isUsingLLDB(debugSession)) {
+    // LLDB doesn't always support C-style casts well
+    return [
+      `${variableName}${accessPath}`,
+      `&${variableName}[0]`,
+      `reinterpret_cast<long long>(${variableName}${accessPath})`,
+    ];
+  } else {
+    // GDB (cppdbg)
+    return [
+      `(long long)${variableName}${accessPath}`,
+      `(long long)&${variableName}[0]`,
+      `reinterpret_cast<long long>(${variableName}${accessPath})`,
+    ];
+  }
+}
+
+/**
+ * Build expressions to get container size, adapted for each debugger type.
+ */
+export function buildSizeExpressions(
+  debugSession: vscode.DebugSession,
+  variableName: string
+): string[] {
+  if (isUsingLLDB(debugSession)) {
+    // LLDB doesn't support C-style casts like (int)
+    return [
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`,
+      `(size_t)${variableName}.size()`
+    ];
+  } else if (isUsingMSVC(debugSession)) {
+    return [
+      `(int)${variableName}.size()`,
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`
+    ];
+  } else {
+    // GDB (cppdbg)
+    return [
+      `(int)${variableName}.size()`,
+      `${variableName}.size()`,
+      `(long long)${variableName}.size()`
+    ];
+  }
+}
+
+// ============== Basic Debugger Operations ==============
 
 // Helper function to get current frame ID
 export async function getCurrentFrameId(debugSession: vscode.DebugSession): Promise<number> {
@@ -218,23 +323,10 @@ export async function tryGetDataPointer(
   return null;
 }
 
-// Helper function to check if we're using LLDB
-export function isUsingLLDB(debugSession: vscode.DebugSession): boolean {
-  return debugSession.type === "lldb";
-}
-
-// Helper function to check if we're using cppdbg (GDB/MI)
-export function isUsingCppdbg(debugSession: vscode.DebugSession): boolean {
-  return debugSession.type === "cppdbg";
-}
-
-// Helper function to check if we're using MSVC (cppvsdbg)
-export function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
-  return debugSession.type === "cppvsdbg";
-}
+// ============== Container Size Utilities ==============
 
 /**
- * Get vector size using multiple strategies.
+ * Get vector/container size using multiple strategies.
  * 1. First try to parse from variableInfo.value or variableInfo.result
  * 2. Then try to evaluate size() expression with debugger-specific syntax
  */
@@ -261,30 +353,7 @@ export async function getVectorSize(
   
   // Strategy 2: Evaluate size() expression with debugger-specific syntax
   const context = getEvaluateContext(debugSession);
-  
-  // Different expressions for different debuggers
-  let sizeExpressions: string[];
-  if (isUsingLLDB(debugSession)) {
-    // LLDB doesn't support C-style casts like (int)
-    sizeExpressions = [
-      `${variableName}.size()`,
-      `(long long)${variableName}.size()`,
-      `(size_t)${variableName}.size()`
-    ];
-  } else if (isUsingMSVC(debugSession)) {
-    sizeExpressions = [
-      `(int)${variableName}.size()`,
-      `${variableName}.size()`,
-      `(long long)${variableName}.size()`
-    ];
-  } else {
-    // GDB (cppdbg) and fallback
-    sizeExpressions = [
-      `(int)${variableName}.size()`,
-      `${variableName}.size()`,
-      `(long long)${variableName}.size()`
-    ];
-  }
+  const sizeExpressions = buildSizeExpressions(debugSession, variableName);
   
   for (const expr of sizeExpressions) {
     try {
@@ -810,8 +879,17 @@ export async function getArrayTypeInfo(
 }
 
 /**
- * Enhanced version that works with all debuggers to detect C-style 2D arrays
- * using debugger-specific commands to get more accurate type information.
+ * Enhanced detection for C-style 2D arrays using debugger commands.
+ * 
+ * This function first tries to get accurate type information using debugger-specific
+ * commands (frame variable for LLDB, ptype for GDB, etc.), then falls back to
+ * basic string matching if the debugger command fails.
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable to check
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @returns Object with is2DArray flag and dimension/type information
  */
 export async function is2DCStyleArrayEnhanced(
   debugSession: vscode.DebugSession,
@@ -833,60 +911,33 @@ export async function is2DCStyleArrayEnhanced(
   if (typeInfo) {
     // Successfully got type info from debugger command
     const { rows, cols, elementType } = typeInfo;
-    
-    // Map C++ type to OpenCV depth
     const depth = getDepthFromCppType(elementType);
     
     console.log(`Debugger detected C-style 2D array: ${elementType}[${rows}][${cols}], depth=${depth}`);
-    return { 
-      is2DArray: true, 
-      rows, 
-      cols, 
-      elementType, 
-      depth 
-    };
-  } else {
-    // Fallback to the original method if debugger command failed
-    console.log('Debugger command failed, falling back to original method');
-    
-    // For now, just return the result from the basic detection
-    // The full implementation would require importing is2DCStyleArray from opencv
-    // but we can't do that directly in this file due to circular dependencies
-    // So we'll implement the same logic here
-    const type = variableInfo?.type || "";
-    console.log("Checking if variable is C-style 2D array, type:", type);
-    
-    // Match C-style array patterns like:
-    // int [2][3]
-    // float[4][5]
-    // double [10][20]
-    // char[100][50]
-    const cStylePattern = /([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/;
-    const match = type.match(cStylePattern);
-    
-    if (match) {
-      const elementType = match[1].trim();
-      const rows = parseInt(match[2]);
-      const cols = parseInt(match[3]);
-      
-      // Get depth from element type
-      const depth = getDepthFromCppType(elementType);
-      
-      console.log(`is2DCStyleArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
-      return { is2DArray: true, rows, cols, elementType, depth };
-    }
-    
-    console.log("is2DCStyleArray result: false");
-    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+    return { is2DArray: true, rows, cols, elementType, depth };
   }
+  
+  // Fallback to basic string matching from opencv.ts
+  console.log('Debugger command failed, falling back to basic string matching');
+  return is2DCStyleArray(variableInfo);
 }
 
 /**
  * Enhanced detection for 2D std::array using debugger commands.
- * This function uses debugger-specific commands to get more accurate type information
- * for std::array compared to basic string matching.
+ * 
+ * This function first tries to get accurate type information using debugger-specific
+ * commands, then falls back to basic string matching if the debugger command fails.
+ * 
+ * Note: The function name includes "LLDB" for historical reasons, but it actually
+ * works with all debuggers (LLDB, GDB, MSVC).
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable to check
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @returns Object with is2DArray flag and dimension/type information
  */
-export async function is2DStdArrayLLDB(
+export async function is2DStdArrayEnhanced(
   debugSession: vscode.DebugSession,
   variableName: string,
   frameId: number,
@@ -906,53 +957,21 @@ export async function is2DStdArrayLLDB(
   if (typeInfo) {
     // Successfully got type info from debugger command
     const { rows, cols, elementType } = typeInfo;
-    
-    // Map C++ type to OpenCV depth
     const depth = getDepthFromCppType(elementType);
     
     console.log(`Debugger detected 2D std::array: ${elementType}[${rows}][${cols}], depth=${depth}`);
-    return { 
-      is2DArray: true, 
-      rows, 
-      cols, 
-      elementType, 
-      depth 
-    };
-  } else {
-    // Fallback to the original method if debugger command failed
-    console.log('Debugger command failed, falling back to original method');
-    
-    // For now, just return the result from the basic detection
-    // The full implementation would require importing is2DStdArray from opencv
-    // but we can't do that directly in this file due to circular dependencies
-    // So we'll implement the same logic here
-    const type = variableInfo?.type || "";
-    console.log("Checking if variable is 2D std::array, type:", type);
-    
-    // Match patterns like:
-    // std::array<std::array<int, 4>, 3>
-    // std::__1::array<std::__1::array<float, 4>, 3>
-    // class std::array<class std::array<double, 4>, 3>
-    // std::array<std::array<unsigned char, 4>, 3>
-    const pattern2D = /std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>\s*,\s*(\d+)\s*>/;
-    const match = type.match(pattern2D);
-    
-    if (match) {
-      const elementType = match[1].trim();
-      const cols = parseInt(match[2]);
-      const rows = parseInt(match[3]);
-      
-      // Get depth from element type
-      const depth = getDepthFromCppType(elementType);
-      
-      console.log(`is2DStdArray result: rows=${rows}, cols=${cols}, elementType=${elementType}, depth=${depth}`);
-      return { is2DArray: true, rows, cols, elementType, depth };
-    }
-    
-    console.log("is2DStdArray result: false");
-    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+    return { is2DArray: true, rows, cols, elementType, depth };
   }
+  
+  // Fallback to basic string matching from opencv.ts
+  console.log('Debugger command failed, falling back to basic string matching');
+  return is2DStdArray(variableInfo);
 }
+
+/**
+ * @deprecated Use is2DStdArrayEnhanced instead. This alias is kept for backward compatibility.
+ */
+export const is2DStdArrayLLDB = is2DStdArrayEnhanced;
 
 /**
  * Get data pointer for C-style 2D array.
@@ -1063,5 +1082,217 @@ export async function getCStyle2DArrayDataPointer(
   }
   
   console.log(`getCStyle2DArrayDataPointer result: ${dataPtr}`);
+  return dataPtr;
+}
+
+
+/**
+ * Enhanced detection for C-style 1D arrays using debugger commands.
+ * 
+ * This function first tries to get accurate type information using debugger-specific
+ * commands, then falls back to basic string matching if the debugger command fails.
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable to check
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @returns Object with is1DArray flag and element type/size information
+ */
+export async function is1DCStyleArrayEnhanced(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<{ 
+  is1DArray: boolean; 
+  elementType: string; 
+  size: number 
+}> {
+  console.log(`Checking C-style 1D array using debugger command for: ${variableName}`);
+  
+  // First, try to get type info using the debugger-specific command
+  const typeInfo = await getArrayTypeInfo(debugSession, variableName, frameId);
+  
+  if (typeInfo) {
+    // getArrayTypeInfo returns 2D info, but we can detect 1D from it
+    // If rows or cols is 1, it might be a 1D array representation
+    // But for true 1D arrays, we need different parsing
+    console.log(`Debugger returned type info, but checking for 1D pattern`);
+  }
+  
+  // Try to get 1D array info from debugger command output
+  try {
+    let result;
+    let output = '';
+    
+    if (isUsingLLDB(debugSession)) {
+      const command = `-exec frame variable --show-types --depth 0 ${variableName}`;
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: command,
+          frameId: frameId,
+          context: 'repl'
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        // Try without -exec prefix
+        try {
+          result = await debugSession.customRequest('evaluate', {
+            expression: `frame variable --show-types --depth 0 ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+          output = result.result || result.stdout || result.output || '';
+        } catch (e2) {
+          console.log('LLDB command failed:', e2);
+        }
+      }
+    } else if (isUsingCppdbg(debugSession)) {
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: `-exec ptype ${variableName}`,
+          frameId: frameId,
+          context: 'repl'
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        try {
+          result = await debugSession.customRequest('evaluate', {
+            expression: `-exec whatis ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+          output = result.result || result.stdout || result.output || '';
+        } catch (e2) {
+          console.log('GDB command failed:', e2);
+        }
+      }
+    }
+    
+    console.log(`Debugger command output for 1D check:`, output);
+    
+    // Parse 1D array pattern: type[size] but NOT type[rows][cols]
+    // First exclude 2D arrays
+    if (/\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(output)) {
+      console.log('Detected 2D array pattern, not 1D');
+      return { is1DArray: false, elementType: "", size: 0 };
+    }
+    
+    // Match LLDB format: (int[10]) arr = {...}
+    let typeMatch = output.match(/\(([^)]+)\)\s+\w+\s+=/);
+    if (typeMatch) {
+      const typeInfo = typeMatch[1];
+      // Parse 1D array: type[size]
+      const dimMatch = typeInfo.match(/([^\[\]]+)\[(\d+)\]$/);
+      if (dimMatch) {
+        const elementType = dimMatch[1].trim();
+        const size = parseInt(dimMatch[2]);
+        console.log(`LLDB detected 1D array: ${elementType}[${size}]`);
+        return { is1DArray: true, elementType, size };
+      }
+    }
+    
+    // Match GDB format: type = int [10]
+    typeMatch = output.match(/(?:type\s*=\s*)?([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\](?!\s*\[)/);
+    if (typeMatch) {
+      const elementType = typeMatch[1].trim();
+      const size = parseInt(typeMatch[2]);
+      console.log(`GDB detected 1D array: ${elementType}[${size}]`);
+      return { is1DArray: true, elementType, size };
+    }
+    
+  } catch (e) {
+    console.log('Error in is1DCStyleArrayEnhanced:', e);
+  }
+  
+  // Fallback to basic string matching from opencv.ts
+  console.log('Debugger command failed, falling back to basic string matching');
+  return is1DCStyleArray(variableInfo);
+}
+
+/**
+ * Get data pointer for C-style 1D array.
+ * C-style arrays are stored contiguously.
+ * We need to get the address of the first element [0].
+ */
+export async function getCStyle1DArrayDataPointer(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<string | null> {
+  const context = getEvaluateContext(debugSession);
+  console.log(`getCStyle1DArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}`);
+  
+  let dataPtr: string | null = null;
+
+  // Try variables approach first
+  if (variableInfo && variableInfo.variablesReference > 0) {
+    try {
+      const varsResponse = await debugSession.customRequest("variables", {
+        variablesReference: variableInfo.variablesReference
+      });
+      
+      if (varsResponse.variables && varsResponse.variables.length > 0) {
+        console.log(`Found ${varsResponse.variables.length} variables in C-style 1D array`);
+        
+        // Look for [0] element
+        const firstElem = varsResponse.variables.find((v: any) => v.name === "[0]");
+        if (firstElem) {
+          console.log(`Found [0] element: value="${firstElem.value}", memRef="${firstElem.memoryReference}"`);
+          
+          if (firstElem.memoryReference) {
+            dataPtr = firstElem.memoryReference;
+            console.log(`Got C-style 1D array data pointer from [0].memoryReference: ${dataPtr}`);
+          } else if (firstElem.value) {
+            const ptrMatch = firstElem.value.match(/0x[0-9a-fA-F]+/);
+            if (ptrMatch) {
+              dataPtr = ptrMatch[0];
+              console.log(`Extracted pointer from [0] value: ${dataPtr}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Failed to get C-style 1D array data pointer through variables:", e);
+    }
+  }
+
+  // Try evaluate expressions if variables approach didn't work
+  if (!dataPtr) {
+    let expressions: string[];
+    
+    if (isUsingMSVC(debugSession)) {
+      expressions = [
+        `(long long)&${variableName}[0]`,
+        `(long long)${variableName}`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else if (isUsingLLDB(debugSession)) {
+      expressions = [
+        `&${variableName}[0]`,
+        `${variableName}`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else if (isUsingCppdbg(debugSession)) {
+      // GDB
+      expressions = [
+        `(long long)&${variableName}[0]`,
+        `(long long)${variableName}`,
+        `reinterpret_cast<long long>(&${variableName}[0])`
+      ];
+    } else {
+      // Fallback
+      expressions = [
+        `&${variableName}[0]`,
+        `${variableName}`,
+        `(void*)&${variableName}[0]`
+      ];
+    }
+    
+    dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
+  }
+  
+  console.log(`getCStyle1DArrayDataPointer result: ${dataPtr}`);
   return dataPtr;
 }

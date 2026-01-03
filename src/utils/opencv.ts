@@ -504,6 +504,49 @@ export function getDepthFromCppType(cppType: string): number {
 }
 
 /**
+ * Check if the variable is a C-style 1D array (e.g., int[10], float[100])
+ * Returns: { is1DArray: boolean, elementType: string, size: number }
+ * 
+ * Note: This excludes 2D arrays which are handled by is2DCStyleArray()
+ */
+export function is1DCStyleArray(variableInfo: any): { 
+  is1DArray: boolean; 
+  elementType: string; 
+  size: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is C-style 1D array, type:", type);
+  
+  // First check it's NOT a 2D array (type[rows][cols])
+  if (/\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(type)) {
+    console.log("is1DCStyleArray result: false (is 2D array)");
+    return { is1DArray: false, elementType: "", size: 0 };
+  }
+  
+  // Match C-style 1D array patterns like:
+  // int [10]
+  // float[100]
+  // double [50]
+  // unsigned char[256]
+  const cStyle1DPattern = /([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]/;
+  const match = type.match(cStyle1DPattern);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const size = parseInt(match[2]);
+    
+    // Check if element type is a basic numeric type
+    if (isBasicNumericType(elementType)) {
+      console.log(`is1DCStyleArray result: is1DArray=true, elementType=${elementType}, size=${size}`);
+      return { is1DArray: true, elementType, size };
+    }
+  }
+  
+  console.log("is1DCStyleArray result: false");
+  return { is1DArray: false, elementType: "", size: 0 };
+}
+
+/**
  * Check if the variable is a C-style 2D array (e.g., int[2][3], float[4][5])
  * Returns: { is2DArray: boolean, rows: number, cols: number, elementType: string, depth: number }
  */

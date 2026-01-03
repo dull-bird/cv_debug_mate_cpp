@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
-import { getEvaluateContext, is2DStdArrayLLDB, is2DCStyleArrayEnhanced } from "./utils/debugger";
+import { getEvaluateContext, is2DStdArrayEnhanced, is2DCStyleArrayEnhanced, is1DCStyleArrayEnhanced } from "./utils/debugger";
 import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage, drawMatxImage, draw2DStdArrayImage } from "./matImage/matProvider";
-import { drawPlot, drawStdArrayPlot } from "./plot/plotProvider";
+import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -190,7 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
       // For LLDB, use the enhanced function that uses frame variable command to get more accurate type info
       let stdArray2D;
       if (isLLDB) {
-        stdArray2D = await is2DStdArrayLLDB(debugSession, variableName, frameId, variableInfo);
+        stdArray2D = await is2DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
       } else {
         stdArray2D = is2DStdArray(variableInfo);
       }
@@ -199,10 +199,13 @@ export function activate(context: vscode.ExtensionContext) {
       
       // C-style array detection
       let cStyleArray2D;
+      let cStyleArray1D;
       if (isLLDB) {
         cStyleArray2D = await is2DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+        cStyleArray1D = await is1DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
       } else {
         cStyleArray2D = is2DCStyleArray(variableInfo);
+        cStyleArray1D = is1DCStyleArray(variableInfo);
       }
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
@@ -211,6 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
       console.log(`is2DStdArray result: is2DArray=${stdArray2D.is2DArray}, rows=${stdArray2D.rows}, cols=${stdArray2D.cols}`);
       console.log(`is1DStdArray result: is1DArray=${stdArray1D.is1DArray}, elementType=${stdArray1D.elementType}, size=${stdArray1D.size}`);
       console.log(`isPoint3StdArray result: isPoint3Array=${stdArrayPoint3.isPoint3Array}, isDouble=${stdArrayPoint3.isDouble}, size=${stdArrayPoint3.size}`);
+      console.log(`is1DCStyleArray result: is1DArray=${cStyleArray1D.is1DArray}, elementType=${cStyleArray1D.elementType}, size=${cStyleArray1D.size}`);
       console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
@@ -229,6 +233,13 @@ export function activate(context: vscode.ExtensionContext) {
         if (stdArray1D.size === 0) {
           isEmpty = true;
           reason = "std::array plot data is empty";
+        }
+      }
+      // C-style 1D array empty check
+      else if (cStyleArray1D.is1DArray) {
+        if (cStyleArray1D.size === 0) {
+          isEmpty = true;
+          reason = "1D C-style array is empty";
         }
       }
       // std::array 2D empty check
@@ -345,7 +356,7 @@ export function activate(context: vscode.ExtensionContext) {
       let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
       if (stdArrayPoint3.isPoint3Array || point3Info.isPoint3) {
         viewType = "3DPointViewer";
-      } else if (stdArray1D.is1DArray || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
+      } else if (stdArray1D.is1DArray || cStyleArray1D.is1DArray || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
         viewType = "CurvePlotViewer";
       }
 
@@ -356,6 +367,10 @@ export function activate(context: vscode.ExtensionContext) {
       // std::array 1D - plot
       else if (stdArray1D.is1DArray) {
         await drawStdArrayPlot(debugSession, variableName, stdArray1D.elementType, stdArray1D.size, reveal, shouldForce, variableInfo);
+      }
+      // C-style 1D array - plot
+      else if (cStyleArray1D.is1DArray) {
+        await drawCStyleArrayPlot(debugSession, variableName, cStyleArray1D.elementType, cStyleArray1D.size, reveal, shouldForce, variableInfo);
       }
       // std::array 2D - image
       else if (stdArray2D.is2DArray) {

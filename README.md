@@ -36,12 +36,14 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 | **Image (2D)**       | `cv::Mat`, `cv::Mat_<T>`                | 🖼️ Image Viewer |
 |                      | `cv::Matx` (`Matx33f`, `Matx44d`, etc.) | 🖼️ Image Viewer |
 |                      | `std::array<std::array<T, cols>, rows>` | 🖼️ Image Viewer |
+|                      | `T[rows][cols]` (C-style 2D array)      | 🖼️ Image Viewer |
 | **Point Cloud (3D)** | `std::vector<cv::Point3f>`              | 📊 3D Viewer    |
 |                      | `std::vector<cv::Point3d>`              | 📊 3D Viewer    |
 |                      | `std::array<cv::Point3f, N>`            | 📊 3D Viewer    |
 |                      | `std::array<cv::Point3d, N>`            | 📊 3D Viewer    |
 | **Plot (1D)**        | `std::vector<T>` (numeric)              | 📈 Plot Viewer  |
 |                      | `std::array<T, N>` (numeric)            | 📈 Plot Viewer  |
+|                      | `T[N]` (C-style 1D array, numeric)      | 📈 Plot Viewer  |
 |                      | `std::set<T>` (numeric)                 | 📈 Plot Viewer  |
 |                      | `cv::Mat` (1×N or N×1, single channel)  | 📈 Plot Viewer  |
 
