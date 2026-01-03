@@ -1,31 +1,31 @@
 name: Publish Extension
 
 on:
-  push:
-    branches:
-      - main # 或者是你的主分支名，比如 master
+    push:
+        branches:
+            - main # 或者是你的主分支名，比如 master
 
 jobs:
-  publish:
-    # 只有当 commit message 以 'v' 开头且后面跟着数字时才运行 (例如: "v0.0.1")
-    # 这可以防止你普通的 commit 也去尝试发布
-    if: github.event_base_ref == null && format('refs/heads/{0}', github.event.repository.default_branch) == github.ref && contains(github.event.head_commit.message, 'v')
+    publish:
+        # 只有当 commit message 以 'v' 开头且后面跟着数字时才运行 (例如: "v0.0.1")
+        # 这可以防止你普通的 commit 也去尝试发布
+        if: github.event_base_ref == null && format('refs/heads/{0}', github.event.repository.default_branch) == github.ref && contains(github.event.head_commit.message, 'v')
 
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
 
-      - name: Install Dependencies
-        run: npm install
+            - name: Install Dependencies
+              run: npm install
 
-      # 如果你的插件需要打包步骤（比如 webpack/esbuild），请取消下面这行的注释
-      - name: Build
-        run: npm run vscode:prepublish
-      # 发布到 Open VSX
-      - name: Publish to Open VSX
-        run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }}
-        # 如果你想跳过版本已存在的错误，可以加上 --skip-duplicate
-        # run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }} --skip-duplicate
+            # 如果你的插件需要打包步骤（比如 webpack/esbuild），请取消下面这行的注释
+            - name: Build
+              run: npm run vscode:prepublish
+            # 发布到 Open VSX
+            - name: Publish to Open VSX
+              run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }}
+              # 如果你想跳过版本已存在的错误，可以加上 --skip-duplicate
+              # run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }} --skip-duplicate
