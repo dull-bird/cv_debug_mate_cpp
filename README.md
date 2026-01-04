@@ -1,9 +1,11 @@
 # CV DebugMate C++
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.93%2B-blue?logo=visualstudiocode)](https://code.visualstudio.com/)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdull-bird%2Fcv_debug_mate_cpp%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)](https://github.com/dull-bird/cv_debug_mate_cpp)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green?logo=opencv)](https://opencv.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![C++17](https://img.shields.io/badge/C%2B%2B-17-orange?logo=cplusplus)](https://en.cppreference.com/w/cpp/17)
+[![C++11](https://img.shields.io/badge/C%2B%2B-11-orange?logo=cplusplus)](https://en.cppreference.com/w/cpp/11)
+[![Demo Build](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml/badge.svg)](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml)
 
 English | [中文](https://github.com/dull-bird/cv_debug_mate_cpp/blob/main/README_CN.md)
 

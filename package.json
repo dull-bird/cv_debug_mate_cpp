@@ -1,7 +1,7 @@
 {
     "name": "cv-debugmate-cpp",
     "displayName": "CV DebugMate C++",
-    "description": "Visualize OpenCV Mat and Point Cloud during C++ debugging. Inspired by Image Watch.",
+    "description": "An extension for visualizing 1/2/3D data structures during C++ debugging. Inspired by Image Watch.",
     "version": "0.0.33",
     "license": "MIT",
     "publisher": "zwdai",

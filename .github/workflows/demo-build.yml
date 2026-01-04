@@ -1,0 +1,80 @@
+name: Demo Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-msvc:
+    name: Windows MSVC
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCV
+        run: |
+          choco install opencv -y
+          echo "OpenCV_DIR=C:\tools\opencv\build" >> $env:GITHUB_ENV
+
+      - name: Configure CMake
+        run: |
+          cd test_cpp
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DOpenCV_DIR="$env:OpenCV_DIR"
+
+      - name: Build
+        run: cmake --build test_cpp/build --config Release
+
+  build-gcc:
+    name: Linux GCC
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCV
+        run: sudo apt-get update && sudo apt-get install -y libopencv-dev
+
+      - name: Configure CMake
+        run: |
+          cd test_cpp
+          cmake -B build -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build test_cpp/build
+
+  build-clang:
+    name: Linux Clang
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCV and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopencv-dev clang
+
+      - name: Configure CMake
+        run: |
+          cd test_cpp
+          cmake -B build -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build
+        run: cmake --build test_cpp/build
+
+  build-macos:
+    name: macOS Clang
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCV
+        run: brew install opencv
+
+      - name: Configure CMake
+        run: |
+          cd test_cpp
+          cmake -B build
+
+      - name: Build
+        run: cmake --build test_cpp/build
