@@ -683,6 +683,16 @@ export function getWebviewContentForMat(
                                 data[outIdx + 2] = rawData[inIdx + 2];
                                 data[outIdx + 3] = 255;
                             }
+                        } else if (channels === 4) {
+                            // RGBA: use alpha channel from source data
+                            for (let i = 0; i < len; i++) {
+                                const inIdx = i * 4;
+                                const outIdx = i << 2;
+                                data[outIdx] = rawData[inIdx];
+                                data[outIdx + 1] = rawData[inIdx + 1];
+                                data[outIdx + 2] = rawData[inIdx + 2];
+                                data[outIdx + 3] = rawData[inIdx + 3];
+                            }
                         }
                     } else {
                         // General path
@@ -691,13 +701,22 @@ export function getWebviewContentForMat(
                             if (channels === 1) {
                                 const value = mapToByte(rawData[i]);
                                 data[outIdx] = data[outIdx + 1] = data[outIdx + 2] = value;
+                                data[outIdx + 3] = 255;
+                            } else if (channels === 4) {
+                                // RGBA: map RGB channels, preserve alpha
+                                const inIdx = i * 4;
+                                data[outIdx] = mapToByte(rawData[inIdx]);
+                                data[outIdx + 1] = mapToByte(rawData[inIdx + 1]);
+                                data[outIdx + 2] = mapToByte(rawData[inIdx + 2]);
+                                data[outIdx + 3] = clampByte(rawData[inIdx + 3]); // preserve alpha
                             } else {
+                                // 3 channels or other
                                 const inIdx = i * channels;
                                 data[outIdx] = mapToByte(rawData[inIdx]);
                                 data[outIdx + 1] = mapToByte(rawData[inIdx + 1]);
                                 data[outIdx + 2] = mapToByte(rawData[inIdx + 2]);
+                                data[outIdx + 3] = 255;
                             }
-                            data[outIdx + 3] = 255;
                         }
                     }
                     offscreenCtx.putImageData(imgData, 0, 0);
@@ -1091,19 +1110,20 @@ export function getWebviewContentForMat(
                     // 2. Sampling: Find the ACTUAL maximum character length in the current view
                     let actualMaxChars = 1;
                     const step = Math.max(1, Math.floor((right - left) / 10)); // Sample ~10x10 grid
+                    const channelsToSample = (channels >= 3) ? channels : 1;
                     for (let y = top; y <= bottom; y += step) {
                         for (let x = left; x <= right; x += step) {
                             const idx = (y * cols + x) * channels;
-                            for (let c = 0; c < (channels === 3 ? 3 : 1); c++) {
+                            for (let c = 0; c < channelsToSample; c++) {
                                 const val = rawData[idx + c];
                                 let len = formatValue(val).length;
-                                if (channels === 3) len += 2; // "R:" prefix
+                                if (channels >= 3) len += 2; // "R:", "G:", "B:", "A:" prefix
                                 if (len > actualMaxChars) actualMaxChars = len;
                             }
                         }
                     }
 
-                    const numLines = (channels === 3) ? 3 : 1;
+                    const numLines = (channels === 4) ? 4 : (channels === 3) ? 3 : 1;
                     const fillFactor = 0.90; // Use 90% of the cell
                     const usableCellW = scale * fillFactor;
                     const usableCellH = scale * fillFactor;
@@ -1179,6 +1199,37 @@ export function getWebviewContentForMat(
                                 textCtx.fillText(l2, screenX, topY + lineHeight);
                                 textCtx.strokeText(l3, screenX, topY + lineHeight * 2);
                                 textCtx.fillText(l3, screenX, topY + lineHeight * 2);
+                                textCtx.restore();
+                            } else if (channels === 4) {
+                                const r = rawData[idx];
+                                const g = rawData[idx + 1];
+                                const b = rawData[idx + 2];
+                                const a = rawData[idx + 3];
+
+                                const cellX = x * scale + offsetX;
+                                const cellY = y * scale + offsetY;
+                                const cellInnerW = scale - padRgb * 2;
+                                const cellInnerH = scale - padRgb * 2;
+                                const l1 = 'R:' + formatValue(r);
+                                const l2 = 'G:' + formatValue(g);
+                                const l3 = 'B:' + formatValue(b);
+                                const l4 = 'A:' + formatValue(a);
+
+                                textCtx.save();
+                                textCtx.beginPath();
+                                textCtx.rect(cellX + padRgb, cellY + padRgb, cellInnerW, cellInnerH);
+                                textCtx.clip();
+
+                                const totalH = 4 * lineHeight;
+                                const topY = (cellY + padRgb) + (cellInnerH - totalH) / 2 + lineHeight / 2;
+                                textCtx.strokeText(l1, screenX, topY);
+                                textCtx.fillText(l1, screenX, topY);
+                                textCtx.strokeText(l2, screenX, topY + lineHeight);
+                                textCtx.fillText(l2, screenX, topY + lineHeight);
+                                textCtx.strokeText(l3, screenX, topY + lineHeight * 2);
+                                textCtx.fillText(l3, screenX, topY + lineHeight * 2);
+                                textCtx.strokeText(l4, screenX, topY + lineHeight * 3);
+                                textCtx.fillText(l4, screenX, topY + lineHeight * 3);
                                 textCtx.restore();
                             } else if (channels === 1) {
                                 const label = formatValue(rawData[idx]);
@@ -1461,6 +1512,8 @@ export function getWebviewContentForMat(
                         let valStr = '';
                         if (channels === 1) {
                             valStr = formatValue(rawData[idx]);
+                        } else if (channels === 4) {
+                            valStr = \`R:\${formatValue(rawData[idx])} G:\${formatValue(rawData[idx+1])} B:\${formatValue(rawData[idx+2])} A:\${formatValue(rawData[idx+3])}\`;
                         } else {
                             valStr = \`R:\${formatValue(rawData[idx])} G:\${formatValue(rawData[idx+1])} B:\${formatValue(rawData[idx+2])}\`;
                         }
