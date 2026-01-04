@@ -371,6 +371,13 @@ export function is2DStdArray(variableInfo: any): {
   const type = variableInfo.type || "";
   console.log("Checking if variable is 2D std::array, type:", type);
   
+  // First check it's NOT a 3D array (3-level nested std::array)
+  const pattern3D = /std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*</;
+  if (pattern3D.test(type)) {
+    console.log("is2DStdArray result: false (is 3D array)");
+    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+  }
+  
   // Match patterns like:
   // std::array<std::array<int, 4>, 3>
   // std::__1::array<std::__1::array<float, 4>, 3>
@@ -393,6 +400,52 @@ export function is2DStdArray(variableInfo: any): {
   
   console.log("is2DStdArray result: false");
   return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+}
+
+/**
+ * Check if the variable is a 3D std::array (std::array<std::array<std::array<T, C>, W>, H>)
+ * Used for multi-channel image representation where the innermost dimension is channels (1, 3, or 4)
+ * Returns: { is3DArray: boolean, height: number, width: number, channels: number, elementType: string, depth: number }
+ */
+export function is3DStdArray(variableInfo: any): { 
+  is3DArray: boolean; 
+  height: number; 
+  width: number; 
+  channels: number; 
+  elementType: string; 
+  depth: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is 3D std::array, type:", type);
+  
+  // Match 3-level nested std::array patterns like:
+  // std::array<std::array<std::array<uint8_t, 3>, 640>, 480>
+  // std::__1::array<std::__1::array<std::__1::array<float, 3>, 100>, 100>
+  // class std::array<class std::array<class std::array<unsigned char, 3>, 640>, 480>
+  const pattern3D = /std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*(?:class\s+)?std::(?:__1::)?array\s*<\s*([^,>]+?)\s*,\s*(\d+)\s*>\s*,\s*(\d+)\s*>\s*,\s*(\d+)\s*>/;
+  const match = type.match(pattern3D);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const channels = parseInt(match[2]);
+    const width = parseInt(match[3]);
+    const height = parseInt(match[4]);
+    
+    // Only consider it an image-suitable 3D array if channels is 1, 3, or 4
+    if (channels !== 1 && channels !== 3 && channels !== 4) {
+      console.log(`is3DStdArray result: false (channels=${channels} is not 1, 3, or 4)`);
+      return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
+    }
+    
+    // Get depth from element type
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`is3DStdArray result: height=${height}, width=${width}, channels=${channels}, elementType=${elementType}, depth=${depth}`);
+    return { is3DArray: true, height, width, channels, elementType, depth };
+  }
+  
+  console.log("is3DStdArray result: false");
+  return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
 }
 
 /**
@@ -494,8 +547,9 @@ export function getDepthFromCppType(cppType: string): number {
   if (t === 'int' || t === 'int32_t' || t.includes('int32_t')) return 4; // CV_32S
   if (t === 'short' || t === 'int16_t' || t.includes('int16_t')) return 3; // CV_16S
   if (t === 'unsigned short' || t === 'ushort' || t === 'uint16_t' || t.includes('uint16_t')) return 2; // CV_16U
-  if (t === 'char' || t === 'signed char' || t === 'int8_t' || t.includes('int8_t')) return 1; // CV_8S
+  // Check uint8_t BEFORE int8_t because 'uint8_t'.includes('int8_t') is true
   if (t === 'unsigned char' || t === 'uchar' || t === 'uint8_t' || t.includes('uint8_t')) return 0; // CV_8U
+  if (t === 'char' || t === 'signed char' || t === 'int8_t' || t.includes('int8_t')) return 1; // CV_8S
   if (t.includes('unsigned') && t.includes('int')) return 4; // treat as CV_32S (could be unsigned but we only have signed 32)
   if (t.includes('long long')) return 6; // CV_64F (approximate for 64-bit int)
   if (t.includes('long')) return 4; // CV_32S (assuming 32-bit long, platform dependent)
@@ -560,6 +614,12 @@ export function is2DCStyleArray(variableInfo: any): {
   const type = variableInfo.type || "";
   console.log("Checking if variable is C-style 2D array, type:", type);
   
+  // First check it's NOT a 3D array (type[H][W][C])
+  if (/\[\s*\d+\s*\]\s*\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(type)) {
+    console.log("is2DCStyleArray result: false (is 3D array)");
+    return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+  }
+  
   // Match C-style array patterns like:
   // int [2][3]
   // float[4][5]
@@ -582,4 +642,50 @@ export function is2DCStyleArray(variableInfo: any): {
   
   console.log("is2DCStyleArray result: false");
   return { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+}
+
+/**
+ * Check if the variable is a C-style 3D array (e.g., uint8_t[480][640][3])
+ * Used for multi-channel image representation where the last dimension is channels (1, 3, or 4)
+ * Returns: { is3DArray: boolean, height: number, width: number, channels: number, elementType: string, depth: number }
+ */
+export function is3DCStyleArray(variableInfo: any): { 
+  is3DArray: boolean; 
+  height: number; 
+  width: number; 
+  channels: number; 
+  elementType: string; 
+  depth: number 
+} {
+  const type = variableInfo.type || "";
+  console.log("Checking if variable is C-style 3D array, type:", type);
+  
+  // Match C-style 3D array patterns like:
+  // unsigned char [480][640][3]
+  // uint8_t[100][100][3]
+  // float [H][W][C]
+  const cStyle3DPattern = /([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/;
+  const match = type.match(cStyle3DPattern);
+  
+  if (match) {
+    const elementType = match[1].trim();
+    const height = parseInt(match[2]);
+    const width = parseInt(match[3]);
+    const channels = parseInt(match[4]);
+    
+    // Only consider it an image-suitable 3D array if channels is 1, 3, or 4
+    if (channels !== 1 && channels !== 3 && channels !== 4) {
+      console.log(`is3DCStyleArray result: false (channels=${channels} is not 1, 3, or 4)`);
+      return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
+    }
+    
+    // Get depth from element type
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`is3DCStyleArray result: height=${height}, width=${width}, channels=${channels}, elementType=${elementType}, depth=${depth}`);
+    return { is3DArray: true, height, width, channels, elementType, depth };
+  }
+  
+  console.log("is3DCStyleArray result: false");
+  return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
 }

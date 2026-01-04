@@ -5,7 +5,8 @@ import {
   readMemoryChunked,
   getMemorySample,
   get2DStdArrayDataPointer,
-  getCStyle2DArrayDataPointer
+  getCStyle2DArrayDataPointer,
+  get3DArrayDataPointer
 } from "../utils/debugger";
 import { getBytesPerElement } from "../utils/opencv";
 import { getWebviewContentForMat } from "./matWebview";
@@ -795,3 +796,144 @@ export async function draw2DStdArrayImage(
   }
 }
 
+
+
+// Function to draw 3D array as a multi-channel image
+export async function draw3DArrayImage(
+  debugSession: vscode.DebugSession,
+  variableInfo: any,
+  frameId: number,
+  variableName: string,
+  arrayInfo: { 
+    is3DArray: boolean; 
+    height: number; 
+    width: number; 
+    channels: number; 
+    elementType: string; 
+    depth: number 
+  },
+  reveal: boolean = true,
+  force: boolean = false
+) {
+  try {
+    const { height, width, channels, depth } = arrayInfo;
+    const rows = height;
+    const cols = width;
+    const dataSize = height * width * channels;
+    const bytesPerElement = getBytesPerElement(depth);
+    const totalBytes = dataSize * bytesPerElement;
+    
+    console.log(`Drawing 3D array image: ${height}x${width}x${channels}, depth=${depth}, elementType=${arrayInfo.elementType}, bytesPerElement=${bytesPerElement}, totalBytes=${totalBytes}`);
+    
+    // Check for empty array
+    if (height === 0 || width === 0 || channels === 0) {
+      vscode.window.showInformationMessage("3D array is empty");
+      return;
+    }
+    
+    const panelTitle = `View: ${variableName}`;
+    
+    // Determine if this is a C-style array or std::array based on type information
+    const isCStyleArray = variableInfo.type && /\[\s*\d+\s*\]\s*\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(variableInfo.type);
+    const isStdArray = !isCStyleArray;
+    
+    // Get data pointer using the 3D array specific function
+    const dataPtr = await get3DArrayDataPointer(debugSession, variableName, frameId, variableInfo, isStdArray);
+    
+    if (!dataPtr) {
+      throw new Error("Cannot get data pointer from 3D array. Make sure it's a valid 3D array.");
+    }
+    
+    // Check if panel is fresh
+    const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+    const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
+    
+    const panel = PanelManager.getOrCreatePanel(
+      "MatImageViewer",
+      panelTitle,
+      debugSession.id,
+      variableName,
+      reveal
+    );
+
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+      console.log(`3D array panel is already up-to-date with token: ${stateToken}`);
+      return;
+    }
+    
+    // Read data with progress indicator
+    const dataResult = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Loading 3D array (${height}x${width}x${channels})`,
+        cancellable: false
+      },
+      async (progress) => {
+        progress.report({ message: `Reading ${totalBytes} bytes...` });
+        const buffer = await readMemoryChunked(debugSession, dataPtr!, totalBytes, progress);
+        return { buffer };
+      }
+    );
+    
+    // Update state token
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    
+    // If panel already has content, only send data to preserve view state (zoom/pan)
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      console.log("3D array panel already has HTML, sending only data to preserve view state");
+      const buffer = dataResult.buffer;
+      if (buffer) {
+        await panel.webview.postMessage({
+          command: 'completeData',
+          data: new Uint8Array(buffer),
+          rows, cols, channels, depth
+        });
+        return;
+      }
+    }
+    
+    panel.webview.html = getWebviewContentForMat(
+      panel.webview,
+      rows,
+      cols,
+      channels,
+      depth,
+      { base64: "" }
+    );
+    
+    SyncManager.registerPanel(variableName, panel);
+    
+    // Dispose previous listener if it exists to avoid multiple listeners on reused panel
+    if ((panel as any)._syncListener) {
+      (panel as any)._syncListener.dispose();
+    }
+    
+    (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if (message.command === 'viewChanged') {
+          SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'reload') {
+          // Manual reload triggered from webview
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+        }
+      }
+    );
+    
+    const buffer = dataResult.buffer;
+    if (!buffer) {
+      throw new Error("Failed to read 3D array data");
+    }
+    
+    console.log(`Sending ${buffer.length} bytes to 3D array webview`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      data: new Uint8Array(buffer),
+      rows, cols, channels, depth
+    });
+    
+    console.log('3D array data sent to webview');
+  } catch (error) {
+    console.error("Error drawing 3D array image:", error);
+    throw error;
+  }
+}

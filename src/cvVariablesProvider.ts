@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -194,9 +194,11 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                     const stdArray2D = is2DStdArray(v);
                     const stdArray1D = is1DStdArray(v);
                     const stdArrayPoint3 = isPoint3StdArray(v);
+                    const stdArray3D = is3DStdArray(v);
                     // C-style array detection
                     const cStyleArray2D = is2DCStyleArray(v);
                     const cStyleArray1D = is1DCStyleArray(v);
+                    const cStyleArray3D = is3DCStyleArray(v);
 
                     const checkVariable = async (): Promise<CVVariable | null> => {
                         let is1DM = isLikely1DMat(v);
@@ -257,7 +259,8 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                         }
 
                         if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined ||
-                            stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array || cStyleArray2D.is2DArray || cStyleArray1D.is1DArray) {
+                            stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array || cStyleArray2D.is2DArray || cStyleArray1D.is1DArray ||
+                            stdArray3D.is3DArray || cStyleArray3D.is3DArray) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
@@ -322,6 +325,18 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                     } catch (e) {}
                                 }
                                 sizeInfo = size > 0 ? `${size} elements` : '';
+                            }
+                            // 3D std::array - multi-channel image
+                            else if (stdArray3D.is3DArray) {
+                                kind = 'mat';
+                                size = stdArray3D.height * stdArray3D.width * stdArray3D.channels;
+                                sizeInfo = `${stdArray3D.height}x${stdArray3D.width}x${stdArray3D.channels}`;
+                            }
+                            // 3D C-style array - multi-channel image
+                            else if (cStyleArray3D.is3DArray) {
+                                kind = 'mat';
+                                size = cStyleArray3D.height * cStyleArray3D.width * cStyleArray3D.channels;
+                                sizeInfo = `${cStyleArray3D.height}x${cStyleArray3D.width}x${cStyleArray3D.channels}`;
                             }
                             // 2D std::array - image
                             else if (stdArray2D.is2DArray) {

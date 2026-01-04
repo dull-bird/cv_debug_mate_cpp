@@ -87,6 +87,37 @@ void demo_2d_images() {
   int rawArr2D[2][3] = {{1, 2, 3}, {4, 5, 6}};
   int rawArr1D[6] = {1, 2, 3, 4, 5, 6};
 
+  const int height = 100;
+  const int width = 150;
+
+  // --- 1. C 风格 3 维数组 (C-Style Array) ---
+  // 布局：[行][列][通道]
+  uint8_t c_img[height][width][3];
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      c_img[y][x][0] = static_cast<uint8_t>(y * 255 / height); // R: 纵向渐变
+      c_img[y][x][1] = static_cast<uint8_t>(x * 255 / width);  // G: 横向渐变
+      c_img[y][x][2] = 128;                                    // B: 固定值
+    }
+  }
+
+  // --- 2. std::array 风格 3 维数组 (Modern C++) ---
+  // 为了可读性，我们可以先定义像素类型
+  using Pixel = std::array<uint8_t, 3>;
+  std::array<std::array<Pixel, width>, height> std_img;
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      // 填充一个蓝色调的渐变
+      std_img[y][x] = {
+          0,                                            // R
+          static_cast<uint8_t>(255 - y * 255 / height), // G
+          static_cast<uint8_t>(x * 255 / width)         // B
+      };
+    }
+  }
+
   // ===== BREAKPOINT HERE =====
   int bp1 = 0; // Set breakpoint here to view all 2D images
   (void)bp1;

@@ -139,6 +139,8 @@ export function buildSizeExpressions(
 
 | 数据类型 | 基础检测 (`opencv.ts`) | 增强检测 (`debugger.ts`) |
 |---------|----------------------|------------------------|
+| 3D `std::array` | `is3DStdArray()` | - |
+| 3D C 风格数组 | `is3DCStyleArray()` | `is3DCStyleArrayEnhanced()` |
 | 2D `std::array` | `is2DStdArray()` | `is2DStdArrayEnhanced()` |
 | 2D C 风格数组 | `is2DCStyleArray()` | `is2DCStyleArrayEnhanced()` |
 | 1D `std::array` | `is1DStdArray()` | - |
@@ -276,6 +278,66 @@ if (isLLDB) {
 - 仅匹配 1D 数组模式（`type[size]`）
 - 失败时回退到基础检测 `is1DCStyleArray()`
 
+### `is3DCStyleArray()` 函数
+
+**位置**: `src/utils/opencv.ts`
+
+**功能**: 检测 C 风格 3D 数组（如 `uint8_t[480][640][3]`），用于多通道图像可视化。
+
+**类型字符串匹配模式**:
+- `unsigned char [480][640][3]`
+- `uint8_t[100][100][3]`
+- `float [H][W][C]`
+
+**返回值**: `{ is3DArray, height, width, channels, elementType, depth }`
+
+**通道数限制**: 仅当最内层维度为 1、3 或 4 时才识别为图像（其他通道数可能是非图像 3D 数据）
+
+### `is3DStdArray()` 函数
+
+**位置**: `src/utils/opencv.ts`
+
+**功能**: 检测 3 层嵌套的 std::array（如 `std::array<std::array<std::array<uint8_t, 3>, 640>, 480>`）。
+
+**类型字符串匹配模式**:
+- `std::array<std::array<std::array<uint8_t, 3>, 640>, 480>`
+- `std::__1::array<std::__1::array<std::__1::array<float, 3>, 100>, 100>` (libc++)
+- `class std::array<class std::array<class std::array<unsigned char, 3>, 640>, 480>` (MSVC)
+
+**返回值**: `{ is3DArray, height, width, channels, elementType, depth }`
+
+### `is3DCStyleArrayEnhanced()` 函数
+
+**位置**: `src/utils/debugger.ts`
+
+**功能**: 使用调试器命令增强检测 C 风格 3D 数组。
+
+**工作原理**:
+- 先尝试调试器命令获取准确类型信息
+- 失败时回退到基础检测 `is3DCStyleArray()`
+
+### `get3DArrayDataPointer()` 函数
+
+**位置**: `src/utils/debugger.ts`
+
+**功能**: 获取 3D 数组的数据指针，支持 C 风格和 std::array 两种类型。
+
+**数据指针获取策略**:
+1. **Variables 方法**（优先）：通过 DAP variables 请求遍历到 `[0][0][0]` 元素
+2. **Evaluate 方法**（回退）：使用表达式 `&arr[0][0][0]`
+
+### `draw3DArrayImage()` 函数
+
+**位置**: `src/matImage/matProvider.ts`
+
+**功能**: 绘制 3D 数组图像，复用现有的 Image Viewer webview。
+
+**实现逻辑**:
+1. 计算总字节数：`height * width * channels * bytesPerElement`
+2. 调用 `get3DArrayDataPointer()` 获取数据指针
+3. 使用 `readMemoryChunked()` 读取内存数据
+4. 发送到 webview（现有 Image Viewer 已支持多通道）
+
 ### `getArrayTypeInfo()` 函数
 
 **位置**: `src/utils/debugger.ts`
@@ -297,6 +359,7 @@ if (isLLDB) {
 
 **导出函数**:
 - `isMat()`, `isMatx()` - cv::Mat 类型检测
+- `is3DStdArray()`, `is3DCStyleArray()` - 3D 数组检测（多通道图像）
 - `is2DStdArray()`, `is1DStdArray()` - std::array 检测
 - `is2DCStyleArray()` - C 风格数组检测
 - `isPoint3Vector()`, `isPoint3StdArray()` - 点云类型检测
@@ -323,7 +386,9 @@ if (isLLDB) {
 - `getVectorSize()` - 获取 vector 大小
 - `getStdArrayDataPointer()`, `get2DStdArrayDataPointer()` - std::array 数据指针
 - `getCStyle2DArrayDataPointer()` - C 风格数组数据指针
+- `get3DArrayDataPointer()` - 3D 数组数据指针（C 风格和 std::array）
 - `is2DStdArrayEnhanced()`, `is2DCStyleArrayEnhanced()` - 增强类型检测
+- `is3DCStyleArrayEnhanced()` - 3D C 风格数组增强检测
 - `getArrayTypeInfo()` - 调试器命令获取类型信息
 
 ### `src/cvVariablesProvider.ts` - 变量列表
@@ -377,6 +442,16 @@ A: 在访问内部成员时，使用 `STL_ARRAY_MEMBERS` 和 `STL_VECTOR_DATA_ME
 ---
 
 ## 版本历史
+
+### v0.0.34 (3D 数组支持)
+- 新增 3D 数组（多通道图像）支持
+- 添加 `is3DCStyleArray()` 和 `is3DStdArray()` 基础检测函数
+- 添加 `is3DCStyleArrayEnhanced()` 增强检测函数
+- 添加 `get3DArrayDataPointer()` 数据指针获取函数
+- 添加 `draw3DArrayImage()` 可视化函数
+- 支持 `T[H][W][C]` C 风格 3D 数组
+- 支持 `std::array<std::array<std::array<T, C>, W>, H>` 嵌套数组
+- 通道数限制为 1、3、4（灰度、RGB/BGR、RGBA/BGRA）
 
 ### v0.0.33 (重构)
 - 重构增强检测函数，使用基础检测作为回退，消除代码重复

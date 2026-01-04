@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
-import { getEvaluateContext, is2DStdArrayEnhanced, is2DCStyleArrayEnhanced, is1DCStyleArrayEnhanced } from "./utils/debugger";
+import { getEvaluateContext, is2DStdArrayEnhanced, is2DCStyleArrayEnhanced, is1DCStyleArrayEnhanced, is3DCStyleArrayEnhanced, is3DStdArrayEnhanced } from "./utils/debugger";
 import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
-import { drawMatImage, drawMatxImage, draw2DStdArrayImage } from "./matImage/matProvider";
+import { drawMatImage, drawMatxImage, draw2DStdArrayImage, draw3DArrayImage } from "./matImage/matProvider";
 import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -200,12 +200,18 @@ export function activate(context: vscode.ExtensionContext) {
       // C-style array detection
       let cStyleArray2D;
       let cStyleArray1D;
+      let cStyleArray3D;
+      let stdArray3D;
       if (isLLDB) {
         cStyleArray2D = await is2DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
         cStyleArray1D = await is1DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+        cStyleArray3D = await is3DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+        stdArray3D = await is3DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
       } else {
         cStyleArray2D = is2DCStyleArray(variableInfo);
         cStyleArray1D = is1DCStyleArray(variableInfo);
+        cStyleArray3D = is3DCStyleArray(variableInfo);
+        stdArray3D = is3DStdArray(variableInfo);
       }
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);
@@ -215,6 +221,8 @@ export function activate(context: vscode.ExtensionContext) {
       console.log(`is1DStdArray result: is1DArray=${stdArray1D.is1DArray}, elementType=${stdArray1D.elementType}, size=${stdArray1D.size}`);
       console.log(`isPoint3StdArray result: isPoint3Array=${stdArrayPoint3.isPoint3Array}, isDouble=${stdArrayPoint3.isDouble}, size=${stdArrayPoint3.size}`);
       console.log(`is1DCStyleArray result: is1DArray=${cStyleArray1D.is1DArray}, elementType=${cStyleArray1D.elementType}, size=${cStyleArray1D.size}`);
+      console.log(`is3DCStyleArray result: is3DArray=${cStyleArray3D.is3DArray}, height=${cStyleArray3D.height}, width=${cStyleArray3D.width}, channels=${cStyleArray3D.channels}`);
+      console.log(`is3DStdArray result: is3DArray=${stdArray3D.is3DArray}, height=${stdArray3D.height}, width=${stdArray3D.width}, channels=${stdArray3D.channels}`);
       console.log(`variableInfo.value: ${variableInfo.value || variableInfo.result}`);
 
       // Check for empty variables before proceeding
@@ -240,6 +248,20 @@ export function activate(context: vscode.ExtensionContext) {
         if (cStyleArray1D.size === 0) {
           isEmpty = true;
           reason = "1D C-style array is empty";
+        }
+      }
+      // 3D C-style array empty check
+      else if (cStyleArray3D.is3DArray) {
+        if (cStyleArray3D.height === 0 || cStyleArray3D.width === 0 || cStyleArray3D.channels === 0) {
+          isEmpty = true;
+          reason = "3D array is empty";
+        }
+      }
+      // 3D std::array empty check
+      else if (stdArray3D.is3DArray) {
+        if (stdArray3D.height === 0 || stdArray3D.width === 0 || stdArray3D.channels === 0) {
+          isEmpty = true;
+          reason = "3D array is empty";
         }
       }
       // std::array 2D empty check
@@ -371,6 +393,14 @@ export function activate(context: vscode.ExtensionContext) {
       // C-style 1D array - plot
       else if (cStyleArray1D.is1DArray) {
         await drawCStyleArrayPlot(debugSession, variableName, cStyleArray1D.elementType, cStyleArray1D.size, reveal, shouldForce, variableInfo);
+      }
+      // 3D C-style array - multi-channel image
+      else if (cStyleArray3D.is3DArray) {
+        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray3D, reveal, shouldForce);
+      }
+      // 3D std::array - multi-channel image
+      else if (stdArray3D.is3DArray) {
+        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, stdArray3D, reveal, shouldForce);
       }
       // std::array 2D - image
       else if (stdArray2D.is2DArray) {

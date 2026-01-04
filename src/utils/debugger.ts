@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as os from "os";
-import { getDepthFromCppType, is2DStdArray, is2DCStyleArray, is1DCStyleArray } from "./opencv";
+import { getDepthFromCppType, is2DStdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray } from "./opencv";
 
 // ============== Debugger Type Detection ==============
 
@@ -1294,5 +1294,491 @@ export async function getCStyle1DArrayDataPointer(
   }
   
   console.log(`getCStyle1DArrayDataPointer result: ${dataPtr}`);
+  return dataPtr;
+}
+
+
+// ============== 3D Array Support ==============
+
+/**
+ * Get type information for 3D arrays using debugger-specific commands.
+ * This uses different commands based on the debugger:
+ * - LLDB: frame variable --show-types --depth 0
+ * - GDB: ptype
+ * - MSVC: use variable,t format
+ */
+export async function get3DArrayTypeInfo(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number
+): Promise<{ height: number; width: number; channels: number; elementType: string } | null> {
+  console.log(`Getting 3D array type info for variable: ${variableName}, debugger: ${debugSession.type}`);
+  
+  try {
+    let result;
+    let output = '';
+    
+    if (isUsingLLDB(debugSession)) {
+      const command = `-exec frame variable --show-types --depth 0 ${variableName}`;
+      
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: command,
+          frameId: frameId,
+          context: 'repl'
+        });
+      } catch (e) {
+        console.log('First approach failed, trying without -exec prefix:', e);
+        
+        try {
+          result = await debugSession.customRequest('evaluate', {
+            expression: `frame variable --show-types --depth 0 ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+        } catch (e2) {
+          console.log('Second approach also failed:', e2);
+          
+          try {
+            result = await debugSession.customRequest('evaluate', {
+              expression: `-exec expr -T ${variableName}`,
+              frameId: frameId,
+              context: 'repl'
+            });
+          } catch (e3) {
+            console.log('All LLDB approaches failed:', e3);
+            return null;
+          }
+        }
+      }
+      
+      output = result.result || result.stdout || result.output || '';
+      
+    } else if (isUsingCppdbg(debugSession)) {
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: `-exec ptype ${variableName}`,
+          frameId: frameId,
+          context: 'repl'
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('GDB ptype command failed, trying alternative:', e);
+        try {
+          result = await debugSession.customRequest('evaluate', {
+            expression: `-exec whatis ${variableName}`,
+            frameId: frameId,
+            context: 'repl'
+          });
+          output = result.result || result.stdout || result.output || '';
+        } catch (e2) {
+          console.log('GDB whatis command also failed:', e2);
+          return null;
+        }
+      }
+      
+    } else if (isUsingMSVC(debugSession)) {
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: `${variableName},t`,
+          frameId: frameId,
+          context: getEvaluateContext(debugSession)
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('MSVC type command failed:', e);
+        return null;
+      }
+      
+    } else {
+      try {
+        result = await debugSession.customRequest('evaluate', {
+          expression: variableName,
+          frameId: frameId,
+          context: getEvaluateContext(debugSession)
+        });
+        output = result.result || result.stdout || result.output || '';
+      } catch (e) {
+        console.log('Generic evaluation failed:', e);
+        return null;
+      }
+    }
+    
+    console.log(`Debugger command result for 3D array:`, output);
+    
+    // Parse the result to extract 3D array type information
+    // Match LLDB format: (int[2][3][4]) arr ={...}
+    let typeMatch = output.match(/\(([^)]+)\)\s+\w+\s+=/);
+    if (typeMatch) {
+      const typeInfo = typeMatch[1];
+      console.log(`LLDB format extracted type info: ${typeInfo}`);
+      
+      // Parse 3D array dimensions: e.g., int[2][3][4] -> height=2, width=3, channels=4
+      const dimMatch = typeInfo.match(/([^\[\]]+)\[(\d+)\]\[(\d+)\]\[(\d+)\]/);
+      if (dimMatch) {
+        const elementType = dimMatch[1].trim();
+        const height = parseInt(dimMatch[2]);
+        const width = parseInt(dimMatch[3]);
+        const channels = parseInt(dimMatch[4]);
+        
+        console.log(`Parsed LLDB 3D dimensions: ${elementType}[${height}][${width}][${channels}]`);
+        return { height, width, channels, elementType };
+      }
+    }
+    
+    // Match GDB format: type = int [2][3][4] or int[2][3][4]
+    typeMatch = output.match(/(?:type\s*=\s*)?([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/);
+    if (typeMatch) {
+      const elementType = typeMatch[1].trim();
+      const height = parseInt(typeMatch[2]);
+      const width = parseInt(typeMatch[3]);
+      const channels = parseInt(typeMatch[4]);
+      
+      console.log(`Parsed GDB 3D dimensions: ${elementType}[${height}][${width}][${channels}]`);
+      return { height, width, channels, elementType };
+    }
+    
+    // Alternative pattern
+    const altMatch = output.match(/([a-zA-Z_][a-zA-Z0-9_*\s]*)\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]\s*\[\s*(\d+)\s*\]/);
+    if (altMatch) {
+      const elementType = altMatch[1].trim();
+      const height = parseInt(altMatch[2]);
+      const width = parseInt(altMatch[3]);
+      const channels = parseInt(altMatch[4]);
+      
+      console.log(`Parsed 3D dimensions (alt): ${elementType}[${height}][${width}][${channels}]`);
+      return { height, width, channels, elementType };
+    }
+    
+    console.log('Could not parse 3D array type info from debugger command output');
+    return null;
+  } catch (e) {
+    console.log('Error executing debugger command for 3D array:', e);
+    return null;
+  }
+}
+
+/**
+ * Enhanced detection for C-style 3D arrays using debugger commands.
+ * 
+ * This function first tries to get accurate type information using debugger-specific
+ * commands (frame variable for LLDB, ptype for GDB, etc.), then falls back to
+ * basic string matching if the debugger command fails.
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable to check
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @returns Object with is3DArray flag and dimension/type information
+ */
+export async function is3DCStyleArrayEnhanced(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<{ 
+  is3DArray: boolean; 
+  height: number; 
+  width: number; 
+  channels: number; 
+  elementType: string; 
+  depth: number 
+}> {
+  console.log(`Checking C-style 3D array using debugger command for: ${variableName}`);
+  
+  // First, try to get type info using the debugger-specific command
+  const typeInfo = await get3DArrayTypeInfo(debugSession, variableName, frameId);
+  
+  if (typeInfo) {
+    const { height, width, channels, elementType } = typeInfo;
+    
+    // Only consider it an image-suitable 3D array if channels is 1, 3, or 4
+    if (channels !== 1 && channels !== 3 && channels !== 4) {
+      console.log(`Debugger detected 3D array but channels=${channels} is not 1, 3, or 4`);
+      return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
+    }
+    
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`Debugger detected C-style 3D array: ${elementType}[${height}][${width}][${channels}], depth=${depth}`);
+    return { is3DArray: true, height, width, channels, elementType, depth };
+  }
+  
+  // Fallback to basic string matching from opencv.ts
+  console.log('Debugger command failed, falling back to basic string matching');
+  return is3DCStyleArray(variableInfo);
+}
+
+/**
+ * Enhanced detection for 3D std::array using debugger commands.
+ * 
+ * This function first tries to get accurate type information using debugger-specific
+ * commands, then falls back to basic string matching if the debugger command fails.
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable to check
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @returns Object with is3DArray flag and dimension/type information
+ */
+export async function is3DStdArrayEnhanced(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any
+): Promise<{ 
+  is3DArray: boolean; 
+  height: number; 
+  width: number; 
+  channels: number; 
+  elementType: string; 
+  depth: number 
+}> {
+  console.log(`Checking 3D std::array using debugger command for: ${variableName}`);
+  
+  // First, try to get type info using the debugger-specific command
+  const typeInfo = await get3DArrayTypeInfo(debugSession, variableName, frameId);
+  
+  if (typeInfo) {
+    const { height, width, channels, elementType } = typeInfo;
+    
+    // Only consider it an image-suitable 3D array if channels is 1, 3, or 4
+    if (channels !== 1 && channels !== 3 && channels !== 4) {
+      console.log(`Debugger detected 3D array but channels=${channels} is not 1, 3, or 4`);
+      return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
+    }
+    
+    const depth = getDepthFromCppType(elementType);
+    
+    console.log(`Debugger detected 3D std::array: ${elementType}[${height}][${width}][${channels}], depth=${depth}`);
+    return { is3DArray: true, height, width, channels, elementType, depth };
+  }
+  
+  // Fallback to basic string matching from opencv.ts
+  console.log('Debugger command failed, falling back to basic string matching');
+  return is3DStdArray(variableInfo);
+}
+
+/**
+ * Get data pointer for 3D array (both C-style and std::array).
+ * 3D arrays are stored contiguously in row-major order.
+ * We need to get the address of the first element [0][0][0].
+ * 
+ * @param debugSession - The active debug session
+ * @param variableName - Name of the variable
+ * @param frameId - Current stack frame ID
+ * @param variableInfo - Optional variable info from debugger
+ * @param isStdArray - Whether this is a std::array (vs C-style array)
+ * @returns The memory address as a hex string, or null if failed
+ */
+export async function get3DArrayDataPointer(
+  debugSession: vscode.DebugSession,
+  variableName: string,
+  frameId: number,
+  variableInfo?: any,
+  isStdArray: boolean = false
+): Promise<string | null> {
+  const context = getEvaluateContext(debugSession);
+  console.log(`get3DArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}, isStdArray=${isStdArray}`);
+  
+  let dataPtr: string | null = null;
+
+  // Try variables approach first (most reliable)
+  if (variableInfo && variableInfo.variablesReference > 0) {
+    try {
+      const varsResponse = await debugSession.customRequest("variables", {
+        variablesReference: variableInfo.variablesReference
+      });
+      
+      if (varsResponse.variables && varsResponse.variables.length > 0) {
+        console.log(`Found ${varsResponse.variables.length} variables in 3D array`);
+        
+        // For std::array, look for internal data member first
+        if (isStdArray) {
+          for (const v of varsResponse.variables) {
+            const varName = v.name;
+            
+            // Check for internal array member: __elems_ (libc++), _M_elems (libstdc++), _Elems (MSVC)
+            if (varName === "__elems_" || varName === "_M_elems" || varName === "_Elems") {
+              console.log(`Found internal array member: ${varName}`);
+              
+              // Expand to get first row [0]
+              if (v.variablesReference > 0) {
+                const rowVars = await debugSession.customRequest("variables", {
+                  variablesReference: v.variablesReference
+                });
+                
+                if (rowVars.variables && rowVars.variables.length > 0) {
+                  const firstRow = rowVars.variables[0];
+                  console.log(`First row [0]: value="${firstRow.value}", memRef="${firstRow.memoryReference}"`);
+                  
+                  // Expand first row to get first column [0][0]
+                  if (firstRow.variablesReference > 0) {
+                    const colVars = await debugSession.customRequest("variables", {
+                      variablesReference: firstRow.variablesReference
+                    });
+                    
+                    if (colVars.variables && colVars.variables.length > 0) {
+                      // Look for [0] or internal array member
+                      for (const cv of colVars.variables) {
+                        if (cv.name === "[0]" || cv.name === "__elems_" || cv.name === "_M_elems" || cv.name === "_Elems") {
+                          // Expand to get first channel [0][0][0]
+                          if (cv.variablesReference > 0) {
+                            const chanVars = await debugSession.customRequest("variables", {
+                              variablesReference: cv.variablesReference
+                            });
+                            
+                            if (chanVars.variables && chanVars.variables.length > 0) {
+                              const firstChan = chanVars.variables[0];
+                              if (firstChan.memoryReference) {
+                                dataPtr = firstChan.memoryReference;
+                                console.log(`Got 3D std::array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
+                                break;
+                              }
+                            }
+                          }
+                          
+                          if (cv.memoryReference) {
+                            dataPtr = cv.memoryReference;
+                            console.log(`Got 3D std::array data pointer from [0][0].memoryReference: ${dataPtr}`);
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  
+                  if (!dataPtr && firstRow.memoryReference) {
+                    dataPtr = firstRow.memoryReference;
+                    console.log(`Got 3D std::array data pointer from [0].memoryReference: ${dataPtr}`);
+                  }
+                }
+              }
+              
+              if (dataPtr) break;
+            }
+          }
+        }
+        
+        // Look for [0] element (first row) - works for both C-style and std::array
+        if (!dataPtr) {
+          for (const v of varsResponse.variables) {
+            if (v.name === "[0]") {
+              console.log(`Found [0] (first row): value="${v.value}", memRef="${v.memoryReference}"`);
+              
+              if (v.variablesReference > 0) {
+                // Expand first row to get [0][0]
+                const colVars = await debugSession.customRequest("variables", {
+                  variablesReference: v.variablesReference
+                });
+                
+                const firstCol = colVars.variables?.find((cv: any) => cv.name === "[0]");
+                if (firstCol) {
+                  console.log(`Found [0][0]: value="${firstCol.value}", memRef="${firstCol.memoryReference}"`);
+                  
+                  if (firstCol.variablesReference > 0) {
+                    // Expand to get [0][0][0]
+                    const chanVars = await debugSession.customRequest("variables", {
+                      variablesReference: firstCol.variablesReference
+                    });
+                    
+                    const firstChan = chanVars.variables?.find((chv: any) => chv.name === "[0]");
+                    if (firstChan) {
+                      if (firstChan.memoryReference) {
+                        dataPtr = firstChan.memoryReference;
+                        console.log(`Got 3D array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
+                        break;
+                      } else if (firstChan.value) {
+                        const ptrMatch = firstChan.value.match(/0x[0-9a-fA-F]+/);
+                        if (ptrMatch) {
+                          dataPtr = ptrMatch[0];
+                          console.log(`Extracted pointer from [0][0][0] value: ${dataPtr}`);
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Fallback to [0][0]'s memoryReference
+                  if (!dataPtr && firstCol.memoryReference) {
+                    dataPtr = firstCol.memoryReference;
+                    console.log(`Got 3D array data pointer from [0][0].memoryReference: ${dataPtr}`);
+                    break;
+                  }
+                }
+              }
+              
+              // Fallback to [0]'s memoryReference
+              if (!dataPtr && v.memoryReference) {
+                dataPtr = v.memoryReference;
+                console.log(`Got 3D array data pointer from [0].memoryReference: ${dataPtr}`);
+              }
+              
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Failed to get 3D array data pointer through variables:", e);
+    }
+  }
+
+  // Try evaluate expressions if variables approach didn't work
+  if (!dataPtr) {
+    let expressions: string[];
+    
+    if (isUsingMSVC(debugSession)) {
+      if (isStdArray) {
+        expressions = [
+          `(long long)&${variableName}[0][0][0]`,
+          `(long long)&${variableName}._Elems[0]._Elems[0]._Elems[0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      } else {
+        expressions = [
+          `(long long)&${variableName}[0][0][0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      }
+    } else if (isUsingLLDB(debugSession)) {
+      if (isStdArray) {
+        expressions = [
+          `&${variableName}[0][0][0]`,
+          `&${variableName}.__elems_[0].__elems_[0].__elems_[0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      } else {
+        expressions = [
+          `&${variableName}[0][0][0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      }
+    } else if (isUsingCppdbg(debugSession)) {
+      // GDB
+      if (isStdArray) {
+        expressions = [
+          `(long long)&${variableName}[0][0][0]`,
+          `(long long)&${variableName}._M_elems[0]._M_elems[0]._M_elems[0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      } else {
+        expressions = [
+          `(long long)&${variableName}[0][0][0]`,
+          `reinterpret_cast<long long>(&${variableName}[0][0][0])`
+        ];
+      }
+    } else {
+      // Fallback
+      expressions = [
+        `&${variableName}[0][0][0]`,
+        `(void*)&${variableName}[0][0][0]`
+      ];
+    }
+    
+    dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
+  }
+  
+  console.log(`get3DArrayDataPointer result: ${dataPtr}`);
   return dataPtr;
 }
