@@ -34,6 +34,7 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 | Category             | Type                                    | Visualization   |
 | -------------------- | --------------------------------------- | --------------- |
 | **Image (2D)**       | `cv::Mat`, `cv::Mat_<T>`                | 🖼️ Image Viewer |
+|                      | `cv::Mat_<cv::Vec3b>`, `cv::Mat_<cv::Vec3f>` | 🖼️ Image Viewer |
 |                      | `cv::Matx` (`Matx33f`, `Matx44d`, etc.) | 🖼️ Image Viewer |
 |                      | `std::array<std::array<T, cols>, rows>` | 🖼️ Image Viewer |
 |                      | `T[rows][cols]` (C-style 2D array)      | 🖼️ Image Viewer |

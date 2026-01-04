@@ -5,10 +5,13 @@
  * Set breakpoints and use CV DebugMate to visualize!
  *
  * Supported Types:
- *   - 2D Image: cv::Mat, cv::Mat_<T>, cv::Matx, std::array<std::array<T,C>,R>
- *   - 3D Point Cloud: std::vector<cv::Point3f/3d>, std::array<cv::Point3f/3d,
- * N>
- *   - 1D Plot: std::vector<T>, std::array<T,N>, std::set<T>, cv::Mat(1×N)
+ *   - 2D Image: cv::Mat, cv::Mat_<T>, cv::Matx, std::array<std::array<T,C>,R>,
+ *               T[rows][cols] (C-style 2D array)
+ *   - 3D Image: T[H][W][C] (C-style 3D array, C=1,3,4),
+ *               std::array<std::array<std::array<T,C>,W>,H>
+ *   - 3D Point Cloud: std::vector<cv::Point3f/3d>, std::array<cv::Point3f/3d,N>
+ *   - 1D Plot: std::vector<T>, std::array<T,N>, T[N] (C-style 1D array),
+ *              std::set<T>, cv::Mat(1×N or N×1)
  */
 
 #include <array>
@@ -84,13 +87,24 @@ void demo_2d_images() {
   std::cout << "  array_2d_int: 3x4 std::array<std::array<int,4>,3>"
             << std::endl;
 
+  // --- C-style 2D array (NEW!) ---
   int rawArr2D[2][3] = {{1, 2, 3}, {4, 5, 6}};
-  int rawArr1D[6] = {1, 2, 3, 4, 5, 6};
+  float rawArr2D_float[3][4] = {
+      {1.1f, 2.2f, 3.3f, 4.4f},
+      {5.5f, 6.6f, 7.7f, 8.8f},
+      {9.9f, 10.1f, 11.1f, 12.2f}};
+  double rawArr2D_double[2][2] = {{1.0, 2.0}, {3.0, 4.0}};
 
+  // --- C-style 1D array (NEW!) ---
+  int rawArr1D[6] = {1, 2, 3, 4, 5, 6};
+  float rawArr1D_float[10] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f,
+                              0.6f, 0.7f, 0.8f, 0.9f, 1.0f};
+  double rawArr1D_double[5] = {1.1, 2.2, 3.3, 4.4, 5.5};
+
+  // --- C-style 3D array (multi-channel image) ---
   const int height = 100;
   const int width = 150;
 
-  // --- 1. C 风格 3 维数组 (C-Style Array) ---
   // 布局：[行][列][通道]
   uint8_t c_img[height][width][3];
 
@@ -102,8 +116,26 @@ void demo_2d_images() {
     }
   }
 
-  // --- 2. std::array 风格 3 维数组 (Modern C++) ---
-  // 为了可读性，我们可以先定义像素类型
+  // --- C-style 3D array (grayscale, single channel) ---
+  uint8_t c_img_gray[50][80][1];
+  for (int y = 0; y < 50; ++y) {
+    for (int x = 0; x < 80; ++x) {
+      c_img_gray[y][x][0] = static_cast<uint8_t>((x + y) * 255 / 130);
+    }
+  }
+
+  // --- C-style 3D array (RGBA, 4 channels) ---
+  uint8_t c_img_rgba[60][60][4];
+  for (int y = 0; y < 60; ++y) {
+    for (int x = 0; x < 60; ++x) {
+      c_img_rgba[y][x][0] = static_cast<uint8_t>(x * 255 / 60);  // R
+      c_img_rgba[y][x][1] = static_cast<uint8_t>(y * 255 / 60);  // G
+      c_img_rgba[y][x][2] = 100;                                  // B
+      c_img_rgba[y][x][3] = 255;                                  // A
+    }
+  }
+
+  // --- std::array 3D (multi-channel image, Modern C++) ---
   using Pixel = std::array<uint8_t, 3>;
   std::array<std::array<Pixel, width>, height> std_img;
 
@@ -117,6 +149,20 @@ void demo_2d_images() {
       };
     }
   }
+
+  // --- std::array 3D (grayscale, single channel) ---
+  std::array<std::array<std::array<uint8_t, 1>, 40>, 30> std_img_gray;
+  for (int y = 0; y < 30; ++y) {
+    for (int x = 0; x < 40; ++x) {
+      std_img_gray[y][x][0] = static_cast<uint8_t>(y * 255 / 30);
+    }
+  }
+
+  std::cout << "  rawArr2D: 2x3 int[2][3]" << std::endl;
+  std::cout << "  rawArr1D: 6 int[6]" << std::endl;
+  std::cout << "  c_img: 100x150x3 uint8_t[100][150][3]" << std::endl;
+  std::cout << "  std_img: 100x150x3 std::array<std::array<Pixel,150>,100>"
+            << std::endl;
 
   // ===== BREAKPOINT HERE =====
   int bp1 = 0; // Set breakpoint here to view all 2D images
@@ -132,6 +178,17 @@ void demo_2d_images() {
   (void)array_2d_int;
   (void)array_2d_float;
   (void)array_2d_double;
+  (void)rawArr2D;
+  (void)rawArr2D_float;
+  (void)rawArr2D_double;
+  (void)rawArr1D;
+  (void)rawArr1D_float;
+  (void)rawArr1D_double;
+  (void)c_img;
+  (void)c_img_gray;
+  (void)c_img_rgba;
+  (void)std_img;
+  (void)std_img_gray;
 }
 
 // ============================================================
