@@ -28,6 +28,28 @@ export function isUsingMSVC(debugSession: vscode.DebugSession): boolean {
 }
 
 /**
+ * Helper function to check if a memory reference is a valid pointer.
+ * Returns false for null pointers, undefined, or very small addresses that are likely invalid.
+ */
+function isValidMemoryReference(memRef: string | undefined): boolean {
+  if (!memRef) return false;
+  
+  // Check for null pointer patterns
+  if (memRef === '0x0' || memRef === '0x0000000000000000' || memRef === '0x00000000') {
+    return false;
+  }
+  
+  // Parse the hex address and check if it's too small (likely invalid)
+  const addr = parseInt(memRef, 16);
+  if (isNaN(addr) || addr < 0x1000) {
+    // Addresses below 0x1000 are typically reserved/invalid on most systems
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Get the appropriate evaluate context for the debugger type.
  * 
  * CodeLLDB treats "repl" as command mode, so we need "watch" for expression evaluation.
@@ -568,7 +590,7 @@ export async function get2DStdArrayDataPointer(
                   // Look for [0][0] or internal array
                   for (const ev of elemVars.variables) {
                     if (ev.name === "[0]" || ev.name === "__elems_" || ev.name === "_M_elems" || ev.name === "_Elems") {
-                      if (ev.memoryReference) {
+                      if (isValidMemoryReference(ev.memoryReference)) {
                         dataPtr = ev.memoryReference;
                         console.log(`Got 2D data pointer from first element: ${dataPtr}`);
                         break;
@@ -578,7 +600,7 @@ export async function get2DStdArrayDataPointer(
                         const innerVars = await debugSession.customRequest("variables", {
                           variablesReference: ev.variablesReference
                         });
-                        if (innerVars.variables && innerVars.variables.length > 0 && innerVars.variables[0].memoryReference) {
+                        if (innerVars.variables && innerVars.variables.length > 0 && isValidMemoryReference(innerVars.variables[0].memoryReference)) {
                           dataPtr = innerVars.variables[0].memoryReference;
                           console.log(`Got 2D data pointer from inner first element: ${dataPtr}`);
                           break;
@@ -590,7 +612,7 @@ export async function get2DStdArrayDataPointer(
                 }
                 
                 // Try first row's memoryReference
-                if (!dataPtr && firstRow.memoryReference) {
+                if (!dataPtr && isValidMemoryReference(firstRow.memoryReference)) {
                   dataPtr = firstRow.memoryReference;
                   console.log(`Got 2D data pointer from first row memRef: ${dataPtr}`);
                   break;
@@ -612,7 +634,7 @@ export async function get2DStdArrayDataPointer(
               // Look for [0] in the first row
               const firstElem = elemVars.variables?.find((ev: any) => ev.name === "[0]");
               if (firstElem) {
-                if (firstElem.memoryReference) {
+                if (isValidMemoryReference(firstElem.memoryReference)) {
                   dataPtr = firstElem.memoryReference;
                   console.log(`Got 2D data pointer from [0][0].memoryReference: ${dataPtr}`);
                   break;
@@ -622,7 +644,7 @@ export async function get2DStdArrayDataPointer(
               // Look for internal array member
               for (const ev of elemVars.variables || []) {
                 if (ev.name === "__elems_" || ev.name === "_M_elems" || ev.name === "_Elems") {
-                  if (ev.memoryReference) {
+                  if (isValidMemoryReference(ev.memoryReference)) {
                     dataPtr = ev.memoryReference;
                     console.log(`Got 2D data pointer from [0].${ev.name}: ${dataPtr}`);
                     break;
@@ -631,7 +653,7 @@ export async function get2DStdArrayDataPointer(
                     const innerVars = await debugSession.customRequest("variables", {
                       variablesReference: ev.variablesReference
                     });
-                    if (innerVars.variables && innerVars.variables.length > 0 && innerVars.variables[0].memoryReference) {
+                    if (innerVars.variables && innerVars.variables.length > 0 && isValidMemoryReference(innerVars.variables[0].memoryReference)) {
                       dataPtr = innerVars.variables[0].memoryReference;
                       console.log(`Got 2D data pointer from [0].${ev.name}[0]: ${dataPtr}`);
                       break;
@@ -642,7 +664,7 @@ export async function get2DStdArrayDataPointer(
             }
             
             // Fallback: use [0]'s memoryReference
-            if (!dataPtr && v.memoryReference) {
+            if (!dataPtr && isValidMemoryReference(v.memoryReference)) {
               dataPtr = v.memoryReference;
               console.log(`Got 2D data pointer from [0] memRef: ${dataPtr}`);
             }
@@ -1015,13 +1037,13 @@ export async function getCStyle2DArrayDataPointer(
               // Look for [0] in the first row (i.e., [0][0])
               const firstElem = elemVars.variables?.find((ev: any) => ev.name === "[0]");
               if (firstElem) {
-                if (firstElem.memoryReference) {
+                if (isValidMemoryReference(firstElem.memoryReference)) {
                   dataPtr = firstElem.memoryReference;
                   console.log(`Got C-style 2D array data pointer from [0][0].memoryReference: ${dataPtr}`);
                   break;
                 } else if (firstElem.value) {
                   const ptrMatch = firstElem.value.match(/0x[0-9a-fA-F]+/);
-                  if (ptrMatch) {
+                  if (ptrMatch && isValidMemoryReference(ptrMatch[0])) {
                     dataPtr = ptrMatch[0];
                     console.log(`Extracted pointer from [0][0] value: ${dataPtr}`);
                     break;
@@ -1031,7 +1053,7 @@ export async function getCStyle2DArrayDataPointer(
             }
             
             // Fallback: use [0]'s memoryReference
-            if (!dataPtr && v.memoryReference) {
+            if (!dataPtr && isValidMemoryReference(v.memoryReference)) {
               dataPtr = v.memoryReference;
               console.log(`Got C-style 2D array data pointer from [0] memRef: ${dataPtr}`);
               break;
@@ -1630,7 +1652,7 @@ export async function get3DArrayDataPointer(
                             
                             if (chanVars.variables && chanVars.variables.length > 0) {
                               const firstChan = chanVars.variables[0];
-                              if (firstChan.memoryReference && firstChan.memoryReference !== '0x0000000000000000' && firstChan.memoryReference !== '0x0') {
+                              if (isValidMemoryReference(firstChan.memoryReference)) {
                                 dataPtr = firstChan.memoryReference;
                                 console.log(`Got 3D std::array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
                                 break;
@@ -1638,7 +1660,7 @@ export async function get3DArrayDataPointer(
                             }
                           }
                           
-                          if (cv.memoryReference && cv.memoryReference !== '0x0000000000000000' && cv.memoryReference !== '0x0') {
+                          if (isValidMemoryReference(cv.memoryReference)) {
                             dataPtr = cv.memoryReference;
                             console.log(`Got 3D std::array data pointer from [0][0].memoryReference: ${dataPtr}`);
                             break;
@@ -1648,7 +1670,7 @@ export async function get3DArrayDataPointer(
                     }
                   }
                   
-                  if (!dataPtr && firstRow.memoryReference && firstRow.memoryReference !== '0x0000000000000000' && firstRow.memoryReference !== '0x0') {
+                  if (!dataPtr && isValidMemoryReference(firstRow.memoryReference)) {
                     dataPtr = firstRow.memoryReference;
                     console.log(`Got 3D std::array data pointer from [0].memoryReference: ${dataPtr}`);
                   }
@@ -1685,13 +1707,13 @@ export async function get3DArrayDataPointer(
                     const firstChan = chanVars.variables?.find((chv: any) => chv.name === "[0]");
                     if (firstChan) {
                       // Check memoryReference is valid (not null/undefined and not null pointer)
-                      if (firstChan.memoryReference && firstChan.memoryReference !== '0x0000000000000000' && firstChan.memoryReference !== '0x0') {
+                      if (isValidMemoryReference(firstChan.memoryReference)) {
                         dataPtr = firstChan.memoryReference;
                         console.log(`Got 3D array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
                         break;
                       } else if (firstChan.value) {
                         const ptrMatch = firstChan.value.match(/0x[0-9a-fA-F]+/);
-                        if (ptrMatch && ptrMatch[0] !== '0x0000000000000000' && ptrMatch[0] !== '0x0') {
+                        if (ptrMatch && isValidMemoryReference(ptrMatch[0])) {
                           dataPtr = ptrMatch[0];
                           console.log(`Extracted pointer from [0][0][0] value: ${dataPtr}`);
                           break;
@@ -1701,7 +1723,7 @@ export async function get3DArrayDataPointer(
                   }
                   
                   // Fallback to [0][0]'s memoryReference
-                  if (!dataPtr && firstCol.memoryReference && firstCol.memoryReference !== '0x0000000000000000' && firstCol.memoryReference !== '0x0') {
+                  if (!dataPtr && isValidMemoryReference(firstCol.memoryReference)) {
                     dataPtr = firstCol.memoryReference;
                     console.log(`Got 3D array data pointer from [0][0].memoryReference: ${dataPtr}`);
                     break;
@@ -1710,7 +1732,7 @@ export async function get3DArrayDataPointer(
               }
               
               // Fallback to [0]'s memoryReference
-              if (!dataPtr && v.memoryReference && v.memoryReference !== '0x0000000000000000' && v.memoryReference !== '0x0') {
+              if (!dataPtr && isValidMemoryReference(v.memoryReference)) {
                 dataPtr = v.memoryReference;
                 console.log(`Got 3D array data pointer from [0].memoryReference: ${dataPtr}`);
               }
