@@ -326,14 +326,14 @@ export async function tryGetDataPointer(
       // Try to extract pointer from result string
       if (dataResponse && dataResponse.result) {
         const ptrMatch = dataResponse.result.match(/0x[0-9a-fA-F]+/);
-        if (ptrMatch) {
+        if (ptrMatch && isValidMemoryReference(ptrMatch[0])) {
           console.log(`Successfully extracted pointer: ${ptrMatch[0]}`);
           return ptrMatch[0];
         }
       }
       
       // Also check memoryReference field directly
-      if (dataResponse && dataResponse.memoryReference) {
+      if (dataResponse && isValidMemoryReference(dataResponse.memoryReference)) {
         console.log(`Found memoryReference: ${dataResponse.memoryReference}`);
         return dataResponse.memoryReference;
       }
@@ -442,7 +442,7 @@ export async function getStdArrayDataPointer(
             console.log(`Found internal array member: ${varName}`);
             
             // Get memoryReference from this member
-            if (v.memoryReference) {
+            if (isValidMemoryReference(v.memoryReference)) {
               dataPtr = v.memoryReference;
               console.log(`Got data pointer from ${varName}.memoryReference: ${dataPtr}`);
               break;
@@ -455,7 +455,7 @@ export async function getStdArrayDataPointer(
               });
               if (elemVars.variables && elemVars.variables.length > 0) {
                 const firstElem = elemVars.variables[0];
-                if (firstElem.memoryReference) {
+                if (isValidMemoryReference(firstElem.memoryReference)) {
                   dataPtr = firstElem.memoryReference;
                   console.log(`Got data pointer from ${varName}[0].memoryReference: ${dataPtr}`);
                   break;
@@ -471,12 +471,12 @@ export async function getStdArrayDataPointer(
           if (firstElement) {
             console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
             
-            if (firstElement.memoryReference) {
+            if (isValidMemoryReference(firstElement.memoryReference)) {
               dataPtr = firstElement.memoryReference;
               console.log(`Got data pointer from [0].memoryReference: ${dataPtr}`);
             } else if (firstElement.value) {
               const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
-              if (ptrMatch) {
+              if (ptrMatch && isValidMemoryReference(ptrMatch[0])) {
                 dataPtr = ptrMatch[0];
                 console.log(`Extracted pointer from [0] value: ${dataPtr}`);
               }
@@ -1263,12 +1263,12 @@ export async function getCStyle1DArrayDataPointer(
         if (firstElem) {
           console.log(`Found [0] element: value="${firstElem.value}", memRef="${firstElem.memoryReference}"`);
           
-          if (firstElem.memoryReference) {
+          if (isValidMemoryReference(firstElem.memoryReference)) {
             dataPtr = firstElem.memoryReference;
             console.log(`Got C-style 1D array data pointer from [0].memoryReference: ${dataPtr}`);
           } else if (firstElem.value) {
             const ptrMatch = firstElem.value.match(/0x[0-9a-fA-F]+/);
-            if (ptrMatch) {
+            if (ptrMatch && isValidMemoryReference(ptrMatch[0])) {
               dataPtr = ptrMatch[0];
               console.log(`Extracted pointer from [0] value: ${dataPtr}`);
             }
