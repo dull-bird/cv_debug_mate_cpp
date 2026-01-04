@@ -1630,7 +1630,7 @@ export async function get3DArrayDataPointer(
                             
                             if (chanVars.variables && chanVars.variables.length > 0) {
                               const firstChan = chanVars.variables[0];
-                              if (firstChan.memoryReference) {
+                              if (firstChan.memoryReference && firstChan.memoryReference !== '0x0000000000000000' && firstChan.memoryReference !== '0x0') {
                                 dataPtr = firstChan.memoryReference;
                                 console.log(`Got 3D std::array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
                                 break;
@@ -1638,7 +1638,7 @@ export async function get3DArrayDataPointer(
                             }
                           }
                           
-                          if (cv.memoryReference) {
+                          if (cv.memoryReference && cv.memoryReference !== '0x0000000000000000' && cv.memoryReference !== '0x0') {
                             dataPtr = cv.memoryReference;
                             console.log(`Got 3D std::array data pointer from [0][0].memoryReference: ${dataPtr}`);
                             break;
@@ -1648,7 +1648,7 @@ export async function get3DArrayDataPointer(
                     }
                   }
                   
-                  if (!dataPtr && firstRow.memoryReference) {
+                  if (!dataPtr && firstRow.memoryReference && firstRow.memoryReference !== '0x0000000000000000' && firstRow.memoryReference !== '0x0') {
                     dataPtr = firstRow.memoryReference;
                     console.log(`Got 3D std::array data pointer from [0].memoryReference: ${dataPtr}`);
                   }
@@ -1684,13 +1684,14 @@ export async function get3DArrayDataPointer(
                     
                     const firstChan = chanVars.variables?.find((chv: any) => chv.name === "[0]");
                     if (firstChan) {
-                      if (firstChan.memoryReference) {
+                      // Check memoryReference is valid (not null/undefined and not null pointer)
+                      if (firstChan.memoryReference && firstChan.memoryReference !== '0x0000000000000000' && firstChan.memoryReference !== '0x0') {
                         dataPtr = firstChan.memoryReference;
                         console.log(`Got 3D array data pointer from [0][0][0].memoryReference: ${dataPtr}`);
                         break;
                       } else if (firstChan.value) {
                         const ptrMatch = firstChan.value.match(/0x[0-9a-fA-F]+/);
-                        if (ptrMatch) {
+                        if (ptrMatch && ptrMatch[0] !== '0x0000000000000000' && ptrMatch[0] !== '0x0') {
                           dataPtr = ptrMatch[0];
                           console.log(`Extracted pointer from [0][0][0] value: ${dataPtr}`);
                           break;
@@ -1700,7 +1701,7 @@ export async function get3DArrayDataPointer(
                   }
                   
                   // Fallback to [0][0]'s memoryReference
-                  if (!dataPtr && firstCol.memoryReference) {
+                  if (!dataPtr && firstCol.memoryReference && firstCol.memoryReference !== '0x0000000000000000' && firstCol.memoryReference !== '0x0') {
                     dataPtr = firstCol.memoryReference;
                     console.log(`Got 3D array data pointer from [0][0].memoryReference: ${dataPtr}`);
                     break;
@@ -1709,7 +1710,7 @@ export async function get3DArrayDataPointer(
               }
               
               // Fallback to [0]'s memoryReference
-              if (!dataPtr && v.memoryReference) {
+              if (!dataPtr && v.memoryReference && v.memoryReference !== '0x0000000000000000' && v.memoryReference !== '0x0') {
                 dataPtr = v.memoryReference;
                 console.log(`Got 3D array data pointer from [0].memoryReference: ${dataPtr}`);
               }
