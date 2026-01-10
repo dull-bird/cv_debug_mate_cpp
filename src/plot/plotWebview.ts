@@ -320,12 +320,15 @@ export function getWebviewContentForPlot(
                 <button id="btnSettings" class="btn" title="Plot Settings">⚙️ Settings</button>
                 
                 <span id="info">Size: ${data.length}</span>
+                <span id="viewRange" style="font-size: 11px; color: #888; margin-left: 10px; font-family: monospace;"></span>
             </div>
         </div>
         <div id="container">
             <canvas id="plotCanvas"></canvas>
             <div id="tooltip"></div>
-            <div id="zoomRect" style="display:none; position:absolute; border:1px solid #4a9eff; background:rgba(74,158,255,0.2); pointer-events:none;"></div>
+            <div id="zoomRect" style="display:none; position:absolute; border:2px solid #4a9eff; background:rgba(74,158,255,0.15); pointer-events:none; box-shadow:0 0 8px rgba(74,158,255,0.4);">
+                <div id="zoomRectInfo" style="position:absolute; background:rgba(0,0,0,0.9); color:#fff; padding:4px 10px; border-radius:4px; font-size:11px; white-space:nowrap; border:1px solid #4a9eff; font-family:monospace; box-shadow:0 2px 8px rgba(0,0,0,0.5);"></div>
+            </div>
         </div>
         
         <!-- 设置面板 -->
@@ -421,6 +424,7 @@ export function getWebviewContentForPlot(
                     const container = document.getElementById('container');
                     const tooltip = document.getElementById('tooltip');
                     const zoomRectEl = document.getElementById('zoomRect');
+                    const zoomRectInfo = document.getElementById('zoomRectInfo');
                     
                     const btnHome = document.getElementById('btnHome');
                     const btnZoomRect = document.getElementById('btnZoomRect');
@@ -892,13 +896,15 @@ export function getWebviewContentForPlot(
                     function fromScreenX(screenX) {
                         const innerWidth = width - padding.left - padding.right;
                         if (innerWidth <= 0 || scaleX === 0) return minX;
-                        return (((screenX - padding.left) / scaleX - offsetX) / innerWidth) * rangeX + minX;
+                        const result = (((screenX - padding.left) / scaleX - offsetX) / innerWidth) * rangeX + minX;
+                        return result;
                     }
 
                     function fromScreenY(screenY) {
                         const innerHeight = height - padding.top - padding.bottom;
                         if (innerHeight <= 0 || scaleY === 0) return minY;
-                        return (((height - padding.bottom - screenY) / scaleY - offsetY) / innerHeight) * rangeY + minY;
+                        const result = (((height - padding.bottom - screenY) / scaleY - offsetY) / innerHeight) * rangeY + minY;
+                        return result;
                     }
 
                     function draw() {
@@ -1192,6 +1198,22 @@ export function getWebviewContentForPlot(
                             }
                         }
                         ctx.restore();
+                        
+                        // Update visible range display
+                        const viewRangeEl = document.getElementById('viewRange');
+                        if (viewRangeEl && plotMode !== 'hist') {
+                            const visMinX = fromScreenX(padding.left);
+                            const visMaxX = fromScreenX(width - padding.right);
+                            const visMinY = fromScreenY(height - padding.bottom);
+                            const visMaxY = fromScreenY(padding.top);
+                            const formatNum = function(val) {
+                                if (Math.abs(val) >= 1e6 || (Math.abs(val) < 1e-3 && val !== 0)) {
+                                    return val.toExponential(2);
+                                }
+                                return val.toFixed(3);
+                            };
+                            viewRangeEl.textContent = 'View: X[' + formatNum(visMinX) + ',' + formatNum(visMaxX) + '] Y[' + formatNum(visMinY) + ',' + formatNum(visMaxY) + ']';
+                        }
                     }
 
                     function resetView() {
@@ -1317,8 +1339,48 @@ export function getWebviewContentForPlot(
                                 lastMouseX = e.clientX; lastMouseY = e.clientY; draw();
                             } else if (interactionMode === 'zoomRect') {
                                 const startX = dragStartX - r.left, startY = dragStartY - r.top;
-                                zoomRectEl.style.left = Math.min(startX, mx) + 'px'; zoomRectEl.style.top = Math.min(startY, my) + 'px';
-                                zoomRectEl.style.width = Math.abs(mx - startX) + 'px'; zoomRectEl.style.height = Math.abs(my - startY) + 'px';
+                                const rectLeft = Math.min(startX, mx);
+                                const rectTop = Math.min(startY, my);
+                                const rectWidth = Math.abs(mx - startX);
+                                const rectHeight = Math.abs(my - startY);
+                                
+                                zoomRectEl.style.left = rectLeft + 'px';
+                                zoomRectEl.style.top = rectTop + 'px';
+                                zoomRectEl.style.width = rectWidth + 'px';
+                                zoomRectEl.style.height = rectHeight + 'px';
+                                
+                                // Calculate and display the data range being selected
+                                const x1 = fromScreenX(Math.min(startX, mx));
+                                const x2 = fromScreenX(Math.max(startX, mx));
+                                const y1 = fromScreenY(Math.max(startY, my));
+                                const y2 = fromScreenY(Math.min(startY, my));
+                                
+                                // Format the range info
+                                const formatNum = function(val) {
+                                    if (Math.abs(val) >= 1e6 || (Math.abs(val) < 1e-3 && val !== 0)) {
+                                        return val.toExponential(2);
+                                    }
+                                    return val.toFixed(3);
+                                };
+                                
+                                const rangeInfo = 'X: [' + formatNum(x1) + ', ' + formatNum(x2) + ']  Y: [' + formatNum(y1) + ', ' + formatNum(y2) + ']';
+                                zoomRectInfo.textContent = rangeInfo;
+                                
+                                // Position the info box intelligently
+                                // Try to place it above the rect, but if there's not enough space, place it inside at the top
+                                if (rectTop > 30) {
+                                    // Enough space above - place it above the rect
+                                    zoomRectInfo.style.top = '-26px';
+                                    zoomRectInfo.style.bottom = 'auto';
+                                } else {
+                                    // Not enough space above - place it inside at the top
+                                    zoomRectInfo.style.top = '4px';
+                                    zoomRectInfo.style.bottom = 'auto';
+                                }
+                                
+                                // Center horizontally, but keep it within bounds
+                                zoomRectInfo.style.left = '50%';
+                                zoomRectInfo.style.transform = 'translateX(-50%)';
                             }
                         } else {
                             if (mx >= padding.left && mx <= width - padding.right && my >= padding.top && my <= height - padding.bottom) {
@@ -1344,20 +1406,102 @@ export function getWebviewContentForPlot(
                                 const x2 = fromScreenX(Math.max(dragStartX - r.left, e.clientX - r.left));
                                 const y1 = fromScreenY(Math.max(dragStartY - r.top, e.clientY - r.top));
                                 const y2 = fromScreenY(Math.min(dragStartY - r.top, e.clientY - r.top));
+                                
+                                console.log('=== ZOOM OPERATION START ===');
+                                console.log('Selected range: X=[' + x1 + ', ' + x2 + '], Y=[' + y1 + ', ' + y2 + ']');
+                                console.log('Current state: minX=' + minX + ', maxX=' + maxX + ', rangeX=' + rangeX);
+                                console.log('Current state: minY=' + minY + ', maxY=' + maxY + ', rangeY=' + rangeY);
+                                console.log('Current scale: scaleX=' + scaleX + ', scaleY=' + scaleY);
+                                console.log('Current offset: offsetX=' + offsetX + ', offsetY=' + offsetY);
+                                console.log('Current padding: left=' + padding.left + ', right=' + padding.right + ', top=' + padding.top + ', bottom=' + padding.bottom);
+                                
                                 if (Math.abs(e.clientX - dragStartX) > 5) {
-                                    const iW = width - padding.left - padding.right, iH = height - padding.top - padding.bottom;
-                                    const newScaleX = iW / ((x2 - x1) / rangeX * iW);
-                                    const newScaleY = iH / ((y2 - y1) / rangeY * iH);
+                                    // IMPORTANT: Use current padding values that were used in fromScreenX/Y
+                                    const oldPaddingLeft = padding.left;
+                                    const oldPaddingBottom = padding.bottom;
+                                    const iW = width - padding.left - padding.right;
+                                    const iH = height - padding.top - padding.bottom;
+                                    console.log('Inner dimensions: iW=' + iW + ', iH=' + iH);
+                                    
+                                    // Calculate new scale based on the selected data range
+                                    const selectedRangeX = x2 - x1;
+                                    const selectedRangeY = y2 - y1;
+                                    console.log('Selected range size: X=' + selectedRangeX + ', Y=' + selectedRangeY);
+                                    
+                                    // New scale = how much we need to zoom to make the selected range fill the view
+                                    const newScaleX = rangeX / selectedRangeX;
+                                    const newScaleY = rangeY / selectedRangeY;
+                                    console.log('Calculated new scale: X=' + newScaleX + ', Y=' + newScaleY);
                                     
                                     // Limit maximum zoom to prevent excessive decimal places
-                                    scaleX = Math.min(newScaleX, MAX_ZOOM);
-                                    scaleY = Math.min(newScaleY, MAX_ZOOM);
+                                    const limitedScaleX = Math.min(newScaleX, MAX_ZOOM);
+                                    const limitedScaleY = Math.min(newScaleY, MAX_ZOOM);
+                                    console.log('Limited scale: X=' + limitedScaleX + ', Y=' + limitedScaleY);
+                                    console.log('Was zoom limited? X=' + (newScaleX > MAX_ZOOM) + ', Y=' + (newScaleY > MAX_ZOOM));
                                     
-                                    offsetX = -((x1 - minX) / rangeX * iW); offsetY = -((y1 - minY) / rangeY * iH);
+                                    // If zoom was limited, adjust the selected range to match the actual zoom
+                                    let actualSelectedRangeX = rangeX / limitedScaleX;
+                                    let actualSelectedRangeY = rangeY / limitedScaleY;
+                                    console.log('Actual visible range size: X=' + actualSelectedRangeX + ', Y=' + actualSelectedRangeY);
+                                    
+                                    // Center the limited zoom on the originally selected area
+                                    const centerX = (x1 + x2) / 2;
+                                    const centerY = (y1 + y2) / 2;
+                                    console.log('Selected center: X=' + centerX + ', Y=' + centerY);
+                                    
+                                    const adjustedX1 = centerX - actualSelectedRangeX / 2;
+                                    const adjustedY1 = centerY - actualSelectedRangeY / 2;
+                                    const adjustedX2 = centerX + actualSelectedRangeX / 2;
+                                    const adjustedY2 = centerY + actualSelectedRangeY / 2;
+                                    console.log('Adjusted range: X=[' + adjustedX1 + ', ' + adjustedX2 + '], Y=[' + adjustedY1 + ', ' + adjustedY2 + ']');
+                                    
+                                    // Update scale first
+                                    scaleX = limitedScaleX;
+                                    scaleY = limitedScaleY;
+                                    
+                                    // Calculate offset using current padding (before draw() changes it)
+                                    offsetX = -((adjustedX1 - minX) / rangeX) * iW;
+                                    offsetY = -((adjustedY1 - minY) / rangeY) * iH;
+                                    console.log('Initial offset: offsetX=' + offsetX + ', offsetY=' + offsetY);
+                                    
                                     // Invalidate tick cache when zoom changes
                                     tickCache.x.result = null;
                                     tickCache.y.result = null;
                                     draw();
+                                    
+                                    // After draw, padding may have changed! Adjust offset to compensate
+                                    const newPaddingLeft = padding.left;
+                                    const newPaddingBottom = padding.bottom;
+                                    const paddingDeltaLeft = newPaddingLeft - oldPaddingLeft;
+                                    const paddingDeltaBottom = newPaddingBottom - oldPaddingBottom;
+                                    console.log('After draw, padding changed: left delta=' + paddingDeltaLeft + ', bottom delta=' + paddingDeltaBottom);
+                                    
+                                    if (paddingDeltaLeft !== 0 || paddingDeltaBottom !== 0) {
+                                        // Recalculate offset with new padding to maintain the same visible range
+                                        const newIW = width - padding.left - padding.right;
+                                        const newIH = height - padding.top - padding.bottom;
+                                        offsetX = -((adjustedX1 - minX) / rangeX) * newIW;
+                                        offsetY = -((adjustedY1 - minY) / rangeY) * newIH;
+                                        console.log('Adjusted offset for padding change: offsetX=' + offsetX + ', offsetY=' + offsetY);
+                                        // Redraw with corrected offset
+                                        draw();
+                                    }
+                                    
+                                    // After draw, padding may have changed! Recalculate to verify
+                                    console.log('After draw, padding: left=' + padding.left + ', right=' + padding.right);
+                                    const finalIW = width - padding.left - padding.right;
+                                    const finalIH = height - padding.top - padding.bottom;
+                                    console.log('After draw, inner dimensions: iW=' + finalIW + ', iH=' + finalIH);
+                                    
+                                    // After draw, calculate and log the actual visible range
+                                    const actualVisibleMinX = fromScreenX(padding.left);
+                                    const actualVisibleMaxX = fromScreenX(width - padding.right);
+                                    const actualVisibleMinY = fromScreenY(height - padding.bottom);
+                                    const actualVisibleMaxY = fromScreenY(padding.top);
+                                    console.log('AFTER ZOOM - Actual visible range:');
+                                    console.log('  X=[' + actualVisibleMinX + ', ' + actualVisibleMaxX + ']');
+                                    console.log('  Y=[' + actualVisibleMinY + ', ' + actualVisibleMaxY + ']');
+                                    console.log('=== ZOOM OPERATION END ===');
                                 }
                                 zoomRectEl.style.display = 'none';
                             }
