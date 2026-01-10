@@ -51,10 +51,14 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 |                      | `T[N]` (C-style 1D array, numeric)      | 📈 Plot Viewer  |
 |                      | `std::set<T>` (numeric)                 | 📈 Plot Viewer  |
 |                      | `cv::Mat` (1×N or N×1, single channel)  | 📈 Plot Viewer  |
+| **Pointer Types**    | `cv::Mat*`, `cv::Matx*`                 | Same as pointee |
+|                      | `std::vector<T>*`, `std::array<T,N>*`   | Same as pointee |
 
 > **Numeric types**: `int`, `float`, `double`, `uchar`, `short`, `long`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, etc.
 
 > **Image depth**: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
+
+> **Pointer support**: Pointers to supported types (e.g., `cv::Mat*`, `std::vector<float>*`) are automatically dereferenced. A pointer and its pointee pointing to the same memory address will share the same visualization tab.
 
 ---
 

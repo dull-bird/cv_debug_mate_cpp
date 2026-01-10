@@ -51,10 +51,14 @@
 | | `T[N]` (C 风格 1D 数组, 数值类型) | 📈 曲线查看器 |
 | | `std::set<T>` (数值类型) | 📈 曲线查看器 |
 | | `cv::Mat` (1×N 或 N×1, 单通道) | 📈 曲线查看器 |
+| **指针类型** | `cv::Mat*`, `cv::Matx*` | 与指向对象相同 |
+| | `std::vector<T>*`, `std::array<T,N>*` | 与指向对象相同 |
 
 > **数值类型**: `int`, `float`, `double`, `uchar`, `short`, `long`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t` 等
 
 > **图像深度**: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
+
+> **指针支持**: 支持指向上述类型的指针（如 `cv::Mat*`、`std::vector<float>*`），会自动解引用。指向同一内存地址的指针和原始变量会共享同一个可视化标签页。
 
 ---
 
