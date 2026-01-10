@@ -6,7 +6,7 @@ import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProv
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -193,6 +193,17 @@ export function activate(context: vscode.ExtensionContext) {
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
       
+      // Check for uninitialized Point3 vector
+      if (point3Info.isPoint3 && isUninitializedVector(point3Info.size)) {
+        vscode.window.showWarningMessage(
+          `std::vector<Point3> "${variableName}" appears to be uninitialized.\n` +
+          `Detected suspicious size: ${point3Info.size}\n\n` +
+          `Please initialize the vector before visualizing it.`
+        );
+        console.warn(`std::vector<Point3> "${variableName}" appears to be uninitialized (size=${point3Info.size})`);
+        return;
+      }
+      
       // Special check for cv::Mat - check if it has suspicious member values
       if (isMatType && isUninitializedMat(variableInfo)) {
         vscode.window.showWarningMessage(
@@ -211,6 +222,28 @@ export function activate(context: vscode.ExtensionContext) {
       const vector1D = is1DVector(variableInfo);
       const set1D = is1DSet(variableInfo);
       const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
+      
+      // Check for uninitialized 1D vector
+      if (vector1D.is1D && isUninitializedVector(vector1D.size)) {
+        vscode.window.showWarningMessage(
+          `std::vector<${vector1D.elementType}> "${variableName}" appears to be uninitialized.\n` +
+          `Detected suspicious size: ${vector1D.size}\n\n` +
+          `Please initialize the vector before visualizing it.`
+        );
+        console.warn(`std::vector<${vector1D.elementType}> "${variableName}" appears to be uninitialized (size=${vector1D.size})`);
+        return;
+      }
+      
+      // Check for uninitialized 1D set
+      if (set1D.isSet && isUninitializedVector(set1D.size)) {
+        vscode.window.showWarningMessage(
+          `std::set<${set1D.elementType}> "${variableName}" appears to be uninitialized.\n` +
+          `Detected suspicious size: ${set1D.size}\n\n` +
+          `Please initialize the set before visualizing it.`
+        );
+        console.warn(`std::set<${set1D.elementType}> "${variableName}" appears to be uninitialized (size=${set1D.size})`);
+        return;
+      }
       
       // std::array detection
       // For LLDB, use the enhanced function that uses frame variable command to get more accurate type info

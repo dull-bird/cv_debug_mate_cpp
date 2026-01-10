@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -343,6 +343,18 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
 
                             // std::array<Point3f/d> - point cloud
                             if (stdArrayPoint3.isPoint3Array) {
+                                // Check for uninitialized
+                                if (isUninitializedVector(stdArrayPoint3.size)) {
+                                    const warningVar = new CVVariable(
+                                        variableName, v.type || 'std::array<Point3>', variableName, 0, v.value || '',
+                                        vscode.TreeItemCollapsibleState.None, 'pointcloud', 0, '⚠️ uninitialized',
+                                        false, undefined, undefined
+                                    );
+                                    warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                                    warningVar.tooltip = `Array appears to be uninitialized.\nSuspicious size: ${stdArrayPoint3.size}`;
+                                    warningVar.contextValue = 'cvVariable:uninitialized';
+                                    return warningVar;
+                                }
                                 kind = 'pointcloud';
                                 size = stdArrayPoint3.size;
                                 sizeInfo = size > 0 ? `${size} points` : '';
@@ -369,6 +381,18 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                         const parsed = parseInt(sizeResp.result);
                                         if (!isNaN(parsed) && parsed > 0) size = parsed;
                                     } catch (e) {}
+                                }
+                                // Check for uninitialized after getting size
+                                if (isUninitializedVector(size)) {
+                                    const warningVar = new CVVariable(
+                                        variableName, v.type || 'std::vector<Point3>', variableName, 0, v.value || '',
+                                        vscode.TreeItemCollapsibleState.None, 'pointcloud', 0, '⚠️ uninitialized',
+                                        false, undefined, undefined
+                                    );
+                                    warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                                    warningVar.tooltip = `Vector appears to be uninitialized.\nSuspicious size: ${size}`;
+                                    warningVar.contextValue = 'cvVariable:uninitialized';
+                                    return warningVar;
                                 }
                                 sizeInfo = size > 0 ? `${size} points` : '';
                             }
@@ -399,6 +423,19 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                         const parsed = parseInt(sizeResp.result);
                                         if (!isNaN(parsed) && parsed > 0) size = parsed;
                                     } catch (e) {}
+                                }
+                                // Check for uninitialized vector/set
+                                if ((vector1D.is1D || set1D.isSet) && isUninitializedVector(size)) {
+                                    const typeName = vector1D.is1D ? `std::vector<${vector1D.elementType}>` : `std::set<${set1D.elementType}>`;
+                                    const warningVar = new CVVariable(
+                                        variableName, v.type || typeName, variableName, 0, v.value || '',
+                                        vscode.TreeItemCollapsibleState.None, 'plot', 0, '⚠️ uninitialized',
+                                        false, undefined, undefined
+                                    );
+                                    warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                                    warningVar.tooltip = `Container appears to be uninitialized.\nSuspicious size: ${size}`;
+                                    warningVar.contextValue = 'cvVariable:uninitialized';
+                                    return warningVar;
                                 }
                                 sizeInfo = size > 0 ? `${size} elements` : '';
                             }

@@ -115,6 +115,48 @@ export function isUninitializedOrInvalid(value: string): boolean {
   return false;
 }
 
+/**
+ * Check if a std::vector appears to be uninitialized based on its size
+ * Returns true if the vector has suspicious size values indicating uninitialized state
+ * 
+ * For vectors, uninitialized memory typically shows:
+ * - Garbage size values (very large numbers)
+ * - MSVC patterns like 0xCCCCCCCC (3435973836)
+ * - Negative-looking values when interpreted as signed
+ */
+export function isUninitializedVector(size: number): boolean {
+  // MSVC uninitialized memory patterns
+  const msvcUninitPatterns = [
+    3435973836,  // 0xCCCCCCCC - MSVC uninitialized stack memory
+    3452816845,  // 0xCDCDCDCD - MSVC uninitialized heap memory
+    4277009102,  // 0xFEEEFEEE - MSVC freed memory
+    3131746989,  // 0xBAADF00D - MSVC LocalAlloc uninitialized
+    3735928559,  // 0xDEADBEEF - Common debug marker
+  ];
+  
+  if (msvcUninitPatterns.includes(size)) {
+    console.log(`Vector appears uninitialized: MSVC pattern detected (size=${size})`);
+    return true;
+  }
+  
+  // Extremely large size values are suspicious
+  // A vector with > 100 million elements is very unusual and likely garbage
+  // (100 million floats = 400MB, 100 million Point3f = 1.2GB)
+  if (size > 100000000) {
+    console.log(`Vector appears uninitialized: extremely large size ${size}`);
+    return true;
+  }
+  
+  // Negative size (when size_t is misinterpreted or garbage)
+  // This shouldn't happen with proper parsing, but just in case
+  if (size < 0) {
+    console.log(`Vector appears uninitialized: negative size ${size}`);
+    return true;
+  }
+  
+  return false;
+}
+
 // Function to check if the variable is a vector of cv::Point3f or cv::Point3d
 // Returns: { isPoint3: boolean, isDouble: boolean, size: number }
 // isDouble: true for Point3d (double), false for Point3f (float)
