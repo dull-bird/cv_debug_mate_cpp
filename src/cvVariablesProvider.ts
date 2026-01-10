@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -185,6 +185,58 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                 
                 for (const v of variablesResponse.variables) {
                     const variableName = v.evaluateName || v.name;
+                    
+                    // Check if variable is uninitialized or invalid
+                    const valueStr = v.value || v.result || "";
+                    if (isUninitializedOrInvalid(valueStr)) {
+                        console.warn(`Variable "${variableName}" appears to be uninitialized or invalid: ${valueStr}`);
+                        // Add a warning variable to the list
+                        const warningVar = new CVVariable(
+                            variableName,
+                            'uninitialized',
+                            variableName,
+                            0,
+                            valueStr,
+                            vscode.TreeItemCollapsibleState.None,
+                            'mat', // Use 'mat' as default kind
+                            0,
+                            '⚠️ uninitialized',
+                            false,
+                            undefined,
+                            undefined
+                        );
+                        // Override the icon and tooltip for uninitialized variables
+                        warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                        warningVar.tooltip = `Variable appears to be uninitialized or contains invalid data.\nValue: ${valueStr}`;
+                        warningVar.contextValue = 'cvVariable:uninitialized';
+                        visualizableVariables.push(warningVar);
+                        continue; // Skip further processing for this variable
+                    }
+                    
+                    // Special check for cv::Mat - check if it has suspicious member values
+                    if (isUninitializedMat(v)) {
+                        console.warn(`cv::Mat "${variableName}" appears to be uninitialized (suspicious member values)`);
+                        const warningVar = new CVVariable(
+                            variableName,
+                            v.type || 'cv::Mat',
+                            variableName,
+                            0,
+                            valueStr,
+                            vscode.TreeItemCollapsibleState.None,
+                            'mat',
+                            0,
+                            '⚠️ uninitialized Mat',
+                            false,
+                            undefined,
+                            undefined
+                        );
+                        warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                        warningVar.tooltip = `cv::Mat appears to be uninitialized.\nSuspicious values detected (e.g., datastart=<not available>, unreasonable dimensions).\nValue: ${valueStr}`;
+                        warningVar.contextValue = 'cvVariable:uninitialized';
+                        visualizableVariables.push(warningVar);
+                        continue;
+                    }
+                    
                     const isM = isMat(v);
                     const matxInfo = isMatx(v);
                     const point3 = isPoint3Vector(v);
@@ -218,6 +270,30 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                 const children = await debugSession.customRequest('variables', {
                                     variablesReference: v.variablesReference
                                 });
+                                
+                                // Check if Mat is uninitialized by examining children
+                                if (isUninitializedMatFromChildren(children.variables)) {
+                                    console.warn(`cv::Mat "${variableName}" appears to be uninitialized (from children analysis)`);
+                                    const warningVar = new CVVariable(
+                                        variableName,
+                                        v.type || 'cv::Mat',
+                                        variableName,
+                                        0,
+                                        v.value || '',
+                                        vscode.TreeItemCollapsibleState.None,
+                                        'mat',
+                                        0,
+                                        '⚠️ uninitialized',
+                                        false,
+                                        undefined,
+                                        undefined
+                                    );
+                                    warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+                                    warningVar.tooltip = `cv::Mat appears to be uninitialized.\nDetected: datastart/dataend unavailable, unreasonable dimensions, or suspicious channel count.`;
+                                    warningVar.contextValue = 'cvVariable:uninitialized';
+                                    return warningVar;
+                                }
+                                
                                 let ch = 1;
                                 let matVarRef = 0;
                                 

@@ -34,7 +34,7 @@ void demo_2d_images() {
   std::cout << "\n=== 2D Image Examples ===" << std::endl;
 
   // --- cv::Mat (standard) ---
-  cv::Mat img_bgr(480, 640, CV_8UC3);
+  cv::Mat img_bgr(4800, 6400, CV_8UC3);
   for (int y = 0; y < img_bgr.rows; y++) {
     for (int x = 0; x < img_bgr.cols; x++) {
       img_bgr.at<cv::Vec3b>(y, x) = cv::Vec3b(
@@ -89,10 +89,9 @@ void demo_2d_images() {
 
   // --- C-style 2D array (NEW!) ---
   int rawArr2D[2][3] = {{1, 2, 3}, {4, 5, 6}};
-  float rawArr2D_float[3][4] = {
-      {1.1f, 2.2f, 3.3f, 4.4f},
-      {5.5f, 6.6f, 7.7f, 8.8f},
-      {9.9f, 10.1f, 11.1f, 12.2f}};
+  float rawArr2D_float[3][4] = {{1.1f, 2.2f, 3.3f, 4.4f},
+                                {5.5f, 6.6f, 7.7f, 8.8f},
+                                {9.9f, 10.1f, 11.1f, 12.2f}};
   double rawArr2D_double[2][2] = {{1.0, 2.0}, {3.0, 4.0}};
 
   // --- C-style 1D array (NEW!) ---
@@ -128,10 +127,10 @@ void demo_2d_images() {
   uint8_t c_img_rgba[60][60][4];
   for (int y = 0; y < 60; ++y) {
     for (int x = 0; x < 60; ++x) {
-      c_img_rgba[y][x][0] = static_cast<uint8_t>(x * 255 / 60);  // R
-      c_img_rgba[y][x][1] = static_cast<uint8_t>(y * 255 / 60);  // G
-      c_img_rgba[y][x][2] = 100;                                  // B
-      c_img_rgba[y][x][3] = 255;                                  // A
+      c_img_rgba[y][x][0] = static_cast<uint8_t>(x * 255 / 60); // R
+      c_img_rgba[y][x][1] = static_cast<uint8_t>(y * 255 / 60); // G
+      c_img_rgba[y][x][2] = 100;                                // B
+      c_img_rgba[y][x][3] = 255;                                // A
     }
   }
 

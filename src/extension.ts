@@ -6,7 +6,7 @@ import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProv
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -178,8 +178,34 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      // Check for uninitialized or invalid variables first
+      const valueStr = variableInfo.result || variableInfo.value || "";
+      if (isUninitializedOrInvalid(valueStr)) {
+        vscode.window.showWarningMessage(
+          `Variable "${variableName}" appears to be uninitialized or invalid.\n` +
+          `Value: ${valueStr}\n\n` +
+          `Please initialize the variable before visualizing it.`
+        );
+        console.warn(`Variable "${variableName}" appears to be uninitialized or invalid: ${valueStr}`);
+        return;
+      }
+
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
+      
+      // Special check for cv::Mat - check if it has suspicious member values
+      if (isMatType && isUninitializedMat(variableInfo)) {
+        vscode.window.showWarningMessage(
+          `cv::Mat "${variableName}" appears to be uninitialized.\n` +
+          `Detected suspicious values:\n` +
+          `- datastart/dataend: <not available>\n` +
+          `- Unreasonable dimensions or channel count\n\n` +
+          `Please initialize the Mat before visualizing it.`
+        );
+        console.warn(`cv::Mat "${variableName}" appears to be uninitialized (suspicious member values)`);
+        return;
+      }
+      
       const matxInfo = isMatx(variableInfo);
       const is1DMatType = isLikely1DMat(variableInfo);
       const vector1D = is1DVector(variableInfo);
@@ -417,6 +443,26 @@ export function activate(context: vscode.ExtensionContext) {
         // Handle cv::Matx types
         await drawMatxImage(debugSession, variableInfo, frameId, variableName, matxInfo, reveal, shouldForce);
       } else if (isMatType) {
+        // First, check if Mat is uninitialized by examining its children
+        if (variableInfo.variablesReference > 0) {
+          try {
+            const childrenResp = await debugSession.customRequest("variables", {
+              variablesReference: variableInfo.variablesReference
+            });
+            if (isUninitializedMatFromChildren(childrenResp.variables)) {
+              vscode.window.showWarningMessage(
+                `cv::Mat "${variableName}" appears to be uninitialized.\n` +
+                `Detected: datastart/dataend unavailable, unreasonable dimensions, or suspicious channel count.\n\n` +
+                `Please initialize the Mat before visualizing it.`
+              );
+              console.warn(`cv::Mat "${variableName}" appears to be uninitialized (from children analysis)`);
+              return;
+            }
+          } catch (e) {
+            console.log("Failed to check Mat children for uninitialized state:", e);
+          }
+        }
+        
         // Confirm if it's really 1D Mat
         let matInfo = await getMatInfoFromVariables(debugSession, variableInfo.variablesReference);
         

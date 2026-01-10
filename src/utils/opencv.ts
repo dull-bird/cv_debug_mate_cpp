@@ -18,6 +18,12 @@ function isBasicNumericType(elementType: string): boolean {
 function parseSizeFromValue(variableInfo: any): number {
   const val = variableInfo.value || variableInfo.result || "";
   
+  // Check for uninitialized/invalid variable indicators
+  if (isUninitializedOrInvalid(val)) {
+    console.warn("Variable appears to be uninitialized or invalid:", val);
+    return -1; // Return -1 to indicate uninitialized
+  }
+  
   // Common patterns:
   // MSVC/cppvsdbg: "{ size=5 }" or "[5]"
   // LLDB: "size=5" or "([5])"
@@ -52,6 +58,61 @@ function parseSizeFromValue(variableInfo: any): number {
   }
   
   return 0;
+}
+
+/**
+ * Check if a variable value indicates it's uninitialized or invalid
+ * Returns true if the variable appears to be uninitialized
+ */
+export function isUninitializedOrInvalid(value: string): boolean {
+  if (!value) return false;
+  
+  const val = value.toLowerCase().trim();
+  
+  // Common uninitialized/invalid indicators
+  const uninitializedPatterns = [
+    '<uninitialized>',
+    '<invalid>',
+    '<optimized out>',
+    '<value optimized out>',
+    '<not available>',
+    '<unavailable>',
+    'uninitialized',
+    'invalid',
+    'optimized out',
+    'not available',
+    'unavailable'
+  ];
+  
+  for (const pattern of uninitializedPatterns) {
+    if (val.includes(pattern)) {
+      return true;
+    }
+  }
+  
+  // Check for MSVC debug pattern (0xCCCCCCCC, 0xCDCDCDCD, etc.)
+  // These are special values used by MSVC to mark uninitialized memory
+  if (/0x[cC]{8}/.test(value) || /0x[cCdD]{8}/.test(value)) {
+    return true;
+  }
+  
+  // Check for suspicious pointer values that might indicate uninitialized memory
+  // Common patterns: 0xcdcdcdcd, 0xcccccccc, 0xfeeefeee, 0xbaadf00d
+  const suspiciousPointers = [
+    /0xcdcdcdcd/i,
+    /0xcccccccc/i,
+    /0xfeeefeee/i,
+    /0xbaadf00d/i,
+    /0xdeadbeef/i
+  ];
+  
+  for (const pattern of suspiciousPointers) {
+    if (pattern.test(value)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // Function to check if the variable is a vector of cv::Point3f or cv::Point3d
@@ -119,6 +180,152 @@ export function isMat(variableInfo: any): boolean {
   
   console.log("isMat result:", result);
   return result;
+}
+
+/**
+ * Check if a cv::Mat appears to be uninitialized based on its member values
+ * Returns true if the Mat has suspicious values indicating uninitialized state
+ */
+export function isUninitializedMat(variableInfo: any): boolean {
+  if (!isMat(variableInfo)) {
+    return false;
+  }
+  
+  const value = variableInfo.value || variableInfo.result || "";
+  
+  // Check for explicit uninitialized markers
+  if (isUninitializedOrInvalid(value)) {
+    return true;
+  }
+  
+  // Check for suspicious Mat member values in the summary string
+  // Format: {flags:14039472, dims:1, rows:14039472, ...}
+  
+  // Try to extract rows/cols from the value string
+  const rowsMatch = value.match(/rows[:\s=]+(\d+)/i);
+  const colsMatch = value.match(/cols[:\s=]+(\d+)/i);
+  
+  if (rowsMatch || colsMatch) {
+    const rows = rowsMatch ? parseInt(rowsMatch[1]) : 0;
+    const cols = colsMatch ? parseInt(colsMatch[1]) : 0;
+    
+    // Check for unreasonably large dimensions (likely garbage values)
+    // Typical uninitialized values are in the millions or match memory addresses
+    // A reasonable image is usually < 100000 pixels in each dimension
+    if (rows > 100000 || cols > 100000) {
+      console.log(`Mat appears uninitialized: unreasonable dimensions ${rows}x${cols}`);
+      return true;
+    }
+    
+    // Check if rows or cols match common uninitialized patterns
+    // MSVC patterns: 0xCCCCCCCC (3435973836), 0xCDCDCDCD (3452816845)
+    const suspiciousValues = [
+      3435973836, // 0xCCCCCCCC
+      3452816845, // 0xCDCDCDCD
+      4277009102, // 0xFEEEFEEE
+      3131746989, // 0xBAADF00D
+      3735928559  // 0xDEADBEEF
+    ];
+    
+    if (suspiciousValues.includes(rows) || suspiciousValues.includes(cols)) {
+      console.log(`Mat appears uninitialized: suspicious value pattern ${rows} or ${cols}`);
+      return true;
+    }
+  }
+  
+  // Check flags field for suspicious patterns
+  const flagsMatch = value.match(/flags[:\s=]+(\d+)/i);
+  if (flagsMatch) {
+    const flags = parseInt(flagsMatch[1]);
+    
+    // Extract channel count from flags: channels = ((flags & CV_MAT_CN_MASK) >> CV_CN_SHIFT) + 1
+    // CV_MAT_CN_MASK = 0xFFF << 3 = 0x7FF8
+    // CV_CN_SHIFT = 3
+    const channels = (((flags & 0x7FF8) >> 3) & 0x1FF) + 1;
+    
+    // Unreasonable channel count (OpenCV supports 1-512 channels, but > 10 is very rare for images)
+    // Most images have 1, 3, or 4 channels
+    if (channels > 64) {
+      console.log(`Mat appears uninitialized: unreasonable channel count ${channels} from flags ${flags}`);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Check if a cv::Mat appears to be uninitialized by examining its child variables
+ * This is more thorough than isUninitializedMat as it checks actual member values
+ * Returns true if the Mat has suspicious values indicating uninitialized state
+ * 
+ * Conservative approach: Only flag as uninitialized when we're very confident
+ * to avoid false positives across different debuggers (LLDB/GDB/MSVC)
+ */
+export function isUninitializedMatFromChildren(children: any[]): boolean {
+  let rows = 0, cols = 0, channels = 1;
+  let flagsFound = false;
+  
+  for (const child of children) {
+    const name = child.name || "";
+    const value = child.value || "";
+    
+    if (name === 'rows') {
+      rows = parseInt(value) || 0;
+    } else if (name === 'cols') {
+      cols = parseInt(value) || 0;
+    } else if (name === 'flags') {
+      flagsFound = true;
+      const flags = parseInt(value) || 0;
+      channels = (((flags & 0x7FF8) >> 3) & 0x1FF) + 1;
+    }
+  }
+  
+  // Conservative check: Only flag as uninitialized for clearly garbage values
+  // These thresholds are chosen to be very unlikely for real images:
+  // - 100000 pixels = ~316x316 minimum, most monitors are < 8K (7680x4320)
+  // - Even 16K video is 15360x8640, so 100000 is a safe threshold
+  
+  // Check for MSVC uninitialized patterns first (most reliable)
+  // 0xCCCCCCCC = 3435973836, 0xCDCDCDCD = 3452816845
+  const msvcUninitPatterns = [3435973836, 3452816845, 4277009102, 3131746989, 3735928559];
+  if (msvcUninitPatterns.includes(rows) || msvcUninitPatterns.includes(cols)) {
+    console.log(`Mat appears uninitialized: MSVC uninitialized memory pattern detected (rows=${rows}, cols=${cols})`);
+    return true;
+  }
+  
+  // Check for extremely unreasonable dimensions (> 1 million pixels per dimension)
+  // This is very conservative - even 8K video is only 7680x4320
+  // Uninitialized memory often has values like 14039472 (from your test case)
+  if (rows > 1000000 || cols > 1000000) {
+    console.log(`Mat appears uninitialized: extremely large dimensions ${rows}x${cols}`);
+    return true;
+  }
+  
+  // Check for unreasonable channel count combined with suspicious dimensions
+  // Most real images have 1-4 channels, hyperspectral might have ~100-200
+  // channels > 512 is impossible in OpenCV (CV_CN_MAX = 512)
+  // Your test case had channels=55 with rows=14039472, which is clearly garbage
+  if (channels > 512) {
+    console.log(`Mat appears uninitialized: impossible channel count ${channels} (max is 512)`);
+    return true;
+  }
+  
+  // channels > 4 combined with very large dimensions is suspicious
+  // (hyperspectral images are usually not millions of pixels)
+  if (channels > 4 && (rows > 100000 || cols > 100000)) {
+    console.log(`Mat appears uninitialized: suspicious channel count ${channels} with large dimensions ${rows}x${cols}`);
+    return true;
+  }
+  
+  // If flags weren't found or parsed correctly, and dimensions are suspicious
+  // This can happen with uninitialized memory
+  if (!flagsFound && (rows > 100000 || cols > 100000)) {
+    console.log(`Mat appears uninitialized: no valid flags and suspicious dimensions ${rows}x${cols}`);
+    return true;
+  }
+  
+  return false;
 }
 
 // Function to check if the variable is a cv::Matx (fixed-size matrix)
