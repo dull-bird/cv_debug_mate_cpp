@@ -16,6 +16,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - **Adaptive plot tick generation**: Dynamic axis tick formatting with smart label placement, preventing overlap and improving readability for various data ranges.
 - **Real-time view range display**: Plot viewer now shows current zoom level and visible data range in an overlay.
 - **Zoom limits**: Plot viewer prevents excessive zooming to maintain usability.
+- **Multi-threaded debugging support**: Variables are now retrieved from the user's currently selected thread and stack frame in the debugger, instead of always using the main thread's top frame.
 
 ### Fixed
 

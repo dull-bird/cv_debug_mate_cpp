@@ -134,24 +134,39 @@ export function activate(context: vscode.ExtensionContext) {
       console.log(`Visualizing variable: ${variableName}, isPointer=${isPointer}, force=${shouldForce}, reveal=${reveal}`);
 
       // Get the current thread and stack frame
-      const threadsResponse = await debugSession.customRequest("threads");
-      if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
-        return;
-      }
-      const threadId = threadsResponse.threads[0].id;
+      // First, try to use the user's currently selected stack frame (important for multi-threaded debugging)
+      let frameId: number;
+      let threadId: number;
       
-      const stackTraceResponse = await debugSession.customRequest(
-        "stackTrace",
-        {
-          threadId: threadId,
-          startFrame: 0,
-          levels: 1,
+      const activeStackItem = vscode.debug.activeStackItem;
+      if (activeStackItem && 'frameId' in activeStackItem) {
+        // User has selected a specific stack frame
+        const stackFrame = activeStackItem as vscode.DebugStackFrame;
+        frameId = stackFrame.frameId;
+        threadId = stackFrame.threadId;
+        console.log(`Using user-selected stack frame: frameId=${frameId}, threadId=${threadId}`);
+      } else {
+        // Fallback: use first thread's top frame
+        const threadsResponse = await debugSession.customRequest("threads");
+        if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
+          return;
         }
-      );
-      if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
-        return;
+        threadId = threadsResponse.threads[0].id;
+        
+        const stackTraceResponse = await debugSession.customRequest(
+          "stackTrace",
+          {
+            threadId: threadId,
+            startFrame: 0,
+            levels: 1,
+          }
+        );
+        if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
+          return;
+        }
+        frameId = stackTraceResponse.stackFrames[0].id;
+        console.log(`Using fallback (first thread top frame): frameId=${frameId}, threadId=${threadId}`);
       }
-      const frameId = stackTraceResponse.stackFrames[0].id;
 
       // Pre-check if panel is fresh to avoid expensive evaluation and memory reading
       const isLLDB = debugSession.type === "lldb";

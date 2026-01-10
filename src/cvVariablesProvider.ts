@@ -155,27 +155,44 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
         }
 
         try {
-            const threadsResponse = await debugSession.customRequest('threads');
-            if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
-                this.variables = [];
-                this.groups = [];
-                return [];
+            // First, try to get the user's currently selected stack frame
+            // This is important for multi-threaded debugging
+            let frameId: number;
+            let threadId: number;
+            
+            const activeStackItem = vscode.debug.activeStackItem;
+            if (activeStackItem && 'frameId' in activeStackItem) {
+                // User has selected a specific stack frame
+                const stackFrame = activeStackItem as vscode.DebugStackFrame;
+                frameId = stackFrame.frameId;
+                threadId = stackFrame.threadId;
+                console.log(`CVVariablesProvider: Using user-selected stack frame: frameId=${frameId}, threadId=${threadId}`);
+            } else {
+                // Fallback: use first thread's top frame
+                const threadsResponse = await debugSession.customRequest('threads');
+                if (!threadsResponse || !threadsResponse.threads || threadsResponse.threads.length === 0) {
+                    this.variables = [];
+                    this.groups = [];
+                    return [];
+                }
+                
+                threadId = threadsResponse.threads[0].id;
+                const stackTraceResponse = await debugSession.customRequest('stackTrace', {
+                    threadId: threadId,
+                    startFrame: 0,
+                    levels: 1
+                });
+                
+                if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
+                    this.variables = [];
+                    this.groups = [];
+                    return [];
+                }
+                
+                frameId = stackTraceResponse.stackFrames[0].id;
+                console.log(`CVVariablesProvider: Using fallback (first thread top frame): frameId=${frameId}, threadId=${threadId}`);
             }
             
-            const threadId = threadsResponse.threads[0].id;
-            const stackTraceResponse = await debugSession.customRequest('stackTrace', {
-                threadId: threadId,
-                startFrame: 0,
-                levels: 1
-            });
-            
-            if (!stackTraceResponse || !stackTraceResponse.stackFrames || stackTraceResponse.stackFrames.length === 0) {
-                this.variables = [];
-                this.groups = [];
-                return [];
-            }
-            
-            const frameId = stackTraceResponse.stackFrames[0].id;
             const scopesResponse = await debugSession.customRequest('scopes', { frameId });
             
             const visualizableVariables: CVVariable[] = [];

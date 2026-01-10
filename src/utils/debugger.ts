@@ -163,8 +163,20 @@ export function buildSizeExpressions(
 // ============== Basic Debugger Operations ==============
 
 // Helper function to get current frame ID
+// Uses the user's currently selected stack frame in the debugger, falling back to first thread's top frame
 export async function getCurrentFrameId(debugSession: vscode.DebugSession): Promise<number> {
   try {
+    // First, try to get the user's currently selected stack frame
+    // This is important for multi-threaded debugging where the user may have selected a different thread
+    const activeStackItem = vscode.debug.activeStackItem;
+    if (activeStackItem && 'frameId' in activeStackItem) {
+      // activeStackItem is a DebugStackFrame
+      const stackFrame = activeStackItem as vscode.DebugStackFrame;
+      console.log(`Using user-selected stack frame: frameId=${stackFrame.frameId}, thread=${stackFrame.threadId}`);
+      return stackFrame.frameId;
+    }
+    
+    // Fallback: get the first thread's top frame (original behavior)
     const threadsResponse = await debugSession.customRequest("threads", {});
     if (threadsResponse.threads && threadsResponse.threads.length > 0) {
       const threadId = threadsResponse.threads[0].id;

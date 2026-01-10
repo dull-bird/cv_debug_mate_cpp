@@ -13,6 +13,8 @@
  *   - 1D Plot: std::vector<T>, std::array<T,N>, T[N] (C-style 1D array),
  *              std::set<T>, cv::Mat(1×N or N×1)
  *   - Pointers: All above types can also be visualized via pointers (e.g., cv::Mat*)
+ *   - Multi-threaded: Variables from any thread can be visualized by selecting
+ *                     the thread in the debugger
  */
 
 #include <array>
@@ -492,6 +494,119 @@ void demo_pointer_types() {
 }
 
 // ============================================================
+// SECTION 6: MULTI-THREADED DEBUGGING EXAMPLES (NEW!)
+// ============================================================
+
+// Worker thread function - processes image data
+void worker_thread_image(int thread_id) {
+  std::cout << "  Thread " << thread_id << " (Image): Starting..." << std::endl;
+  
+  // Create thread-local image
+  cv::Mat thread_img(100, 100, CV_8UC3);
+  for (int y = 0; y < thread_img.rows; y++) {
+    for (int x = 0; x < thread_img.cols; x++) {
+      // Different color based on thread_id
+      thread_img.at<cv::Vec3b>(y, x) = cv::Vec3b(
+          static_cast<uchar>((thread_id * 50 + x) % 256),
+          static_cast<uchar>((thread_id * 80 + y) % 256),
+          static_cast<uchar>(thread_id * 40 % 256));
+    }
+  }
+  cv::putText(thread_img, "Thread " + std::to_string(thread_id),
+              cv::Point(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.5,
+              cv::Scalar(255, 255, 255), 1);
+
+  // ===== BREAKPOINT HERE =====
+  // Select this thread in debugger, then view thread_img
+  int bp_thread_img = thread_id;
+  (void)bp_thread_img;
+  (void)thread_img;
+  
+  std::cout << "  Thread " << thread_id << " (Image): Done" << std::endl;
+}
+
+// Worker thread function - processes vector data
+void worker_thread_vector(int thread_id) {
+  std::cout << "  Thread " << thread_id << " (Vector): Starting..." << std::endl;
+  
+  // Create thread-local vector with unique pattern
+  std::vector<float> thread_vec(50);
+  for (size_t i = 0; i < thread_vec.size(); i++) {
+    // Different wave pattern based on thread_id
+    thread_vec[i] = sin(i * 0.2f + thread_id) * (thread_id + 1) * 10.0f;
+  }
+
+  // ===== BREAKPOINT HERE =====
+  // Select this thread in debugger, then view thread_vec
+  int bp_thread_vec = thread_id;
+  (void)bp_thread_vec;
+  (void)thread_vec;
+  
+  std::cout << "  Thread " << thread_id << " (Vector): Done" << std::endl;
+}
+
+// Worker thread function - processes point cloud data
+void worker_thread_pointcloud(int thread_id) {
+  std::cout << "  Thread " << thread_id << " (PointCloud): Starting..." << std::endl;
+  
+  // Create thread-local point cloud with unique shape
+  std::vector<cv::Point3f> thread_cloud;
+  for (int i = 0; i < 100; i++) {
+    float t = static_cast<float>(i) / 100.0f * 2.0f * M_PI;
+    // Different spiral based on thread_id
+    float radius = 2.0f + thread_id * 0.5f;
+    thread_cloud.push_back(cv::Point3f(
+        cos(t * (thread_id + 1)) * radius,
+        sin(t * (thread_id + 1)) * radius,
+        t * thread_id * 0.5f
+    ));
+  }
+
+  // ===== BREAKPOINT HERE =====
+  // Select this thread in debugger, then view thread_cloud
+  int bp_thread_cloud = thread_id;
+  (void)bp_thread_cloud;
+  (void)thread_cloud;
+  
+  std::cout << "  Thread " << thread_id << " (PointCloud): Done" << std::endl;
+}
+
+void demo_multithreaded() {
+  std::cout << "\n=== Multi-Threaded Debugging Examples ===" << std::endl;
+  std::cout << "This demo creates multiple threads with local variables." << std::endl;
+  std::cout << "To test:" << std::endl;
+  std::cout << "  1. Set breakpoints inside worker_thread_* functions" << std::endl;
+  std::cout << "  2. When stopped, select different threads in debugger" << std::endl;
+  std::cout << "  3. CV DebugMate will show variables from selected thread!" << std::endl;
+  std::cout << std::endl;
+
+  // Create threads
+  std::vector<std::thread> threads;
+  
+  // Launch image processing threads
+  for (int i = 0; i < 2; i++) {
+    threads.emplace_back(worker_thread_image, i);
+  }
+  
+  // Launch vector processing threads
+  for (int i = 2; i < 4; i++) {
+    threads.emplace_back(worker_thread_vector, i);
+  }
+  
+  // Launch point cloud processing threads
+  for (int i = 4; i < 6; i++) {
+    threads.emplace_back(worker_thread_pointcloud, i);
+  }
+
+  // Wait for all threads to complete
+  for (auto& t : threads) {
+    t.join();
+  }
+
+  std::cout << "  All threads completed!" << std::endl;
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 int main() {
@@ -507,7 +622,8 @@ int main() {
   demo_3d_pointcloud();
   demo_1d_plots();
   demo_auto_refresh();
-  demo_pointer_types();  // NEW: Pointer type examples
+  demo_pointer_types();
+  demo_multithreaded();  // NEW: Multi-threaded debugging examples
 
   std::cout << "\n=== All demos complete ===" << std::endl;
   return 0;
