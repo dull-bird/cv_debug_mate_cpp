@@ -48,10 +48,14 @@ export async function drawPlot(
   reveal: boolean = true,
   force: boolean = false,
   variableInfo?: any,
-  isSet: boolean = false
+  isSet: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
 
     // Step 1: Get metadata only (size + dataPtr) without reading full data
     let metadata: { size: number; dataPtr: string | null; bytesPerElement: number } = { size: 0, dataPtr: null, bytesPerElement: 4 };
@@ -81,8 +85,9 @@ export async function drawPlot(
       "CurvePlotViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      metadata.dataPtr || undefined  // Enable sharing panels by data pointer
     );
 
     // Step 3: Check if panel is fresh (only when not force)
@@ -94,7 +99,7 @@ export async function drawPlot(
             ? `${metadata.size}|${metadata.dataPtr}|${sample}`
             : `set:${metadata.size}`;
         
-        if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+        if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, panelName, stateToken)) {
             console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
             return;
         }
@@ -139,7 +144,7 @@ export async function drawPlot(
     const stateToken = dataPtrForToken.startsWith('set:')
         ? dataPtrForToken
         : `${initialData.length}|${dataPtrForToken}|${sample}`;
-    PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, panelName, stateToken);
 
     // If panel already has content, only send data to preserve view state
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -151,7 +156,7 @@ export async function drawPlot(
       return;
     }
 
-    panel.webview.html = getWebviewContentForPlot(variableName, initialData);
+    panel.webview.html = getWebviewContentForPlot(panelName, initialData);
 
     // Dispose old listener to avoid duplicates
     if ((panel as any)._messageListener) {
@@ -874,12 +879,16 @@ export async function drawStdArrayPlot(
     size: number,
     reveal: boolean = true,
     force: boolean = false,
-    variableInfo?: any
+    variableInfo?: any,
+    panelVariableName?: string
 ) {
+    // Use panelVariableName for panel management, variableName for data access
+    const panelName = panelVariableName || variableName;
+    
     try {
         console.log(`Drawing plot for std::array: ${variableName}, elementType=${elementType}, size=${size}`);
         
-        const panelTitle = `View: ${variableName}`;
+        const panelTitle = `View: ${panelName}`;
 
         // Get data pointer first
         const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
@@ -901,8 +910,9 @@ export async function drawStdArrayPlot(
             "CurvePlotViewer",
             panelTitle,
             debugSession.id,
-            variableName,
-            reveal
+            panelName,
+            reveal,
+            dataPtr || undefined  // Enable sharing panels by data pointer
         );
 
         // Check if panel is fresh
@@ -911,7 +921,7 @@ export async function drawStdArrayPlot(
             const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
             const stateToken = `${size}|${dataPtr}|${sample}`;
             
-            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, panelName, stateToken)) {
                 console.log(`std::array plot panel is already up-to-date`);
                 return;
             }
@@ -927,7 +937,7 @@ export async function drawStdArrayPlot(
         const totalBytes = initialData.length * bytesPerElement;
         const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
         const stateToken = `${initialData.length}|${dataPtrForToken}|${sample}`;
-        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
+        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, panelName, stateToken);
 
         // If panel already has content, only send data
         if (panel.webview.html && panel.webview.html.length > 0) {
@@ -939,7 +949,7 @@ export async function drawStdArrayPlot(
             return;
         }
 
-        panel.webview.html = getWebviewContentForPlot(variableName, initialData);
+        panel.webview.html = getWebviewContentForPlot(panelName, initialData);
 
         // Dispose old listener
         if ((panel as any)._messageListener) {
@@ -1192,12 +1202,16 @@ export async function drawCStyleArrayPlot(
     size: number,
     reveal: boolean = true,
     force: boolean = false,
-    variableInfo?: any
+    variableInfo?: any,
+    panelVariableName?: string
 ) {
+    // Use panelVariableName for panel management, variableName for data access
+    const panelName = panelVariableName || variableName;
+    
     try {
         console.log(`Drawing plot for C-style array: ${variableName}, elementType=${elementType}, size=${size}`);
         
-        const panelTitle = `View: ${variableName}`;
+        const panelTitle = `View: ${panelName}`;
 
         // Get data pointer first
         const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
@@ -1219,8 +1233,9 @@ export async function drawCStyleArrayPlot(
             "CurvePlotViewer",
             panelTitle,
             debugSession.id,
-            variableName,
-            reveal
+            panelName,
+            reveal,
+            dataPtr || undefined  // Enable sharing panels by data pointer
         );
 
         // Check if panel is fresh
@@ -1229,7 +1244,7 @@ export async function drawCStyleArrayPlot(
             const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
             const stateToken = `${size}|${dataPtr}|${sample}`;
             
-            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, variableName, stateToken)) {
+            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, panelName, stateToken)) {
                 console.log(`C-style array plot panel is already up-to-date`);
                 return;
             }
@@ -1245,7 +1260,7 @@ export async function drawCStyleArrayPlot(
         const totalBytes = initialData.length * bytesPerElement;
         const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
         const stateToken = `${initialData.length}|${dataPtrForToken}|${sample}`;
-        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, variableName, stateToken);
+        PanelManager.updateStateToken("CurvePlotViewer", debugSession.id, panelName, stateToken);
 
         // If panel already has content, only send data
         if (panel.webview.html && panel.webview.html.length > 0) {
@@ -1257,7 +1272,7 @@ export async function drawCStyleArrayPlot(
             return;
         }
 
-        panel.webview.html = getWebviewContentForPlot(variableName, initialData);
+        panel.webview.html = getWebviewContentForPlot(panelName, initialData);
 
         // Dispose old listener
         if ((panel as any)._messageListener) {

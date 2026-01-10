@@ -22,13 +22,17 @@ export async function drawPointCloud(
   variableName: string, 
   isDouble: boolean = false,
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     console.log("Drawing point cloud with debugger type:", debugSession.type);
     console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
 
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     const bytesPerPoint = isDouble ? 24 : 12;
 
     // Step 1: Get metadata only (size + dataPtr) without reading full data
@@ -46,8 +50,9 @@ export async function drawPointCloud(
       "3DPointViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      metadata.dataPtr || undefined  // Enable sharing panels by data pointer
     );
 
     // Step 3: Check if panel is fresh (only when not force)
@@ -56,7 +61,7 @@ export async function drawPointCloud(
       const sample = await getMemorySample(debugSession, metadata.dataPtr, totalBytes);
       const stateToken = `${metadata.size}|${metadata.dataPtr}|${sample}`;
       
-      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
         console.log(`PointCloud panel is already up-to-date with token: ${stateToken}`);
         return;
       }
@@ -91,7 +96,7 @@ export async function drawPointCloud(
     const totalBytes = points.length * bytesPerPoint;
     const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
     const stateToken = `${points.length}|${dataPtrForToken}|${sample}`;
-    PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("3DPointViewer", debugSession.id, panelName, stateToken);
 
     // If panel already has content, only send data to preserve view state
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -105,7 +110,7 @@ export async function drawPointCloud(
 
     panel.webview.html = getWebviewContentForPointCloud(points);
     
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
 
     // Dispose previous listener if it exists to avoid multiple listeners on reused panel
     if ((panel as any)._messageListener) {
@@ -119,7 +124,7 @@ export async function drawPointCloud(
           try {
             const plyData = generatePLYContent(points, message.format);
             const uri = await vscode.window.showSaveDialog({
-              defaultUri: vscode.Uri.file(`${variableName}.ply`),
+              defaultUri: vscode.Uri.file(`${panelName}.ply`),
               filters: {
                 "PLY Files": ["ply"],
                 "All Files": ["*"]
@@ -136,9 +141,9 @@ export async function drawPointCloud(
             console.error("Error saving PLY:", error);
           }
         } else if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
         }
       },
       undefined,
@@ -499,12 +504,16 @@ export async function drawStdArrayPointCloud(
   size: number,
   isDouble: boolean = false,
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     console.log(`Drawing std::array point cloud: ${variableName}, size=${size}, isDouble=${isDouble}`);
 
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     const bytesPerPoint = isDouble ? 24 : 12; // Point3d: 3*8=24, Point3f: 3*4=12
 
     // Get frame ID
@@ -518,8 +527,9 @@ export async function drawStdArrayPointCloud(
       "3DPointViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      dataPtr || undefined  // Enable sharing panels by data pointer
     );
 
     // Check if panel is fresh
@@ -528,7 +538,7 @@ export async function drawStdArrayPointCloud(
       const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
       const stateToken = `${size}|${dataPtr}|${sample}`;
       
-      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, variableName, stateToken)) {
+      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
         console.log(`std::array PointCloud panel is already up-to-date`);
         return;
       }
@@ -577,7 +587,7 @@ export async function drawStdArrayPointCloud(
     const totalBytes = points.length * bytesPerPoint;
     const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
     const stateToken = `${points.length}|${dataPtrForToken}|${sample}`;
-    PanelManager.updateStateToken("3DPointViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("3DPointViewer", debugSession.id, panelName, stateToken);
 
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -591,7 +601,7 @@ export async function drawStdArrayPointCloud(
 
     panel.webview.html = getWebviewContentForPointCloud(points);
     
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
 
     // Dispose previous listener
     if ((panel as any)._messageListener) {
@@ -605,7 +615,7 @@ export async function drawStdArrayPointCloud(
           try {
             const plyData = generatePLYContent(points, message.format);
             const uri = await vscode.window.showSaveDialog({
-              defaultUri: vscode.Uri.file(`${variableName}.ply`),
+              defaultUri: vscode.Uri.file(`${panelName}.ply`),
               filters: {
                 "PLY Files": ["ply"],
                 "All Files": ["*"]
@@ -622,9 +632,9 @@ export async function drawStdArrayPointCloud(
             console.error("Error saving PLY:", error);
           }
         } else if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
         }
       },
       undefined,

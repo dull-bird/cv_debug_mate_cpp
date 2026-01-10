@@ -6,6 +6,67 @@ const BASIC_NUMERIC_TYPES = [
   'int16_t', 'uint16_t', 'int8_t', 'uint8_t', 'size_t'
 ];
 
+// ============== Pointer Type Support ==============
+
+/**
+ * Check if a type string represents a pointer to a supported type.
+ * Returns the base type (without pointer) if it's a pointer, null otherwise.
+ * 
+ * Supported pointer patterns:
+ * - cv::Mat *
+ * - cv::Mat*
+ * - cv::Mat_ *
+ * - std::vector<T> *
+ * - std::array<T, N> *
+ * - cv::Matx<T, m, n> *
+ * - etc.
+ */
+export function isPointerType(type: string): { isPointer: boolean; baseType: string } {
+  if (!type) return { isPointer: false, baseType: "" };
+  
+  // Normalize the type string
+  const normalizedType = type.trim();
+  
+  // Check for pointer patterns:
+  // - "type *" or "type*"
+  // - "type * const" or "type *const"
+  // - "const type *" or "const type*"
+  const pointerMatch = normalizedType.match(/^(.*?)\s*\*\s*(const)?$/);
+  
+  if (pointerMatch) {
+    let baseType = pointerMatch[1].trim();
+    // Remove leading 'const' if present
+    baseType = baseType.replace(/^const\s+/, '').trim();
+    return { isPointer: true, baseType };
+  }
+  
+  return { isPointer: false, baseType: "" };
+}
+
+/**
+ * Get the canonical variable name for panel management.
+ * For pointers, this returns the dereferenced name (e.g., "*pMat" -> "pMat").
+ * For regular variables, returns the name as-is.
+ * This ensures that a pointer and its pointee share the same panel.
+ */
+export function getCanonicalVariableName(variableName: string, isPointer: boolean): string {
+  if (!isPointer) return variableName;
+  
+  // For pointers, we use the pointer variable name as the canonical name
+  // This way, both "mat" and "pMat" (where pMat = &mat) can share the same panel
+  // if they point to the same data
+  return variableName;
+}
+
+/**
+ * Get the expression to evaluate for a pointer variable.
+ * For pointers, we need to dereference them to get the actual value.
+ */
+export function getPointerEvaluateExpression(variableName: string, isPointer: boolean): string {
+  if (!isPointer) return variableName;
+  return `(*${variableName})`;
+}
+
 function isBasicNumericType(elementType: string): boolean {
   return BASIC_NUMERIC_TYPES.some(t => 
     elementType === t || 

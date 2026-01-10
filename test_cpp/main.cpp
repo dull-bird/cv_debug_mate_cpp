@@ -12,6 +12,7 @@
  *   - 3D Point Cloud: std::vector<cv::Point3f/3d>, std::array<cv::Point3f/3d,N>
  *   - 1D Plot: std::vector<T>, std::array<T,N>, T[N] (C-style 1D array),
  *              std::set<T>, cv::Mat(1×N or N×1)
+ *   - Pointers: All above types can also be visualized via pointers (e.g., cv::Mat*)
  */
 
 #include <array>
@@ -396,6 +397,101 @@ void demo_auto_refresh() {
 }
 
 // ============================================================
+// SECTION 5: POINTER TYPE EXAMPLES (NEW!)
+// ============================================================
+void demo_pointer_types() {
+  std::cout << "\n=== Pointer Type Examples ===" << std::endl;
+  std::cout << "Pointers to supported types can also be visualized!" << std::endl;
+
+  // --- cv::Mat pointer ---
+  cv::Mat mat_original(100, 150, CV_8UC3);
+  for (int y = 0; y < mat_original.rows; y++) {
+    for (int x = 0; x < mat_original.cols; x++) {
+      mat_original.at<cv::Vec3b>(y, x) = cv::Vec3b(
+          static_cast<uchar>(x * 255 / mat_original.cols),
+          static_cast<uchar>(y * 255 / mat_original.rows),
+          128);
+    }
+  }
+  cv::putText(mat_original, "Original", cv::Point(10, 30),
+              cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
+  
+  cv::Mat* pMat = &mat_original;  // Pointer to Mat
+  
+  // --- std::vector pointer ---
+  std::vector<float> vec_original(100);
+  for (size_t i = 0; i < vec_original.size(); i++) {
+    vec_original[i] = sin(i * 0.1f) * 50.0f;
+  }
+  std::vector<float>* pVec = &vec_original;  // Pointer to vector
+  
+  // --- Point cloud pointer ---
+  std::vector<cv::Point3f> cloud_original;
+  for (int i = 0; i < 200; i++) {
+    float t = static_cast<float>(i) / 200.0f * 2.0f * M_PI;
+    cloud_original.push_back(cv::Point3f(
+        cos(t) * 3.0f,
+        sin(t) * 3.0f,
+        static_cast<float>(i) / 200.0f * 5.0f
+    ));
+  }
+  std::vector<cv::Point3f>* pCloud = &cloud_original;  // Pointer to point cloud
+  
+  // --- cv::Matx pointer ---
+  cv::Matx33f matx_original(
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+      7.0f, 8.0f, 9.0f
+  );
+  cv::Matx33f* pMatx = &matx_original;  // Pointer to Matx
+  
+  // --- std::array pointer ---
+  std::array<double, 50> array_original;
+  for (size_t i = 0; i < array_original.size(); i++) {
+    array_original[i] = cos(i * 0.15) * 30.0;
+  }
+  std::array<double, 50>* pArray = &array_original;  // Pointer to std::array
+  
+  // --- 2D std::array pointer ---
+  std::array<std::array<int, 5>, 4> array2d_original = {{
+      {1, 2, 3, 4, 5},
+      {6, 7, 8, 9, 10},
+      {11, 12, 13, 14, 15},
+      {16, 17, 18, 19, 20}
+  }};
+  std::array<std::array<int, 5>, 4>* pArray2D = &array2d_original;  // Pointer to 2D array
+
+  std::cout << "  mat_original: " << mat_original.cols << "x" << mat_original.rows << " CV_8UC3" << std::endl;
+  std::cout << "  pMat: pointer to mat_original" << std::endl;
+  std::cout << "  vec_original: " << vec_original.size() << " floats" << std::endl;
+  std::cout << "  pVec: pointer to vec_original" << std::endl;
+  std::cout << "  cloud_original: " << cloud_original.size() << " Point3f" << std::endl;
+  std::cout << "  pCloud: pointer to cloud_original" << std::endl;
+  std::cout << "  pMatx: pointer to Matx33f" << std::endl;
+  std::cout << "  pArray: pointer to std::array<double, 50>" << std::endl;
+  std::cout << "  pArray2D: pointer to std::array<std::array<int, 5>, 4>" << std::endl;
+  std::cout << std::endl;
+  std::cout << "  Note: Both the original variable and its pointer" << std::endl;
+  std::cout << "        will share the same visualization tab!" << std::endl;
+
+  // ===== BREAKPOINT HERE =====
+  int bp5 = 0; // Set breakpoint here to view pointer types
+  (void)bp5;
+  (void)mat_original;
+  (void)pMat;
+  (void)vec_original;
+  (void)pVec;
+  (void)cloud_original;
+  (void)pCloud;
+  (void)matx_original;
+  (void)pMatx;
+  (void)array_original;
+  (void)pArray;
+  (void)array2d_original;
+  (void)pArray2D;
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 int main() {
@@ -411,6 +507,7 @@ int main() {
   demo_3d_pointcloud();
   demo_1d_plots();
   demo_auto_refresh();
+  demo_pointer_types();  // NEW: Pointer type examples
 
   std::cout << "\n=== All demos complete ===" << std::endl;
   return 0;

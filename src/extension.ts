@@ -6,7 +6,7 @@ import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProv
 import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -119,11 +119,19 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     try {
-      const variableName = variable.evaluateName || variable.name;
+      let variableName = variable.evaluateName || variable.name;
       // If variable contains skipToken, we treat it as a force refresh
       const shouldForce = force || variable.skipToken;
       
-      console.log(`Visualizing variable: ${variableName}, force=${shouldForce}, reveal=${reveal}`);
+      // Check if this is a pointer type from CVVariable
+      const isPointer = variable.isPointer || false;
+      const baseType = variable.baseType || "";
+      
+      // For panel management, use the original variable name (without dereference)
+      // This ensures pointer and its pointee share the same panel
+      const panelVariableName = variable.name || variableName.replace(/^\(\*/, '').replace(/\)$/, '');
+      
+      console.log(`Visualizing variable: ${variableName}, isPointer=${isPointer}, force=${shouldForce}, reveal=${reveal}`);
 
       // Get the current thread and stack frame
       const threadsResponse = await debugSession.customRequest("threads");
@@ -163,6 +171,11 @@ export function activate(context: vscode.ExtensionContext) {
             variablesReference: evalResult.variablesReference || variable.variablesReference,
             evaluateName: variableName
           };
+          
+          // For pointers, update the type to the base type for type checking
+          if (isPointer && baseType) {
+            variableInfo.type = baseType;
+          }
         } else {
           const evalContext = getEvaluateContext(debugSession);
           variableInfo = await debugSession.customRequest("evaluate", {
@@ -171,6 +184,11 @@ export function activate(context: vscode.ExtensionContext) {
             context: evalContext,
           });
           variableInfo.evaluateName = variableName;
+          
+          // For pointers, update the type to the base type for type checking
+          if (isPointer && baseType) {
+            variableInfo.type = baseType;
+          }
         }
       } catch (e) {
         // If evaluation fails, the variable might be out of scope
@@ -443,38 +461,38 @@ export function activate(context: vscode.ExtensionContext) {
 
       // std::array<Point3f/d> - point cloud
       if (stdArrayPoint3.isPoint3Array) {
-        await drawStdArrayPointCloud(debugSession, variableInfo, variableName, stdArrayPoint3.size, stdArrayPoint3.isDouble, reveal, shouldForce);
+        await drawStdArrayPointCloud(debugSession, variableInfo, variableName, stdArrayPoint3.size, stdArrayPoint3.isDouble, reveal, shouldForce, panelVariableName);
       }
       // std::array 1D - plot
       else if (stdArray1D.is1DArray) {
-        await drawStdArrayPlot(debugSession, variableName, stdArray1D.elementType, stdArray1D.size, reveal, shouldForce, variableInfo);
+        await drawStdArrayPlot(debugSession, variableName, stdArray1D.elementType, stdArray1D.size, reveal, shouldForce, variableInfo, panelVariableName);
       }
       // C-style 1D array - plot
       else if (cStyleArray1D.is1DArray) {
-        await drawCStyleArrayPlot(debugSession, variableName, cStyleArray1D.elementType, cStyleArray1D.size, reveal, shouldForce, variableInfo);
+        await drawCStyleArrayPlot(debugSession, variableName, cStyleArray1D.elementType, cStyleArray1D.size, reveal, shouldForce, variableInfo, panelVariableName);
       }
       // 3D C-style array - multi-channel image
       else if (cStyleArray3D.is3DArray) {
-        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray3D, reveal, shouldForce);
+        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray3D, reveal, shouldForce, panelVariableName);
       }
       // 3D std::array - multi-channel image
       else if (stdArray3D.is3DArray) {
-        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, stdArray3D, reveal, shouldForce);
+        await draw3DArrayImage(debugSession, variableInfo, frameId, variableName, stdArray3D, reveal, shouldForce, panelVariableName);
       }
       // std::array 2D - image
       else if (stdArray2D.is2DArray) {
-        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, stdArray2D, reveal, shouldForce);
+        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, stdArray2D, reveal, shouldForce, panelVariableName);
       }
       // C-style 2D array - image
       else if (cStyleArray2D.is2DArray) {
-        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray2D, reveal, shouldForce);
+        await draw2DStdArrayImage(debugSession, variableInfo, frameId, variableName, cStyleArray2D, reveal, shouldForce, panelVariableName);
       }
       // std::vector<Point3f/d> - point cloud
       else if (point3Info.isPoint3) {
-        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal, shouldForce);
+        await drawPointCloud(debugSession, variableInfo, variableName, point3Info.isDouble, reveal, shouldForce, panelVariableName);
       } else if (matxInfo.isMatx) {
         // Handle cv::Matx types
-        await drawMatxImage(debugSession, variableInfo, frameId, variableName, matxInfo, reveal, shouldForce);
+        await drawMatxImage(debugSession, variableInfo, frameId, variableName, matxInfo, reveal, shouldForce, panelVariableName);
       } else if (isMatType) {
         // First, check if Mat is uninitialized by examining its children
         if (variableInfo.variablesReference > 0) {
@@ -519,14 +537,14 @@ export function activate(context: vscode.ExtensionContext) {
           SyncManager.markAs1D(variableName, matInfo.rows * matInfo.cols);
           cvVariablesProvider.refresh();
           
-          await drawPlot(debugSession, variableName, matInfo, reveal, shouldForce);
+          await drawPlot(debugSession, variableName, matInfo, reveal, shouldForce, undefined, false, panelVariableName);
         } else {
-          await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal, shouldForce);
+          await drawMatImage(debugSession, variableInfo, frameId, variableName, reveal, shouldForce, panelVariableName);
         }
       } else if (vector1D.is1D) {
-        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce, variableInfo, false);
+        await drawPlot(debugSession, variableName, vector1D.elementType, reveal, shouldForce, variableInfo, false, panelVariableName);
       } else if (set1D.isSet) {
-        await drawPlot(debugSession, variableName, set1D.elementType, reveal, shouldForce, variableInfo, true);
+        await drawPlot(debugSession, variableName, set1D.elementType, reveal, shouldForce, variableInfo, true, panelVariableName);
       } else {
         if (reveal) {
           vscode.window.showErrorMessage(
@@ -536,7 +554,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
       
       // Successfully visualized, mark this panel as up-to-date for the current debug version
-      PanelManager.markAsRefreshed(viewType, debugSession.id, variableName);
+      PanelManager.markAsRefreshed(viewType, debugSession.id, panelVariableName);
       
       console.log("========== OpenCV Visualizer End ==========");
     } catch (error: any) {

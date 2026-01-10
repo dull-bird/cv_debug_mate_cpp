@@ -20,8 +20,12 @@ export async function drawMatImage(
   frameId: number,
   variableName: string,
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     const usingLLDB = isUsingLLDB(debugSession);
     console.log("Drawing Mat image with debugger type:", debugSession.type);
@@ -133,22 +137,24 @@ export async function drawMatImage(
     const bytesPerElement = getBytesPerElement(depth);
     const totalBytes = rows * cols * channels * bytesPerElement;
 
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     // Check if panel is already fresh with this hard state token
     // Now including memory sampling to detect internal pixel changes
     // BUT only skip if it's NOT a focus-triggered refresh
     const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
     const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
     
+    // Pass dataPtr to enable panel sharing between variables pointing to the same data
     const panel = PanelManager.getOrCreatePanel(
       "MatImageViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      dataPtr  // Enable sharing panels by data pointer
     );
 
-    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, panelName, stateToken)) {
       console.log(`Mat panel is already up-to-date with token: ${stateToken}`);
       return;
     }
@@ -198,7 +204,7 @@ export async function drawMatImage(
     );
 
     // Update state token AFTER data is read
-    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
 
     // If panel already has content, only send data to preserve view state (zoom/pan)
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -493,8 +499,12 @@ export async function drawMatxImage(
   variableName: string,
   matxInfo: { isMatx: boolean; rows: number; cols: number; depth: number },
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     const { rows, cols, depth } = matxInfo;
     const channels = 1; // Matx is always single-channel (the element type determines this)
@@ -504,7 +514,7 @@ export async function drawMatxImage(
     
     console.log(`Drawing Matx image: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
     
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     
     // Get data pointer from the 'val' member of Matx
     let dataPtr: string | null = null;
@@ -587,11 +597,12 @@ export async function drawMatxImage(
       "MatImageViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      dataPtr  // Enable sharing panels by data pointer
     );
 
-    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, panelName, stateToken)) {
       console.log(`Matx panel is already up-to-date with token: ${stateToken}`);
       return;
     }
@@ -611,7 +622,7 @@ export async function drawMatxImage(
     );
     
     // Update state token
-    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
     
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -636,7 +647,7 @@ export async function drawMatxImage(
       { base64: "" }
     );
     
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
     
     if ((panel as any)._syncListener) {
       (panel as any)._syncListener.dispose();
@@ -678,8 +689,12 @@ export async function draw2DStdArrayImage(
   variableName: string,
   arrayInfo: { is2DArray: boolean; rows: number; cols: number; elementType: string; depth: number },
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     const { rows, cols, depth } = arrayInfo;
     const channels = 1; // 2D array is treated as single-channel
@@ -689,7 +704,7 @@ export async function draw2DStdArrayImage(
     
     console.log(`Drawing 2D std::array image: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
     
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     
     // Get data pointer
     // Determine if this is a C-style array or std::array based on type information
@@ -713,11 +728,12 @@ export async function draw2DStdArrayImage(
       "MatImageViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      dataPtr  // Enable sharing panels by data pointer
     );
 
-    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, panelName, stateToken)) {
       console.log(`2D std::array panel is already up-to-date with token: ${stateToken}`);
       return;
     }
@@ -737,7 +753,7 @@ export async function draw2DStdArrayImage(
     );
     
     // Update state token
-    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
     
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -762,7 +778,7 @@ export async function draw2DStdArrayImage(
       { base64: "" }
     );
     
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
     
     if ((panel as any)._syncListener) {
       (panel as any)._syncListener.dispose();
@@ -813,8 +829,12 @@ export async function draw3DArrayImage(
     depth: number 
   },
   reveal: boolean = true,
-  force: boolean = false
+  force: boolean = false,
+  panelVariableName?: string
 ) {
+  // Use panelVariableName for panel management, variableName for data access
+  const panelName = panelVariableName || variableName;
+  
   try {
     const { height, width, channels, depth } = arrayInfo;
     const rows = height;
@@ -831,7 +851,7 @@ export async function draw3DArrayImage(
       return;
     }
     
-    const panelTitle = `View: ${variableName}`;
+    const panelTitle = `View: ${panelName}`;
     
     // Determine if this is a C-style array or std::array based on type information
     const isCStyleArray = variableInfo.type && /\[\s*\d+\s*\]\s*\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(variableInfo.type);
@@ -852,11 +872,12 @@ export async function draw3DArrayImage(
       "MatImageViewer",
       panelTitle,
       debugSession.id,
-      variableName,
-      reveal
+      panelName,
+      reveal,
+      dataPtr  // Enable sharing panels by data pointer
     );
 
-    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, variableName, stateToken)) {
+    if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, panelName, stateToken)) {
       console.log(`3D array panel is already up-to-date with token: ${stateToken}`);
       return;
     }
@@ -876,7 +897,7 @@ export async function draw3DArrayImage(
     );
     
     // Update state token
-    PanelManager.updateStateToken("MatImageViewer", debugSession.id, variableName, stateToken);
+    PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
     
     // If panel already has content, only send data to preserve view state (zoom/pan)
     if (panel.webview.html && panel.webview.html.length > 0) {
@@ -901,7 +922,7 @@ export async function draw3DArrayImage(
       { base64: "" }
     );
     
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
     
     // Dispose previous listener if it exists to avoid multiple listeners on reused panel
     if ((panel as any)._syncListener) {
@@ -911,10 +932,10 @@ export async function draw3DArrayImage(
     (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
           // Manual reload triggered from webview
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
         }
       }
     );

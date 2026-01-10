@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 
 const COLORS = [
@@ -49,10 +49,12 @@ export class CVVariable extends vscode.TreeItem {
         public readonly sizeInfo: string = '',
         public isPaired: boolean = false,
         public pairedWith?: string,
-        public groupIndex?: number
+        public groupIndex?: number,
+        public readonly isPointer: boolean = false,
+        public readonly baseType: string = ''
     ) {
         super(name, collapsibleState);
-        this.tooltip = `${this.name}: ${this.type}${this.pairedWith ? ` (Paired with ${this.pairedWith})` : ''}`;
+        this.tooltip = `${this.name}: ${this.type}${this.pairedWith ? ` (Paired with ${this.pairedWith})` : ''}${this.isPointer ? ' (pointer)' : ''}`;
         
         let typeIcon = 'file-media';
         if (kind === 'pointcloud') typeIcon = 'layers';
@@ -61,16 +63,17 @@ export class CVVariable extends vscode.TreeItem {
         this.isEmpty = (sizeInfo === '0' || sizeInfo === '0x0' || sizeInfo === '' || size === 0);
         const displaySize = this.isEmpty ? 'empty' : sizeInfo;
         
-        // Only show size in description, no type
-        this.description = `[${displaySize}]`;
+        // Show pointer indicator in description
+        const pointerIndicator = this.isPointer ? '→ ' : '';
+        this.description = `${pointerIndicator}[${displaySize}]`;
 
         if (isPaired && groupIndex !== undefined && kind !== 'plot') {
             const color = COLORS[groupIndex % COLORS.length];
             this.iconPath = getColoredIcon(kind, color);
-            this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}`;
+            this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
         } else {
             this.iconPath = new vscode.ThemeIcon(typeIcon);
-            this.contextValue = `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}`;
+            this.contextValue = `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
         }
 
         if (!this.isEmpty) {
@@ -186,6 +189,9 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                 for (const v of variablesResponse.variables) {
                     const variableName = v.evaluateName || v.name;
                     
+                    // Check if this is a pointer type
+                    const pointerInfo = isPointerType(v.type || "");
+                    
                     // Check if variable is uninitialized or invalid
                     const valueStr = v.value || v.result || "";
                     if (isUninitializedOrInvalid(valueStr)) {
@@ -203,7 +209,9 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             '⚠️ uninitialized',
                             false,
                             undefined,
-                            undefined
+                            undefined,
+                            pointerInfo.isPointer,
+                            pointerInfo.baseType
                         );
                         // Override the icon and tooltip for uninitialized variables
                         warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
@@ -213,8 +221,30 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                         continue; // Skip further processing for this variable
                     }
                     
+                    // For pointer types, we need to check the dereferenced type
+                    // Create a virtual variableInfo with the base type for type checking
+                    let typeCheckInfo = v;
+                    let actualEvaluateName = variableName;
+                    
+                    if (pointerInfo.isPointer) {
+                        // Check if pointer is null
+                        const ptrValue = v.value || "";
+                        if (ptrValue === "0x0" || ptrValue === "0x0000000000000000" || ptrValue === "nullptr" || ptrValue === "NULL" || ptrValue === "0") {
+                            console.log(`Pointer "${variableName}" is null, skipping`);
+                            continue;
+                        }
+                        
+                        // Create a virtual type info with the base type for type checking
+                        typeCheckInfo = {
+                            ...v,
+                            type: pointerInfo.baseType
+                        };
+                        actualEvaluateName = `(*${variableName})`;
+                        console.log(`Detected pointer type: ${v.type} -> base type: ${pointerInfo.baseType}`);
+                    }
+                    
                     // Special check for cv::Mat - check if it has suspicious member values
-                    if (isUninitializedMat(v)) {
+                    if (isUninitializedMat(typeCheckInfo)) {
                         console.warn(`cv::Mat "${variableName}" appears to be uninitialized (suspicious member values)`);
                         const warningVar = new CVVariable(
                             variableName,
@@ -228,7 +258,9 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             '⚠️ uninitialized Mat',
                             false,
                             undefined,
-                            undefined
+                            undefined,
+                            pointerInfo.isPointer,
+                            pointerInfo.baseType
                         );
                         warningVar.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
                         warningVar.tooltip = `cv::Mat appears to be uninitialized.\nSuspicious values detected (e.g., datastart=<not available>, unreasonable dimensions).\nValue: ${valueStr}`;
@@ -237,25 +269,45 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                         continue;
                     }
                     
-                    const isM = isMat(v);
-                    const matxInfo = isMatx(v);
-                    const point3 = isPoint3Vector(v);
-                    const vector1D = is1DVector(v);
-                    const set1D = is1DSet(v);
+                    const isM = isMat(typeCheckInfo);
+                    const matxInfo = isMatx(typeCheckInfo);
+                    const point3 = isPoint3Vector(typeCheckInfo);
+                    const vector1D = is1DVector(typeCheckInfo);
+                    const set1D = is1DSet(typeCheckInfo);
                     // std::array detection
-                    const stdArray2D = is2DStdArray(v);
-                    const stdArray1D = is1DStdArray(v);
-                    const stdArrayPoint3 = isPoint3StdArray(v);
-                    const stdArray3D = is3DStdArray(v);
+                    const stdArray2D = is2DStdArray(typeCheckInfo);
+                    const stdArray1D = is1DStdArray(typeCheckInfo);
+                    const stdArrayPoint3 = isPoint3StdArray(typeCheckInfo);
+                    const stdArray3D = is3DStdArray(typeCheckInfo);
                     // C-style array detection
-                    const cStyleArray2D = is2DCStyleArray(v);
-                    const cStyleArray1D = is1DCStyleArray(v);
-                    const cStyleArray3D = is3DCStyleArray(v);
+                    const cStyleArray2D = is2DCStyleArray(typeCheckInfo);
+                    const cStyleArray1D = is1DCStyleArray(typeCheckInfo);
+                    const cStyleArray3D = is3DCStyleArray(typeCheckInfo);
 
                     const checkVariable = async (): Promise<CVVariable | null> => {
-                        let is1DM = isLikely1DMat(v);
+                        let is1DM = isLikely1DMat(typeCheckInfo);
                         const confirmed1DSize = SyncManager.getConfirmed1DSize(variableName);
                         let r = 0, c = 0;
+                        
+                        // For pointers, we need to get the dereferenced variable info
+                        let varRefToUse = v.variablesReference;
+                        if (pointerInfo.isPointer && v.variablesReference > 0) {
+                            try {
+                                // Get the dereferenced variable's children
+                                const derefChildren = await debugSession.customRequest('variables', {
+                                    variablesReference: v.variablesReference
+                                });
+                                // For pointers, the first child is usually the dereferenced value
+                                if (derefChildren.variables && derefChildren.variables.length > 0) {
+                                    const derefVar = derefChildren.variables[0];
+                                    if (derefVar.variablesReference > 0) {
+                                        varRefToUse = derefVar.variablesReference;
+                                    }
+                                }
+                            } catch (e) {
+                                console.log(`Failed to get dereferenced variable info for ${variableName}:`, e);
+                            }
+                        }
                         
                         if (isM) {
                             const dimMatch = v.value.match(/\[\s*(\d+)\s*x\s*(\d+)\s*\]/) || v.value.match(/(\d+)\s*x\s*(\d+)/);
@@ -265,10 +317,10 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             }
                         }
 
-                        if (isM && v.variablesReference > 0 && (r === 0 || c === 0 || (!is1DM.is1D && confirmed1DSize === undefined))) {
+                        if (isM && varRefToUse > 0 && (r === 0 || c === 0 || (!is1DM.is1D && confirmed1DSize === undefined))) {
                             try {
                                 const children = await debugSession.customRequest('variables', {
-                                    variablesReference: v.variablesReference
+                                    variablesReference: varRefToUse
                                 });
                                 
                                 // Check if Mat is uninitialized by examining children
@@ -481,7 +533,7 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                             return new CVVariable(
                                 v.name,
                                 v.type,
-                                variableName,
+                                pointerInfo.isPointer ? actualEvaluateName : variableName,
                                 v.variablesReference,
                                 v.value,
                                 vscode.TreeItemCollapsibleState.None,
@@ -490,7 +542,9 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                 sizeInfo,
                                 pairedVars.length > 0,
                                 pairedVars.length > 0 ? pairedVars.join(', ') : undefined,
-                                groupIndex
+                                groupIndex,
+                                pointerInfo.isPointer,
+                                pointerInfo.baseType
                             );
                         }
                         return null;
