@@ -15,9 +15,19 @@ export class PanelManager {
 
     /**
      * Increment the debug state version to track steps.
+     * Also clears the data pointer mappings since memory addresses may change between steps.
      */
     static incrementDebugStateVersion() {
         this.currentDebugStateVersion++;
+        // Clear data pointer mappings on each debug step
+        // This prevents stale pointer addresses from incorrectly matching new variables
+        // that happen to get the same memory address after the original was freed
+        this.dataPtrToKey.clear();
+        
+        // Also clear the dataPtr from all panel entries
+        for (const entry of this.panels.values()) {
+            entry.dataPtr = undefined;
+        }
     }
 
     /**

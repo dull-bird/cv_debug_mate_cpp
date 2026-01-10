@@ -17,6 +17,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - **Real-time view range display**: Plot viewer now shows current zoom level and visible data range in an overlay.
 - **Zoom limits**: Plot viewer prevents excessive zooming to maintain usability.
 
+### Fixed
+
+- **Memory address reuse safety**: Clear pointer-to-panel mappings on each debug step to prevent stale memory addresses from incorrectly matching new variables after the original was freed.
+
 ### Changed
 
 - Improved Y-axis label measurement for better tick formatting in plots.
