@@ -4,6 +4,46 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.35] - 2025-01-10
+
+### Added
+
+- **Pointer type support**: Visualize pointers to supported types (`cv::Mat*`, `std::vector<T>*`, `std::array<T,N>*`, etc.). Pointers are automatically dereferenced, and variables pointing to the same memory address share the same visualization tab.
+- **Uninitialized variable detection**: Detect and warn about uninitialized variables, including:
+  - `cv::Mat` with suspicious member values (garbage dimensions, invalid flags)
+  - `std::vector` with garbage size values (MSVC debug patterns like 0xCCCCCCCC)
+  - Variables marked as `<uninitialized>`, `<optimized out>`, or `<not available>`
+- **Adaptive plot tick generation**: Dynamic axis tick formatting with smart label placement, preventing overlap and improving readability for various data ranges.
+- **Real-time view range display**: Plot viewer now shows current zoom level and visible data range in an overlay.
+- **Zoom limits**: Plot viewer prevents excessive zooming to maintain usability.
+
+### Changed
+
+- Improved Y-axis label measurement for better tick formatting in plots.
+- Updated documentation (EN/CN) with pointer type support information.
+
+## [0.0.34] - 2025-01-05
+
+### Added
+
+- **Multi-platform CI/CD**: Added GitHub Actions workflow for building demos on Windows, macOS, and Linux.
+- **RGBA 4-channel support**: Added support for visualizing 4-channel RGBA images.
+
+## [0.0.33] - 2025-01-03
+
+### Added
+
+- **3D array multi-channel image support**: Visualize `T[H][W][C]` and `std::array<std::array<std::array<T,C>,W>,H>` as multi-channel images (C=1,3,4).
+- **2D C-style array support**: Visualize `T[rows][cols]` C-style 2D arrays as images.
+
+### Fixed
+
+- **Memory reference validation**: Added validation to all pointer extraction paths to prevent invalid pointer usage.
+
+### Changed
+
+- Enhanced debugger support documentation in DEVELOPMENT.md.
+
 ## [0.0.27] - 2025-12-31
 
 ### Fixed
