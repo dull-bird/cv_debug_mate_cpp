@@ -530,6 +530,9 @@ export function getWebviewContentForPlot(
                             scaleX = state.scaleX; scaleY = state.scaleY;
                             offsetX = state.offsetX; offsetY = state.offsetY;
                             historyIndex = index;
+                            // Invalidate tick cache when history state changes
+                            tickCache.x.result = null;
+                            tickCache.y.result = null;
                             draw();
                             updateHistoryButtons();
                         }
@@ -576,6 +579,261 @@ export function getWebviewContentForPlot(
 
                     let minY = 0, maxY = 0, rangeY = 1, minX = 0, maxX = 0, rangeX = 1;
 
+                    // Cache for tick generation to improve performance
+                    // Stores the last computed ticks for each axis to avoid recalculation
+                    let tickCache = {
+                        x: { min: null, max: null, targetCount: null, pixelLength: null, result: null },
+                        y: { min: null, max: null, targetCount: null, pixelLength: null, result: null }
+                    };
+
+                    /**
+                     * Convert a rough number to a "nice" number for axis ticks.
+                     * Based on Wilkinson's algorithm for nice numbers.
+                     * Nice numbers are 1, 2, 5, or 10 times a power of 10.
+                     * 
+                     * @param {number} value - The rough number to convert
+                     * @param {boolean} round - If true, round to nearest nice number; if false, use ceiling
+                     * @returns {number} A nice number close to the input value
+                     */
+                    function niceNumber(value, round) {
+                        // Handle edge cases
+                        if (value === 0) return 0;
+                        if (!isFinite(value)) return value;
+                        
+                        // Calculate the exponent (power of 10)
+                        const exponent = Math.floor(Math.log10(Math.abs(value)));
+                        const fraction = Math.abs(value) / Math.pow(10, exponent);
+                        let niceFraction;
+                        
+                        if (round) {
+                            // Round to nearest nice number
+                            if (fraction < 1.5) niceFraction = 1;
+                            else if (fraction < 3) niceFraction = 2;
+                            else if (fraction < 7) niceFraction = 5;
+                            else niceFraction = 10;
+                        } else {
+                            // Use ceiling (for range calculation)
+                            if (fraction <= 1) niceFraction = 1;
+                            else if (fraction <= 2) niceFraction = 2;
+                            else if (fraction <= 5) niceFraction = 5;
+                            else niceFraction = 10;
+                        }
+                        
+                        // Preserve the sign of the original value
+                        const result = niceFraction * Math.pow(10, exponent);
+                        return value < 0 ? -result : result;
+                    }
+
+                    /**
+                     * Generate adaptive tick marks for an axis.
+                     * Based on Wilkinson's algorithm for nice numbers.
+                     * Uses caching to avoid recalculation when parameters haven't changed.
+                     * 
+                     * @param {number} min - Minimum value of the visible range
+                     * @param {number} max - Maximum value of the visible range
+                     * @param {number} targetCount - Target number of ticks (default 6)
+                     * @param {number} pixelLength - Length of the axis in pixels (for overlap prevention)
+                     * @param {string} axis - Axis identifier ('x' or 'y') for caching
+                     * @returns {Object} Object containing values (tick positions), labels (formatted strings), and step (tick interval)
+                     */
+                    function generateTicks(min, max, targetCount, pixelLength, axis) {
+                        // Default parameters
+                        targetCount = targetCount || 6;
+                        pixelLength = pixelLength || 400;
+                        axis = axis || 'x'; // Default to 'x' if not specified
+                        const minSpacing = 40; // Minimum pixel spacing between ticks to prevent overlap
+                        
+                        // Check cache - only recalculate if parameters have changed
+                        const cache = tickCache[axis];
+                        if (cache && cache.result !== null &&
+                            cache.min === min && 
+                            cache.max === max && 
+                            cache.targetCount === targetCount && 
+                            cache.pixelLength === pixelLength) {
+                            // Return cached result
+                            return cache.result;
+                        }
+                        
+                        // === INPUT VALIDATION AND ERROR HANDLING ===
+                        
+                        // Handle NaN values - replace with default range
+                        if (isNaN(min) || isNaN(max)) {
+                            const result = { values: [0, 1], labels: ['0', '1'], step: 1 };
+                            // Update cache
+                            cache.min = min;
+                            cache.max = max;
+                            cache.targetCount = targetCount;
+                            cache.pixelLength = pixelLength;
+                            cache.result = result;
+                            return result;
+                        }
+                        
+                        // Handle Infinity values - replace with large finite values
+                        if (!isFinite(min)) {
+                            min = min === Infinity ? 1e10 : -1e10;
+                        }
+                        if (!isFinite(max)) {
+                            max = max === Infinity ? 1e10 : -1e10;
+                        }
+                        
+                        // Handle zero range (min === max)
+                        if (min === max) {
+                            const val = min;
+                            // Create artificial range based on magnitude
+                            if (val === 0) {
+                                // For zero, use [-1, 1]
+                                min = -1;
+                                max = 1;
+                            } else {
+                                // For non-zero, use ±10% of the value
+                                const offset = Math.abs(val) * 0.1;
+                                min = val - offset;
+                                max = val + offset;
+                            }
+                        }
+                        
+                        // Ensure min < max (swap if necessary)
+                        if (min > max) {
+                            const temp = min;
+                            min = max;
+                            max = temp;
+                        }
+                        
+                        // Handle extreme ranges
+                        let range = max - min;
+                        
+                        // For very small ranges (< 1e-10), expand to a reasonable range
+                        if (range > 0 && range < 1e-10) {
+                            const center = (min + max) / 2;
+                            const halfRange = 5e-11; // Half of 1e-10
+                            min = center - halfRange;
+                            max = center + halfRange;
+                            range = max - min; // Recalculate range after adjustment
+                        }
+                        
+                        // For very large ranges (> 1e10), we'll let the algorithm handle it
+                        // but ensure we don't have numerical issues
+                        if (range > 1e15) {
+                            // Cap the range to prevent numerical instability
+                            const center = (min + max) / 2;
+                            const halfRange = 5e14; // Half of 1e15
+                            min = center - halfRange;
+                            max = center + halfRange;
+                            range = max - min; // Recalculate range after adjustment
+                        }
+                        
+                        // Calculate rough step
+                        const roughStep = range / (targetCount - 1);
+                        
+                        // Convert to nice step
+                        const niceStep = niceNumber(roughStep, true);
+                        
+                        // Calculate tick start (round down to nearest nice step)
+                        const tickMin = Math.floor(min / niceStep) * niceStep;
+                        
+                        // Generate tick values
+                        const values = [];
+                        let currentTick = tickMin;
+                        
+                        // Generate ticks until we exceed max
+                        // Add a small epsilon to handle floating point precision
+                        const epsilon = niceStep * 1e-10;
+                        while (currentTick <= max + epsilon) {
+                            values.push(currentTick);
+                            currentTick += niceStep;
+                            
+                            // Safety check to prevent infinite loops
+                            if (values.length > 100) break;
+                        }
+                        
+                        // Ensure we have at least 2 ticks
+                        if (values.length < 2) {
+                            values.push(tickMin);
+                            values.push(tickMin + niceStep);
+                        }
+                        
+                        // Check for minimum spacing to prevent label overlap
+                        // Calculate pixel spacing between ticks
+                        if (values.length > 2) {
+                            const pixelSpacing = pixelLength / (values.length - 1);
+                            
+                            // If spacing is too small, reduce tick count by taking every nth tick
+                            if (pixelSpacing < minSpacing) {
+                                // Calculate how many ticks we should skip to meet minimum spacing
+                                const skipFactor = Math.ceil(minSpacing / pixelSpacing);
+                                const reducedValues = [];
+                                
+                                // Always include first tick
+                                reducedValues.push(values[0]);
+                                
+                                // Add intermediate ticks with proper spacing
+                                for (let i = skipFactor; i < values.length - 1; i += skipFactor) {
+                                    reducedValues.push(values[i]);
+                                }
+                                
+                                // Always include last tick (if not already included)
+                                if (reducedValues[reducedValues.length - 1] !== values[values.length - 1]) {
+                                    reducedValues.push(values[values.length - 1]);
+                                }
+                                
+                                // Ensure we have at least 2 ticks
+                                if (reducedValues.length < 2) {
+                                    reducedValues.length = 0;
+                                    reducedValues.push(values[0]);
+                                    reducedValues.push(values[values.length - 1]);
+                                }
+                                
+                                // Update values array
+                                values.length = 0;
+                                for (let i = 0; i < reducedValues.length; i++) {
+                                    values.push(reducedValues[i]);
+                                }
+                            }
+                        }
+                        
+                        // Format labels (recalculate step based on potentially reduced tick count)
+                        const finalStep = values.length > 1 ? values[1] - values[0] : niceStep;
+                        const labels = values.map(function(val) {
+                            return formatTickLabel(val, finalStep);
+                        });
+                        
+                        const result = {
+                            values: values,
+                            labels: labels,
+                            step: finalStep
+                        };
+                        
+                        // Update cache with new result
+                        cache.min = min;
+                        cache.max = max;
+                        cache.targetCount = targetCount;
+                        cache.pixelLength = pixelLength;
+                        cache.result = result;
+                        
+                        return result;
+                    }
+
+                    /**
+                     * Format a tick label based on the step size.
+                     * Uses appropriate decimal places or scientific notation.
+                     * 
+                     * @param {number} value - The tick value to format
+                     * @param {number} step - The step size between ticks
+                     * @returns {string} Formatted label string
+                     */
+                    function formatTickLabel(value, step) {
+                        // Handle very large or very small numbers with scientific notation
+                        if (Math.abs(value) >= 1e6 || (Math.abs(value) < 1e-3 && value !== 0)) {
+                            return value.toExponential(2);
+                        }
+                        
+                        // Determine decimal places based on step magnitude
+                        const stepMagnitude = Math.floor(Math.log10(Math.abs(step)));
+                        const decimalPlaces = Math.max(0, -stepMagnitude + 1);
+                        
+                        return value.toFixed(decimalPlaces);
+                    }
+
                     function getBounds(arr) {
                         if (!arr || arr.length === 0) return { min: 0, max: 1 };
                         let min = arr[0], max = arr[0];
@@ -603,6 +861,10 @@ export function getWebviewContentForPlot(
                         minX = (settings.xMin !== null && !isNaN(settings.xMin)) ? settings.xMin : (bX.min - xPadding);
                         maxX = (settings.xMax !== null && !isNaN(settings.xMax)) ? settings.xMax : (bX.max + xPadding);
                         rangeX = (maxX - minX) || 1;
+                        
+                        // Invalidate tick cache when data bounds change
+                        tickCache.x.result = null;
+                        tickCache.y.result = null;
                     }
 
                     function toScreenX(val) {
@@ -702,40 +964,80 @@ export function getWebviewContentForPlot(
                         ctx.font = axisFontSize + 'px Arial';
                         ctx.textAlign = 'right';
                         ctx.textBaseline = 'middle';
-                        for (let i = 0; i <= 5; i++) {
-                            let val, yPos;
+                        
+                        // Calculate visible data range (considering zoom and pan)
+                        const visibleMinX = fromScreenX(padding.left);
+                        const visibleMaxX = fromScreenX(width - padding.right);
+                        const visibleMinY = fromScreenY(height - padding.bottom);
+                        const visibleMaxY = fromScreenY(padding.top);
+                        
+                        // Generate Y-axis ticks using adaptive algorithm
+                        let yTicks;
+                        if (plotMode === 'hist') {
+                            // In histogram: Y-axis shows frequency/density from 0 to max
+                            yTicks = generateTicks(0, histMaxY, 6, innerHeight, 'y');
+                        } else {
+                            // In plot/scatter: Y-axis shows visible data range
+                            yTicks = generateTicks(visibleMinY, visibleMaxY, 6, innerHeight, 'y');
+                        }
+                        
+                        // Draw Y-axis ticks
+                        for (let i = 0; i < yTicks.values.length; i++) {
+                            const val = yTicks.values[i];
+                            const label = yTicks.labels[i];
+                            let yPos;
+                            
                             if (plotMode === 'hist') {
-                                // In histogram: Y-axis shows frequency/density from 0 to max
-                                val = (histMaxY * i / 5);
-                                yPos = height - padding.bottom - (i / 5) * innerHeight;
+                                // In histogram mode, map tick value to screen position
+                                yPos = height - padding.bottom - (val / histMaxY) * innerHeight;
                             } else {
-                                val = minY + (rangeY * i / 5);
+                                // In plot/scatter mode, use standard coordinate transform
                                 yPos = toScreenY(val);
                             }
+                            
                             if (yPos >= padding.top && yPos <= height - padding.bottom) {
-                                const label = (plotMode === 'hist' && settings.histYMode === 'density') 
-                                    ? val.toFixed(4) : val.toFixed(2);
                                 ctx.fillText(label, padding.left - yTickOffset, yPos);
-                                ctx.beginPath(); ctx.moveTo(padding.left - 4, yPos); ctx.lineTo(padding.left, yPos); ctx.stroke();
+                                ctx.beginPath(); 
+                                ctx.moveTo(padding.left - 4, yPos); 
+                                ctx.lineTo(padding.left, yPos); 
+                                ctx.stroke();
                             }
                         }
 
                         // X-axis tick labels
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'top';
-                        for (let i = 0; i <= 5; i++) {
-                            let val, xPos;
+                        
+                        // Generate X-axis ticks using adaptive algorithm
+                        let xTicks;
+                        if (plotMode === 'hist') {
+                            // In histogram: X-axis shows data value range
+                            xTicks = generateTicks(histDataMin, histDataMax, 6, innerWidth, 'x');
+                        } else {
+                            // In plot/scatter: X-axis shows visible index/custom X range
+                            xTicks = generateTicks(visibleMinX, visibleMaxX, 6, innerWidth, 'x');
+                        }
+                        
+                        // Draw X-axis ticks
+                        for (let i = 0; i < xTicks.values.length; i++) {
+                            const val = xTicks.values[i];
+                            const label = xTicks.labels[i];
+                            let xPos;
+                            
                             if (plotMode === 'hist') {
-                                // In histogram: X-axis shows data value range
-                                val = histDataMin + (histDataRange * i / 5);
-                                xPos = padding.left + (i / 5) * innerWidth;
+                                // In histogram mode, map tick value to screen position
+                                xPos = padding.left + ((val - histDataMin) / histDataRange) * innerWidth;
                             } else {
-                                val = minX + (rangeX * i / 5);
+                                // In plot/scatter mode, use standard coordinate transform
                                 xPos = toScreenX(val);
                             }
+                            
                             if (xPos >= padding.left && xPos <= width - padding.right) {
-                                ctx.fillText(val.toFixed(2), xPos, height - padding.bottom + xTickOffset);
-                                ctx.beginPath(); ctx.moveTo(xPos, height - padding.bottom); ctx.lineTo(xPos, height - padding.bottom + 4); ctx.stroke();
+                                ctx.fillText(label, xPos, height - padding.bottom + xTickOffset);
+                                ctx.beginPath();
+                                ctx.moveTo(xPos, height - padding.bottom);
+                                ctx.lineTo(xPos, height - padding.bottom + 4);
+                                ctx.stroke();
                             }
                         }
 
@@ -856,6 +1158,9 @@ export function getWebviewContentForPlot(
                     function resetView() {
                         scaleX = scaleY = 1;
                         offsetX = offsetY = 0;
+                        // Invalidate tick cache when view resets
+                        tickCache.x.result = null;
+                        tickCache.y.result = null;
                         draw();
                         pushHistory();
                     }
@@ -1004,6 +1309,9 @@ export function getWebviewContentForPlot(
                                     const iW = width - padding.left - padding.right, iH = height - padding.top - padding.bottom;
                                     scaleX = iW / ((x2 - x1) / rangeX * iW); scaleY = iH / ((y2 - y1) / rangeY * iH);
                                     offsetX = -((x1 - minX) / rangeX * iW); offsetY = -((y1 - minY) / rangeY * iH);
+                                    // Invalidate tick cache when zoom changes
+                                    tickCache.x.result = null;
+                                    tickCache.y.result = null;
                                     draw();
                                 }
                                 zoomRectEl.style.display = 'none';
@@ -1029,6 +1337,9 @@ export function getWebviewContentForPlot(
                         btnScatter.classList.toggle('active', mode === 'scatter');
                         btnHist.classList.toggle('active', mode === 'hist');
                         updateSettingsSections();
+                        // Invalidate tick cache when plot mode changes
+                        tickCache.x.result = null;
+                        tickCache.y.result = null;
                         draw();
                     }
                     btnPlot.onclick = function() { setPlotMode('plot'); };
