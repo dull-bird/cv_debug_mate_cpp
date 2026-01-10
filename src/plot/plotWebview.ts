@@ -445,6 +445,10 @@ export function getWebviewContentForPlot(
                     let scaleX = 1, scaleY = 1, offsetX = 0, offsetY = 0;
                     let isDragging = false, dragStartX = 0, dragStartY = 0, lastMouseX = 0, lastMouseY = 0;
                     
+                    // Maximum zoom level to prevent excessive decimal places in tick labels
+                    // This allows zooming in to view 0.1% of the original data range
+                    const MAX_ZOOM = 1000;
+                    
                     const btnPlot = document.getElementById('btnPlot');
                     const btnScatter = document.getElementById('btnScatter');
                     const btnHist = document.getElementById('btnHist');
@@ -829,7 +833,13 @@ export function getWebviewContentForPlot(
                         
                         // Determine decimal places based on step magnitude
                         const stepMagnitude = Math.floor(Math.log10(Math.abs(step)));
-                        const decimalPlaces = Math.max(0, -stepMagnitude + 1);
+                        let decimalPlaces = Math.max(0, -stepMagnitude + 1);
+                        
+                        // Limit maximum decimal places to 6 to prevent excessive precision
+                        // If we need more than 6 decimals, use scientific notation instead
+                        if (decimalPlaces > 6) {
+                            return value.toExponential(2);
+                        }
                         
                         return value.toFixed(decimalPlaces);
                     }
@@ -899,41 +909,21 @@ export function getWebviewContentForPlot(
                         const titleFontSize = axisFontSize + 4; // Title is slightly larger
                         const chartTitle = settings.customTitle || '';
                         
-                        // Dynamic padding based on font size
-                        // Y-axis: tick labels are horizontal text, width grows slowly with font size
-                        const yTickLabelWidth = 45 + (axisFontSize - 15) * 2.5; // Base 45px + small adjustment
-                        const yAxisLabelSpace = axisFontSize; // Space for rotated Y axis label
-                        padding.left = Math.max(70, yTickLabelWidth + yAxisLabelSpace);
-                        
-                        // X-axis needs space for: tick labels height + axis label height
+                        // Initial padding estimates
                         const xTickLabelHeight = axisFontSize + 4;
                         const xAxisLabelHeight = axisFontSize + 6;
                         padding.bottom = Math.max(55, xTickLabelHeight + xAxisLabelHeight + 15);
-                        
-                        // Top padding for title area (extra space if custom title is set)
                         padding.top = chartTitle ? Math.max(45, titleFontSize + 25) : 30;
                         padding.right = 40;
-
-                        const innerWidth = width - padding.left - padding.right;
-                        const innerHeight = height - padding.top - padding.bottom;
-                        if (innerWidth <= 0 || innerHeight <= 0) return;
-
-                        // Draw axes
-                        ctx.strokeStyle = '#555';
-                        ctx.lineWidth = 1;
-                        ctx.beginPath();
-                        ctx.moveTo(padding.left, padding.top);
-                        ctx.lineTo(padding.left, height - padding.bottom);
-                        ctx.lineTo(width - padding.right, height - padding.bottom);
-                        ctx.stroke();
-
-                        // Tick label offsets
-                        const yTickOffset = 8;
-                        const xTickOffset = 8;
-                        const xLabelHeight = axisFontSize + 4;
                         
-                        // For histogram mode, we need different tick values
-                        // Calculate histogram data range here for tick labels
+                        // Initial left padding estimate (will be refined after measuring Y-axis labels)
+                        padding.left = 70;
+                        
+                        // Pre-calculate dimensions for tick generation
+                        let innerWidth = width - padding.left - padding.right;
+                        let innerHeight = height - padding.top - padding.bottom;
+                        
+                        // For histogram mode, calculate bins first (needed for Y-axis range)
                         let histDataMin = 0, histDataMax = 1, histDataRange = 1;
                         let histMaxY = 1;
                         if (plotMode === 'hist') {
@@ -941,7 +931,6 @@ export function getWebviewContentForPlot(
                             histDataMax = Math.max(...dataY);
                             histDataRange = (histDataMax - histDataMin) || 1;
                             
-                            // Calculate bins to get max Y
                             const numBins = settings.binCount || 50;
                             const binWidth = histDataRange / numBins;
                             const bins = new Array(numBins).fill(0);
@@ -959,20 +948,70 @@ export function getWebviewContentForPlot(
                             }
                         }
                         
+                        // Set font for measurement
+                        ctx.font = axisFontSize + 'px Arial';
+                        
+                        // Calculate visible data range for Y-axis tick generation
+                        let visibleMinY = fromScreenY(height - padding.bottom);
+                        let visibleMaxY = fromScreenY(padding.top);
+                        
+                        // Generate Y-axis ticks (preliminary, for width measurement)
+                        let yTicks;
+                        if (plotMode === 'hist') {
+                            yTicks = generateTicks(0, histMaxY, 6, innerHeight, 'y');
+                        } else {
+                            yTicks = generateTicks(visibleMinY, visibleMaxY, 6, innerHeight, 'y');
+                        }
+                        
+                        // Measure maximum Y-axis label width
+                        let maxYLabelWidth = 0;
+                        for (let i = 0; i < yTicks.labels.length; i++) {
+                            const labelWidth = ctx.measureText(yTicks.labels[i]).width;
+                            if (labelWidth > maxYLabelWidth) {
+                                maxYLabelWidth = labelWidth;
+                            }
+                        }
+                        
+                        // Calculate required left padding
+                        const yTickOffset = 8; // Space between tick and label
+                        const yAxisLabelSpace = axisFontSize + 10; // Space for rotated Y axis label
+                        const tickMarkLength = 4; // Length of tick mark
+                        const requiredLeftPadding = maxYLabelWidth + yTickOffset + tickMarkLength + yAxisLabelSpace;
+                        
+                        // Update left padding with minimum of 60px
+                        padding.left = Math.max(60, Math.ceil(requiredLeftPadding));
+                        
+                        // Recalculate inner dimensions with updated padding
+                        innerWidth = width - padding.left - padding.right;
+                        innerHeight = height - padding.top - padding.bottom;
+                        if (innerWidth <= 0 || innerHeight <= 0) return;
+
+                        // Draw axes
+                        ctx.strokeStyle = '#555';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(padding.left, padding.top);
+                        ctx.lineTo(padding.left, height - padding.bottom);
+                        ctx.lineTo(width - padding.right, height - padding.bottom);
+                        ctx.stroke();
+
+                        // Tick label offsets
+                        const xTickOffset = 8;
+                        const xLabelHeight = axisFontSize + 4;
+                        
                         // Y-axis tick labels with custom font size
                         ctx.fillStyle = '#888';
                         ctx.font = axisFontSize + 'px Arial';
                         ctx.textAlign = 'right';
                         ctx.textBaseline = 'middle';
                         
-                        // Calculate visible data range (considering zoom and pan)
+                        // Recalculate visible data range with updated padding
                         const visibleMinX = fromScreenX(padding.left);
                         const visibleMaxX = fromScreenX(width - padding.right);
-                        const visibleMinY = fromScreenY(height - padding.bottom);
-                        const visibleMaxY = fromScreenY(padding.top);
+                        visibleMinY = fromScreenY(height - padding.bottom);
+                        visibleMaxY = fromScreenY(padding.top);
                         
-                        // Generate Y-axis ticks using adaptive algorithm
-                        let yTicks;
+                        // Regenerate Y-axis ticks with updated dimensions
                         if (plotMode === 'hist') {
                             // In histogram: Y-axis shows frequency/density from 0 to max
                             yTicks = generateTicks(0, histMaxY, 6, innerHeight, 'y');
@@ -1307,7 +1346,13 @@ export function getWebviewContentForPlot(
                                 const y2 = fromScreenY(Math.min(dragStartY - r.top, e.clientY - r.top));
                                 if (Math.abs(e.clientX - dragStartX) > 5) {
                                     const iW = width - padding.left - padding.right, iH = height - padding.top - padding.bottom;
-                                    scaleX = iW / ((x2 - x1) / rangeX * iW); scaleY = iH / ((y2 - y1) / rangeY * iH);
+                                    const newScaleX = iW / ((x2 - x1) / rangeX * iW);
+                                    const newScaleY = iH / ((y2 - y1) / rangeY * iH);
+                                    
+                                    // Limit maximum zoom to prevent excessive decimal places
+                                    scaleX = Math.min(newScaleX, MAX_ZOOM);
+                                    scaleY = Math.min(newScaleY, MAX_ZOOM);
+                                    
                                     offsetX = -((x1 - minX) / rangeX * iW); offsetY = -((y1 - minY) / rangeY * iH);
                                     // Invalidate tick cache when zoom changes
                                     tickCache.x.result = null;
