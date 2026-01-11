@@ -12,7 +12,8 @@
  *   - 3D Point Cloud: std::vector<cv::Point3f/3d>, std::array<cv::Point3f/3d,N>
  *   - 1D Plot: std::vector<T>, std::array<T,N>, T[N] (C-style 1D array),
  *              std::set<T>, cv::Mat(1×N or N×1)
- *   - Pointers: All above types can also be visualized via pointers (e.g., cv::Mat*)
+ *   - Pointers: All above types can also be visualized via pointers (e.g.,
+ * cv::Mat*)
  *   - Multi-threaded: Variables from any thread can be visualized by selecting
  *                     the thread in the debugger
  */
@@ -345,7 +346,7 @@ void demo_auto_refresh() {
   std::vector<cv::Point3f> dynamic_cloud;
   for (int i = 0; i < 100; i++) {
     float angle = static_cast<float>(i) / 100.0f * 2.0f * M_PI;
-    dynamic_cloud.push_back(cv::Point3f(cos(angle) * 5, sin(angle) * 5, 0));
+    dynamic_cloud.push_back(cv::Point3f(cos(angle) * 10, sin(angle) * 5, 0));
   }
 
   // ===== SET BREAKPOINT INSIDE LOOP =====
@@ -403,77 +404,75 @@ void demo_auto_refresh() {
 // ============================================================
 void demo_pointer_types() {
   std::cout << "\n=== Pointer Type Examples ===" << std::endl;
-  std::cout << "Pointers to supported types can also be visualized!" << std::endl;
+  std::cout << "Pointers to supported types can also be visualized!"
+            << std::endl;
 
   // --- cv::Mat pointer ---
   cv::Mat mat_original(100, 150, CV_8UC3);
   for (int y = 0; y < mat_original.rows; y++) {
     for (int x = 0; x < mat_original.cols; x++) {
-      mat_original.at<cv::Vec3b>(y, x) = cv::Vec3b(
-          static_cast<uchar>(x * 255 / mat_original.cols),
-          static_cast<uchar>(y * 255 / mat_original.rows),
-          128);
+      mat_original.at<cv::Vec3b>(y, x) =
+          cv::Vec3b(static_cast<uchar>(x * 255 / mat_original.cols),
+                    static_cast<uchar>(y * 255 / mat_original.rows), 128);
     }
   }
   cv::putText(mat_original, "Original", cv::Point(10, 30),
               cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
-  
-  cv::Mat* pMat = &mat_original;  // Pointer to Mat
-  
+
+  cv::Mat *pMat = &mat_original; // Pointer to Mat
+
   // --- std::vector pointer ---
   std::vector<float> vec_original(100);
   for (size_t i = 0; i < vec_original.size(); i++) {
     vec_original[i] = sin(i * 0.1f) * 50.0f;
   }
-  std::vector<float>* pVec = &vec_original;  // Pointer to vector
-  
+  std::vector<float> *pVec = &vec_original; // Pointer to vector
+
   // --- Point cloud pointer ---
   std::vector<cv::Point3f> cloud_original;
   for (int i = 0; i < 200; i++) {
     float t = static_cast<float>(i) / 200.0f * 2.0f * M_PI;
     cloud_original.push_back(cv::Point3f(
-        cos(t) * 3.0f,
-        sin(t) * 3.0f,
-        static_cast<float>(i) / 200.0f * 5.0f
-    ));
+        cos(t) * 3.0f, sin(t) * 3.0f, static_cast<float>(i) / 200.0f * 5.0f));
   }
-  std::vector<cv::Point3f>* pCloud = &cloud_original;  // Pointer to point cloud
-  
+  std::vector<cv::Point3f> *pCloud = &cloud_original; // Pointer to point cloud
+
   // --- cv::Matx pointer ---
-  cv::Matx33f matx_original(
-      1.0f, 2.0f, 3.0f,
-      4.0f, 5.0f, 6.0f,
-      7.0f, 8.0f, 9.0f
-  );
-  cv::Matx33f* pMatx = &matx_original;  // Pointer to Matx
-  
+  cv::Matx33f matx_original(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                            9.0f);
+  cv::Matx33f *pMatx = &matx_original; // Pointer to Matx
+
   // --- std::array pointer ---
   std::array<double, 50> array_original;
   for (size_t i = 0; i < array_original.size(); i++) {
     array_original[i] = cos(i * 0.15) * 30.0;
   }
-  std::array<double, 50>* pArray = &array_original;  // Pointer to std::array
-  
-  // --- 2D std::array pointer ---
-  std::array<std::array<int, 5>, 4> array2d_original = {{
-      {1, 2, 3, 4, 5},
-      {6, 7, 8, 9, 10},
-      {11, 12, 13, 14, 15},
-      {16, 17, 18, 19, 20}
-  }};
-  std::array<std::array<int, 5>, 4>* pArray2D = &array2d_original;  // Pointer to 2D array
+  std::array<double, 50> *pArray = &array_original; // Pointer to std::array
 
-  std::cout << "  mat_original: " << mat_original.cols << "x" << mat_original.rows << " CV_8UC3" << std::endl;
+  // --- 2D std::array pointer ---
+  std::array<std::array<int, 5>, 4> array2d_original = {{{1, 2, 3, 4, 5},
+                                                         {6, 7, 8, 9, 10},
+                                                         {11, 12, 13, 14, 15},
+                                                         {16, 17, 18, 19, 20}}};
+  std::array<std::array<int, 5>, 4> *pArray2D =
+      &array2d_original; // Pointer to 2D array
+
+  std::cout << "  mat_original: " << mat_original.cols << "x"
+            << mat_original.rows << " CV_8UC3" << std::endl;
   std::cout << "  pMat: pointer to mat_original" << std::endl;
-  std::cout << "  vec_original: " << vec_original.size() << " floats" << std::endl;
+  std::cout << "  vec_original: " << vec_original.size() << " floats"
+            << std::endl;
   std::cout << "  pVec: pointer to vec_original" << std::endl;
-  std::cout << "  cloud_original: " << cloud_original.size() << " Point3f" << std::endl;
+  std::cout << "  cloud_original: " << cloud_original.size() << " Point3f"
+            << std::endl;
   std::cout << "  pCloud: pointer to cloud_original" << std::endl;
   std::cout << "  pMatx: pointer to Matx33f" << std::endl;
   std::cout << "  pArray: pointer to std::array<double, 50>" << std::endl;
-  std::cout << "  pArray2D: pointer to std::array<std::array<int, 5>, 4>" << std::endl;
+  std::cout << "  pArray2D: pointer to std::array<std::array<int, 5>, 4>"
+            << std::endl;
   std::cout << std::endl;
-  std::cout << "  Note: Both the original variable and its pointer" << std::endl;
+  std::cout << "  Note: Both the original variable and its pointer"
+            << std::endl;
   std::cout << "        will share the same visualization tab!" << std::endl;
 
   // ===== BREAKPOINT HERE =====
@@ -500,16 +499,16 @@ void demo_pointer_types() {
 // Worker thread function - processes image data
 void worker_thread_image(int thread_id) {
   std::cout << "  Thread " << thread_id << " (Image): Starting..." << std::endl;
-  
+
   // Create thread-local image
   cv::Mat thread_img(100, 100, CV_8UC3);
   for (int y = 0; y < thread_img.rows; y++) {
     for (int x = 0; x < thread_img.cols; x++) {
       // Different color based on thread_id
-      thread_img.at<cv::Vec3b>(y, x) = cv::Vec3b(
-          static_cast<uchar>((thread_id * 50 + x) % 256),
-          static_cast<uchar>((thread_id * 80 + y) % 256),
-          static_cast<uchar>(thread_id * 40 % 256));
+      thread_img.at<cv::Vec3b>(y, x) =
+          cv::Vec3b(static_cast<uchar>((thread_id * 50 + x) % 256),
+                    static_cast<uchar>((thread_id * 80 + y) % 256),
+                    static_cast<uchar>(thread_id * 40 % 256));
     }
   }
   cv::putText(thread_img, "Thread " + std::to_string(thread_id),
@@ -521,14 +520,15 @@ void worker_thread_image(int thread_id) {
   int bp_thread_img = thread_id;
   (void)bp_thread_img;
   (void)thread_img;
-  
+
   std::cout << "  Thread " << thread_id << " (Image): Done" << std::endl;
 }
 
 // Worker thread function - processes vector data
 void worker_thread_vector(int thread_id) {
-  std::cout << "  Thread " << thread_id << " (Vector): Starting..." << std::endl;
-  
+  std::cout << "  Thread " << thread_id << " (Vector): Starting..."
+            << std::endl;
+
   // Create thread-local vector with unique pattern
   std::vector<float> thread_vec(50);
   for (size_t i = 0; i < thread_vec.size(); i++) {
@@ -541,25 +541,24 @@ void worker_thread_vector(int thread_id) {
   int bp_thread_vec = thread_id;
   (void)bp_thread_vec;
   (void)thread_vec;
-  
+
   std::cout << "  Thread " << thread_id << " (Vector): Done" << std::endl;
 }
 
 // Worker thread function - processes point cloud data
 void worker_thread_pointcloud(int thread_id) {
-  std::cout << "  Thread " << thread_id << " (PointCloud): Starting..." << std::endl;
-  
+  std::cout << "  Thread " << thread_id << " (PointCloud): Starting..."
+            << std::endl;
+
   // Create thread-local point cloud with unique shape
   std::vector<cv::Point3f> thread_cloud;
   for (int i = 0; i < 100; i++) {
     float t = static_cast<float>(i) / 100.0f * 2.0f * M_PI;
     // Different spiral based on thread_id
     float radius = 2.0f + thread_id * 0.5f;
-    thread_cloud.push_back(cv::Point3f(
-        cos(t * (thread_id + 1)) * radius,
-        sin(t * (thread_id + 1)) * radius,
-        t * thread_id * 0.5f
-    ));
+    thread_cloud.push_back(cv::Point3f(cos(t * (thread_id + 1)) * radius,
+                                       sin(t * (thread_id + 1)) * radius,
+                                       t * thread_id * 0.5f));
   }
 
   // ===== BREAKPOINT HERE =====
@@ -567,39 +566,43 @@ void worker_thread_pointcloud(int thread_id) {
   int bp_thread_cloud = thread_id;
   (void)bp_thread_cloud;
   (void)thread_cloud;
-  
+
   std::cout << "  Thread " << thread_id << " (PointCloud): Done" << std::endl;
 }
 
 void demo_multithreaded() {
   std::cout << "\n=== Multi-Threaded Debugging Examples ===" << std::endl;
-  std::cout << "This demo creates multiple threads with local variables." << std::endl;
+  std::cout << "This demo creates multiple threads with local variables."
+            << std::endl;
   std::cout << "To test:" << std::endl;
-  std::cout << "  1. Set breakpoints inside worker_thread_* functions" << std::endl;
-  std::cout << "  2. When stopped, select different threads in debugger" << std::endl;
-  std::cout << "  3. CV DebugMate will show variables from selected thread!" << std::endl;
+  std::cout << "  1. Set breakpoints inside worker_thread_* functions"
+            << std::endl;
+  std::cout << "  2. When stopped, select different threads in debugger"
+            << std::endl;
+  std::cout << "  3. CV DebugMate will show variables from selected thread!"
+            << std::endl;
   std::cout << std::endl;
 
   // Create threads
   std::vector<std::thread> threads;
-  
+
   // Launch image processing threads
   for (int i = 0; i < 2; i++) {
     threads.emplace_back(worker_thread_image, i);
   }
-  
+
   // Launch vector processing threads
   for (int i = 2; i < 4; i++) {
     threads.emplace_back(worker_thread_vector, i);
   }
-  
+
   // Launch point cloud processing threads
   for (int i = 4; i < 6; i++) {
     threads.emplace_back(worker_thread_pointcloud, i);
   }
 
   // Wait for all threads to complete
-  for (auto& t : threads) {
+  for (auto &t : threads) {
     t.join();
   }
 
@@ -623,7 +626,7 @@ int main() {
   demo_1d_plots();
   demo_auto_refresh();
   demo_pointer_types();
-  demo_multithreaded();  // NEW: Multi-threaded debugging examples
+  demo_multithreaded(); // NEW: Multi-threaded debugging examples
 
   std::cout << "\n=== All demos complete ===" << std::endl;
   return 0;
