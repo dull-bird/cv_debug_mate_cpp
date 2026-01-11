@@ -2,10 +2,11 @@ import * as vscode from "vscode";
 
 export function getWebviewContentForPlot(
   variableName: string,
-  data: number[]
+  data?: number[]
 ): string {
   const nonce = getNonce();
-  const jsonData = JSON.stringify(data);
+  const jsonData = data && data.length > 0 ? JSON.stringify(data) : '[]';
+  const waitForData = !data || data.length === 0;
 
   return `
     <!DOCTYPE html>
@@ -26,6 +27,35 @@ export function getWebviewContentForPlot(
                 display: flex;
                 flex-direction: column;
                 box-sizing: border-box;
+            }
+            #loading {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.7);
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                z-index: 2000;
+            }
+            .spinner {
+                border: 4px solid rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                border-top: 4px solid #4a9eff;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin-bottom: 10px;
+            }
+            .hidden { display: none !important; }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
             }
             #header {
                 margin-bottom: 12px;
@@ -279,6 +309,10 @@ export function getWebviewContentForPlot(
         </style>
     </head>
     <body>
+        <div id="loading" class="${waitForData ? '' : 'hidden'}">
+            <div class="spinner"></div>
+            <div id="loading-text">Loading Plot Data...</div>
+        </div>
         <div id="header">
             <div id="title">View: ${variableName}</div>
             <div id="toolbar">
@@ -319,7 +353,7 @@ export function getWebviewContentForPlot(
                 <!-- 设置按钮 -->
                 <button id="btnSettings" class="btn" title="Plot Settings">⚙️ Settings</button>
                 
-                <span id="info">Size: ${data.length}</span>
+                <span id="info">Size: ${data ? data.length : 0}</span>
                 <span id="viewRange" style="font-size: 11px; color: #888; margin-left: 10px; font-family: monospace;"></span>
             </div>
         </div>
@@ -414,10 +448,25 @@ export function getWebviewContentForPlot(
             (function() {
                 try {
                     const vscode = acquireVsCodeApi();
+                    const loadingOverlay = document.getElementById('loading');
+                    const loadingText = document.getElementById('loading-text');
+                    
                     let dataY = ${jsonData};
                     let dataX = dataY.map(function(_, i) { return i; });
                     let currentVariableNameY = "${variableName}";
                     let currentVariableNameX = "Index";
+                    let extensionReady = false;
+                    
+                    // Detect if this is a moved panel (same logic as Mat viewer)
+                    const waitForData = ${waitForData};
+                    if (waitForData) {
+                        setTimeout(function() {
+                            if (!extensionReady) {
+                                loadingText.innerHTML = 'Reloading...';
+                                vscode.postMessage({ command: 'reload' });
+                            }
+                        }, 100);
+                    }
 
                     const canvas = document.getElementById('plotCanvas');
                     const ctx = canvas.getContext('2d');
@@ -1265,7 +1314,19 @@ export function getWebviewContentForPlot(
 
                     window.addEventListener('message', function(event) {
                         const message = event.data;
-                        if (message.command === 'updateOptions') {
+                        if (message.command === 'ready') {
+                            // Extension is ready, this is not a moved panel
+                            extensionReady = true;
+                        } else if (message.command === 'completeData') {
+                            // Received plot data via postMessage
+                            extensionReady = true;
+                            dataY = message.data;
+                            dataX = dataY.map(function(_, i) { return i; });
+                            document.getElementById('info').textContent = 'Size: ' + dataY.length;
+                            loadingOverlay.classList.add('hidden');
+                            updateDataBounds();
+                            resetView();
+                        } else if (message.command === 'updateOptions') {
                             let html = '<div class="menu-item' + (currentVariableNameX === 'Index' ? ' selected' : '') + '" data-value="index">Index</div>';
                             for (let i = 0; i < message.options.length; i++) {
                                 const optName = message.options[i];
@@ -1290,6 +1351,7 @@ export function getWebviewContentForPlot(
                             if (currentVariableNameX === "Index") {
                                 dataX = dataY.map(function(_, i) { return i; });
                             }
+                            document.getElementById('info').textContent = 'Size: ' + dataY.length;
                             updateDataBounds();
                             draw();
                         }

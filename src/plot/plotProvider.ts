@@ -57,79 +57,106 @@ export async function drawPlot(
   try {
     const panelTitle = `View: ${panelName}`;
 
-    // Step 1: Get metadata only (size + dataPtr) without reading full data
-    let metadata: { size: number; dataPtr: string | null; bytesPerElement: number } = { size: 0, dataPtr: null, bytesPerElement: 4 };
-    
-    if (typeof elementTypeOrMat === 'string') {
-        if (isSet) {
-            // For sets, we can only get size (no contiguous memory)
-            const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
-            const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
-            metadata = { size, dataPtr: null, bytesPerElement: 4 };
+    // Wrap entire operation in progress indicator for immediate feedback
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Loading Plot Data",
+        cancellable: false
+      },
+      async (progress) => {
+        // Step 1: Get metadata only (size + dataPtr) without reading full data
+        progress.report({ message: "Getting metadata..." });
+        let metadata: { size: number; dataPtr: string | null; bytesPerElement: number } = { size: 0, dataPtr: null, bytesPerElement: 4 };
+        
+        if (typeof elementTypeOrMat === 'string') {
+            if (isSet) {
+                // For sets, we can only get size (no contiguous memory)
+                const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+                const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
+                metadata = { size, dataPtr: null, bytesPerElement: 4 };
+            } else {
+                // For vectors, get size and dataPtr
+                const result = await getVectorMetadata(debugSession, variableName, elementTypeOrMat, variableInfo);
+                metadata = result;
+            }
         } else {
-            // For vectors, get size and dataPtr
-            const result = await getVectorMetadata(debugSession, variableName, elementTypeOrMat, variableInfo);
-            metadata = result;
+            // For 1D Mat, we already have the info
+            metadata = {
+                size: elementTypeOrMat.rows * elementTypeOrMat.cols,
+                dataPtr: elementTypeOrMat.dataPtr,
+                bytesPerElement: getBytesPerElement(elementTypeOrMat.depth)
+            };
         }
-    } else {
-        // For 1D Mat, we already have the info
-        metadata = {
-            size: elementTypeOrMat.rows * elementTypeOrMat.cols,
-            dataPtr: elementTypeOrMat.dataPtr,
-            bytesPerElement: getBytesPerElement(elementTypeOrMat.depth)
-        };
-    }
 
-    // Step 2: Get or create panel (will reveal if needed)
-    const panel = PanelManager.getOrCreatePanel(
-      "CurvePlotViewer",
-      panelTitle,
-      debugSession.id,
-      panelName,
-      reveal,
-      metadata.dataPtr || undefined  // Enable sharing panels by data pointer
+        // Step 2: Get or create panel (will reveal if needed)
+        const panel = PanelManager.getOrCreatePanel(
+          "CurvePlotViewer",
+          panelTitle,
+          debugSession.id,
+          panelName,
+          reveal,
+          metadata.dataPtr || undefined  // Enable sharing panels by data pointer
+        );
+
+        // Step 3: Check if panel is fresh (only when not force)
+        if (!force && metadata.size > 0) {
+            progress.report({ message: "Checking if data changed..." });
+            const totalBytes = metadata.size * metadata.bytesPerElement;
+            const sample = metadata.dataPtr ? await getMemorySample(debugSession, metadata.dataPtr, totalBytes) : "";
+            // For sets without dataPtr, use size-only token (less accurate but still useful)
+            const stateToken = metadata.dataPtr 
+                ? `${metadata.size}|${metadata.dataPtr}|${sample}`
+                : `set:${metadata.size}`;
+            
+            if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, panelName, stateToken)) {
+                console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
+                return { panel, initialData: null, dataPtrForToken: "", skipped: true };
+            }
+        }
+
+        // Step 4: Now read full data since we need to update
+        let initialData: number[] | null = null;
+        let dataPtrForToken = "";
+        
+        if (typeof elementTypeOrMat === 'string') {
+            if (isSet) {
+                console.log(`Drawing plot for set: ${variableName}, element type: ${elementTypeOrMat}`);
+                progress.report({ message: "Reading set data..." });
+                const result = await readSetDataInternal(debugSession, variableName, elementTypeOrMat, variableInfo, progress);
+                if (result) {
+                    initialData = result.data;
+                    dataPtrForToken = `set:${result.data.length}`;
+                }
+            } else {
+                console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
+                progress.report({ message: "Reading vector data..." });
+                const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat, undefined, variableInfo, progress);
+                if (result) {
+                    initialData = result.data;
+                    dataPtrForToken = result.dataPtr || "";
+                }
+            }
+        } else {
+            console.log(`Drawing plot for 1D Mat: ${variableName}, info:`, elementTypeOrMat);
+            progress.report({ message: "Reading Mat data..." });
+            const data = await readMatDataInternal(debugSession, variableName, elementTypeOrMat, progress);
+            if (data) {
+                initialData = data;
+                dataPtrForToken = elementTypeOrMat.dataPtr || "";
+            }
+        }
+
+        return { panel, initialData, dataPtrForToken, skipped: false };
+      }
     );
 
-    // Step 3: Check if panel is fresh (only when not force)
-    if (!force && metadata.size > 0) {
-        const totalBytes = metadata.size * metadata.bytesPerElement;
-        const sample = metadata.dataPtr ? await getMemorySample(debugSession, metadata.dataPtr, totalBytes) : "";
-        // For sets without dataPtr, use size-only token (less accurate but still useful)
-        const stateToken = metadata.dataPtr 
-            ? `${metadata.size}|${metadata.dataPtr}|${sample}`
-            : `set:${metadata.size}`;
-        
-        if (PanelManager.isPanelFresh("CurvePlotViewer", debugSession.id, panelName, stateToken)) {
-            console.log(`Plot panel is already up-to-date with token: ${stateToken}`);
-            return;
-        }
+    // If skipped (panel was fresh), we're done
+    if (result.skipped) {
+      return;
     }
 
-    // Step 4: Now read full data since we need to update
-    let initialData: number[] | null = null;
-    let dataPtrForToken = "";
-    
-    if (typeof elementTypeOrMat === 'string') {
-        if (isSet) {
-            console.log(`Drawing plot for set: ${variableName}, element type: ${elementTypeOrMat}`);
-            const result = await readSetDataInternal(debugSession, variableName, elementTypeOrMat, variableInfo);
-            if (result) {
-                initialData = result.data;
-                dataPtrForToken = `set:${result.data.length}`;
-            }
-        } else {
-            console.log(`Drawing plot for vector: ${variableName}, element type: ${elementTypeOrMat}`);
-            const result = await readVectorDataInternal(debugSession, variableName, elementTypeOrMat, undefined, variableInfo);
-            if (result) {
-                initialData = result.data;
-                dataPtrForToken = result.dataPtr || "";
-            }
-        }
-    } else {
-        console.log(`Drawing plot for 1D Mat: ${variableName}, info:`, elementTypeOrMat);
-        initialData = await readMatDataInternal(debugSession, variableName, elementTypeOrMat);
-        dataPtrForToken = elementTypeOrMat.dataPtr || "";
-    }
+    const { panel, initialData, dataPtrForToken } = result;
 
     if (!initialData) return;
 
@@ -156,7 +183,11 @@ export async function drawPlot(
       return;
     }
 
-    panel.webview.html = getWebviewContentForPlot(panelName, initialData);
+    // Set HTML without embedding data (data will be sent via postMessage)
+    panel.webview.html = getWebviewContentForPlot(panelName);
+    
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
 
     // Dispose old listener to avoid duplicates
     if ((panel as any)._messageListener) {
@@ -276,6 +307,13 @@ export async function drawPlot(
         }
     });
 
+    // Send plot data via postMessage (better memory efficiency than embedding in HTML)
+    console.log(`Sending ${initialData.length} data points to webview via postMessage`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      data: initialData
+    });
+
   } catch (error: any) {
     vscode.window.showErrorMessage(`Failed to draw plot: ${error.message}`);
     console.error(error);
@@ -329,62 +367,17 @@ async function getVectorMetadata(
     let dataPtr: string | null = null;
     
     if (isUsingLLDB(debugSession)) {
-        // Try variables approach first
-        if (variableInfo && variableInfo.variablesReference > 0) {
-            try {
-                const varsResponse = await debugSession.customRequest("variables", {
-                    variablesReference: variableInfo.variablesReference
-                });
-                
-                if (varsResponse.variables && varsResponse.variables.length > 0) {
-                    // Look for __begin_
-                    for (const v of varsResponse.variables) {
-                        if (v.name === "__begin_" || v.name.includes("__begin")) {
-                            if (v.value) {
-                                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
-                                if (ptrMatch) {
-                                    dataPtr = ptrMatch[0];
-                                    break;
-                                }
-                            }
-                            if (!dataPtr && v.memoryReference) {
-                                dataPtr = v.memoryReference;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Try [0] element
-                    if (!dataPtr) {
-                        const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
-                        if (firstElement) {
-                            if (firstElement.memoryReference) {
-                                dataPtr = firstElement.memoryReference;
-                            } else if (firstElement.value) {
-                                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
-                                if (ptrMatch) {
-                                    dataPtr = ptrMatch[0];
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                console.log("Failed to get data pointer through variables:", e);
-            }
-        }
-        
-        if (!dataPtr) {
-            const lldbExpressions = [
-                `${variableName}.__begin_`,
-                `reinterpret_cast<long long>(${variableName}.__begin_)`,
-                `${variableName}.data()`,
-                `reinterpret_cast<long long>(${variableName}.data())`,
-                `&${variableName}[0]`,
-                `reinterpret_cast<long long>(&${variableName}[0])`
-            ];
-            dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
-        }
+        // OPTIMIZATION: Skip "variables" request - it's extremely slow for large vectors
+        // Use evaluate expressions directly instead
+        const lldbExpressions = [
+            `${variableName}.__begin_`,
+            `reinterpret_cast<long long>(${variableName}.__begin_)`,
+            `${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`,
+            `&${variableName}[0]`,
+            `reinterpret_cast<long long>(&${variableName}[0])`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
         
     } else if (isUsingMSVC(debugSession)) {
         const msvcExpressions = [
@@ -422,15 +415,24 @@ async function getVectorMetadata(
 async function readMatDataInternal(
     debugSession: vscode.DebugSession,
     variableName: string,
-    matInfo: { rows: number, cols: number, channels: number, depth: number, dataPtr: string }
+    matInfo: { rows: number, cols: number, channels: number, depth: number, dataPtr: string },
+    progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<number[] | null> {
     const size = matInfo.rows * matInfo.cols;
     const bytesPerElement = getBytesPerElement(matInfo.depth);
     const totalBytes = size * bytesPerElement;
     
-    const buffer = await readMemoryChunked(debugSession, matInfo.dataPtr, totalBytes);
+    if (progress) {
+        progress.report({ message: `Reading ${size} elements (${Math.round(totalBytes / 1024)}KB)...` });
+    }
+    
+    const buffer = await readMemoryChunked(debugSession, matInfo.dataPtr, totalBytes, progress);
     if (!buffer) return null;
 
+    if (progress) {
+        progress.report({ message: "Processing data..." });
+    }
+    
     const data: number[] = [];
     const depth = matInfo.depth;
     
@@ -456,7 +458,8 @@ async function readVectorDataInternal(
     variableName: string,
     type: string,
     expectedSize?: number,
-    variableInfo?: any
+    variableInfo?: any,
+    progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<{ data: number[], dataPtr: string | null } | null> {
     const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
     const context = getEvaluateContext(debugSession);
@@ -468,6 +471,10 @@ async function readVectorDataInternal(
         // This is a bit tricky, we'd need matInfo here. 
         // For now let's focus on the initial plot.
         return null;
+    }
+
+    if (progress) {
+        progress.report({ message: "Getting vector info..." });
     }
 
     // 1. Get vector size using the common utility function
@@ -530,81 +537,20 @@ async function readVectorDataInternal(
     let dataPtr: string | null = null;
     
     if (isUsingLLDB(debugSession)) {
-        console.log("Using LLDB-specific approaches for 1D vector");
+        // OPTIMIZATION: Skip "variables" request - it's extremely slow for large vectors
+        // (e.g., 100,000 elements returns many variables, taking several seconds)
+        // Use evaluate expressions directly instead
+        console.log("Using LLDB-specific approaches for 1D vector (evaluate expressions only)");
         
-        // First, try to get data pointer through variables if we have variablesReference
-        if (variableInfo && variableInfo.variablesReference > 0) {
-            try {
-                console.log(`Trying to get data pointer through variables, variablesReference=${variableInfo.variablesReference}`);
-                const varsResponse = await debugSession.customRequest("variables", {
-                    variablesReference: variableInfo.variablesReference
-                });
-                
-                if (varsResponse.variables && varsResponse.variables.length > 0) {
-                    const varNames = varsResponse.variables.slice(0, 10).map((v: any) => v.name).join(", ");
-                    console.log(`Found ${varsResponse.variables.length} variables (first 10: ${varNames}...)`);
-                    
-                    // Strategy 1: Look for __begin_ in the variables
-                    for (const v of varsResponse.variables) {
-                        const varName = v.name;
-                        if (varName === "__begin_" || varName.includes("__begin")) {
-                            console.log(`Found __begin_ variable: name="${varName}", value="${v.value}", memoryReference="${v.memoryReference}"`);
-                            
-                            // Extract pointer from value
-                            if (v.value) {
-                                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
-                                if (ptrMatch) {
-                                    dataPtr = ptrMatch[0];
-                                    console.log(`Extracted pointer from __begin_ variable: ${dataPtr}`);
-                                    break;
-                                }
-                            }
-                            
-                            // Also check memoryReference
-                            if (!dataPtr && v.memoryReference) {
-                                dataPtr = v.memoryReference;
-                                console.log(`Using memoryReference from __begin_ variable: ${dataPtr}`);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Strategy 2: If __begin_ not found, try to get [0] element's memoryReference
-                    if (!dataPtr) {
-                        const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
-                        if (firstElement) {
-                            console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
-                            
-                            if (firstElement.memoryReference) {
-                                dataPtr = firstElement.memoryReference;
-                                console.log(`Using memoryReference from [0] element as data pointer: ${dataPtr}`);
-                            } else if (firstElement.value) {
-                                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
-                                if (ptrMatch) {
-                                    dataPtr = ptrMatch[0];
-                                    console.log(`Extracted pointer from [0] element value: ${dataPtr}`);
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e) {
-                console.log("Failed to get data pointer through variables:", e);
-            }
-        }
-        
-        // If variables approach didn't work, try evaluate expressions
-        if (!dataPtr) {
-            const lldbExpressions = [
-                `${variableName}.__begin_`,
-                `reinterpret_cast<long long>(${variableName}.__begin_)`,
-                `${variableName}.data()`,
-                `reinterpret_cast<long long>(${variableName}.data())`,
-                `&${variableName}[0]`,
-                `reinterpret_cast<long long>(&${variableName}[0])`
-            ];
-            dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
-        }
+        const lldbExpressions = [
+            `${variableName}.__begin_`,
+            `reinterpret_cast<long long>(${variableName}.__begin_)`,
+            `${variableName}.data()`,
+            `reinterpret_cast<long long>(${variableName}.data())`,
+            `&${variableName}[0]`,
+            `reinterpret_cast<long long>(&${variableName}[0])`
+        ];
+        dataPtr = await tryGetDataPointer(debugSession, variableName, lldbExpressions, frameId, context);
         
     } else if (isUsingMSVC(debugSession)) {
         console.log("Using MSVC-specific approaches for 1D vector");
@@ -646,12 +592,21 @@ async function readVectorDataInternal(
 
     // 4. Read memory
     const totalBytes = size * bytesPerElement;
+    
+    if (progress) {
+        progress.report({ message: `Reading ${size} elements (${Math.round(totalBytes / 1024)}KB)...` });
+    }
+    
     console.log(`Reading ${size} elements (${totalBytes} bytes) from ${dataPtr}`);
-    const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
+    const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes, progress);
 
     if (!buffer) {
         vscode.window.showErrorMessage(`Failed to read memory for vector ${variableName}.`);
         return null;
+    }
+
+    if (progress) {
+        progress.report({ message: "Processing data..." });
     }
 
     // 5. Convert to numbers
@@ -669,12 +624,17 @@ async function readSetDataInternal(
     debugSession: vscode.DebugSession,
     variableName: string,
     type: string,
-    variableInfo?: any
+    variableInfo?: any,
+    progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<{ data: number[] } | null> {
     const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
     const context = getEvaluateContext(debugSession);
 
     console.log(`readSetDataInternal: variableName="${variableName}", type="${type}", debugger=${debugSession.type}`);
+
+    if (progress) {
+        progress.report({ message: "Getting set info..." });
+    }
 
     // 1. Get set size
     const size = await getVectorSize(debugSession, variableName, frameId, variableInfo);
@@ -696,6 +656,10 @@ async function readSetDataInternal(
         parseValue = (val) => parseFloat(val);
     } else {
         parseValue = (val) => parseInt(val);
+    }
+
+    if (progress) {
+        progress.report({ message: `Reading ${size} set elements...` });
     }
 
     // 3. Read elements via variablesReference

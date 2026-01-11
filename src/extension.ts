@@ -283,31 +283,42 @@ export function activate(context: vscode.ExtensionContext) {
       }
       
       // std::array detection
-      // For LLDB, use the enhanced function that uses frame variable command to get more accurate type info
-      let stdArray2D;
-      if (isLLDB) {
-        stdArray2D = await is2DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
-      } else {
-        stdArray2D = is2DStdArray(variableInfo);
-      }
-      const stdArray1D = is1DStdArray(variableInfo);
-      const stdArrayPoint3 = isPoint3StdArray(variableInfo);
+      // OPTIMIZATION: Skip slow array detection if we already know the type
+      // isPoint3Vector and isMat are fast (string matching), while is*Enhanced are slow (debugger commands)
+      let stdArray2D = { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+      let stdArray1D = { is1DArray: false, elementType: "", size: 0 };
+      let stdArrayPoint3 = { isPoint3Array: false, isDouble: false, size: 0 };
+      let cStyleArray2D = { is2DArray: false, rows: 0, cols: 0, elementType: "", depth: 0 };
+      let cStyleArray1D = { is1DArray: false, elementType: "", size: 0 };
+      let cStyleArray3D = { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
+      let stdArray3D = { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
       
-      // C-style array detection
-      let cStyleArray2D;
-      let cStyleArray1D;
-      let cStyleArray3D;
-      let stdArray3D;
-      if (isLLDB) {
-        cStyleArray2D = await is2DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
-        cStyleArray1D = await is1DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
-        cStyleArray3D = await is3DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
-        stdArray3D = await is3DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
-      } else {
-        cStyleArray2D = is2DCStyleArray(variableInfo);
-        cStyleArray1D = is1DCStyleArray(variableInfo);
-        cStyleArray3D = is3DCStyleArray(variableInfo);
-        stdArray3D = is3DStdArray(variableInfo);
+      // Only run slow array detection if we don't already know the type
+      const knownType = point3Info.isPoint3 || isMatType || matxInfo.isMatx || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined;
+      console.log(`knownType=${knownType} (point3=${point3Info.isPoint3}, mat=${isMatType}, matx=${matxInfo.isMatx}, vec1D=${vector1D.is1D}, set1D=${set1D.isSet}, mat1D=${is1DMatType.is1D}, confirmed=${confirmed1DSize !== undefined})`);
+      
+      if (!knownType) {
+        // For LLDB, use the enhanced function that uses frame variable command to get more accurate type info
+        if (isLLDB) {
+          stdArray2D = await is2DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+        } else {
+          stdArray2D = is2DStdArray(variableInfo);
+        }
+        stdArray1D = is1DStdArray(variableInfo);
+        stdArrayPoint3 = isPoint3StdArray(variableInfo);
+        
+        // C-style array detection
+        if (isLLDB) {
+          cStyleArray2D = await is2DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+          cStyleArray1D = await is1DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+          cStyleArray3D = await is3DCStyleArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+          stdArray3D = await is3DStdArrayEnhanced(debugSession, variableName, frameId, variableInfo);
+        } else {
+          cStyleArray2D = is2DCStyleArray(variableInfo);
+          cStyleArray1D = is1DCStyleArray(variableInfo);
+          cStyleArray3D = is3DCStyleArray(variableInfo);
+          stdArray3D = is3DStdArray(variableInfo);
+        }
       }
       
       console.log(`is1DVector result: is1D=${vector1D.is1D}, elementType=${vector1D.elementType}, size=${vector1D.size}`);

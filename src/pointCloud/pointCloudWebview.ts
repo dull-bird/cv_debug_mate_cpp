@@ -1,8 +1,12 @@
 // Function to generate the webview content for the point cloud
+// If points is empty, the webview will wait for data via postMessage
 export function getWebviewContentForPointCloud(
-  points: { x: number; y: number; z: number }[]
+  points?: { x: number; y: number; z: number }[]
 ): string {
-  const pointsArray = JSON.stringify(points);
+  // If points provided, embed them (legacy mode for compatibility)
+  // If not provided, webview will wait for postMessage
+  const pointsArray = points && points.length > 0 ? JSON.stringify(points) : '[]';
+  const waitForData = !points || points.length === 0;
   return `
         <!DOCTYPE html>
         <html lang="en">
@@ -13,6 +17,35 @@ export function getWebviewContentForPointCloud(
             <style>
                 body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
                 canvas { display: block; }
+                #loading {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(0,0,0,0.7);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    z-index: 2000;
+                }
+                .spinner {
+                    border: 4px solid rgba(255, 255, 255, 0.3);
+                    border-radius: 50%;
+                    border-top: 4px solid #4a9eff;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin-bottom: 10px;
+                }
+                .hidden { display: none !important; }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
                 #info {
                     position: absolute;
                     top: 10px;
@@ -40,14 +73,19 @@ export function getWebviewContentForPointCloud(
                     background: #4a9eff;
                     color: white;
                     border: none;
-                    padding: 8px 12px;
-                    margin: 3px;
+                    padding: 6px 10px;
+                    margin: 2px;
                     border-radius: 4px;
                     cursor: pointer;
-                    font-size: 12px;
+                    font-size: 11px;
                 }
                 #controls button:hover { background: #3a8eef; }
-                #controls button.active { background: #2a7edf; }
+                #controls button.active { background: #1a5faf; }
+                #controls button.color-btn.active { background: #1a5faf; }
+                #controls button.view-btn {
+                    padding: 4px 6px;
+                    font-size: 10px;
+                }
                 #controls.collapsed .ctrl-row,
                 #controls.collapsed button:not(.toggle-btn) {
                     display: none;
@@ -205,6 +243,10 @@ export function getWebviewContentForPointCloud(
             </script>
         </head>
         <body>
+            <div id="loading" class="${waitForData ? '' : 'hidden'}">
+                <div class="spinner"></div>
+                <div id="loading-text">Loading Point Cloud...</div>
+            </div>
             <div id="info">
                 <h3>Point Cloud Viewer</h3>
                 <p>Points: <span id="pointCount">0</span></p>
@@ -215,6 +257,8 @@ export function getWebviewContentForPointCloud(
             <div id="controls">
                 <button class="toggle-btn" id="toggleControls" title="Hide/Show Controls">▼</button>
                 <div class="ctrl-row">
+                    <button id="btnReload" title="Reload data from memory">Reload</button>
+                    <button id="btnResetView">Reset</button>
                     <label>Size:</label>
                     <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
                     <label>PLY:</label>
@@ -224,12 +268,22 @@ export function getWebviewContentForPointCloud(
                     </select>
                     <button id="btnSavePLY" class="save-btn" style="background: #28a745;">Save</button>
                 </div>
-                <button id="btnSolid">Solid</button>
-                <button id="btnHeightZ">Z</button>
-                <button id="btnHeightY">Y</button>
-                <button id="btnHeightX">X</button>
-                <button id="btnResetView">Reset</button>
-                <button id="btnReload" title="强制从内存重新读取数据 (保持视角)">🔄</button>
+                <div class="ctrl-row">
+                    <span style="font-size: 10px; color: #888;">Colored by:</span>
+                    <button id="btnSolid" class="color-btn active">Solid</button>
+                    <button id="btnHeightZ" class="color-btn">Z</button>
+                    <button id="btnHeightY" class="color-btn">Y</button>
+                    <button id="btnHeightX" class="color-btn">X</button>
+                </div>
+                <div class="ctrl-row">
+                    <span style="font-size: 10px; color: #888;">View from:</span>
+                    <button id="btnViewTop" class="view-btn" title="View from Top (Z+)">Top</button>
+                    <button id="btnViewBottom" class="view-btn" title="View from Bottom (Z-)">Bottom</button>
+                    <button id="btnViewFront" class="view-btn" title="View from Front (Y+)">Front</button>
+                    <button id="btnViewBack" class="view-btn" title="View from Back (Y-)">Back</button>
+                    <button id="btnViewLeft" class="view-btn" title="View from Left (X-)">Left</button>
+                    <button id="btnViewRight" class="view-btn" title="View from Right (X+)">Right</button>
+                </div>
             </div>
             <div id="axisView"></div>
             <div id="colorbar">
@@ -253,9 +307,25 @@ export function getWebviewContentForPointCloud(
                 import * as THREE from 'three';
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 
+                const vscode = acquireVsCodeApi();
+                const loadingOverlay = document.getElementById('loading');
+                const loadingText = document.getElementById('loading-text');
+                
                 let points = ${pointsArray};
                 let isInitialized = false;
                 let pendingSyncState = null;
+                let extensionReady = false;
+                
+                // Detect if this is a moved panel (same logic as Mat viewer)
+                const waitForData = ${waitForData};
+                if (waitForData) {
+                    setTimeout(() => {
+                        if (!extensionReady) {
+                            loadingText.innerHTML = 'Reloading...';
+                            vscode.postMessage({ command: 'reload' });
+                        }
+                    }, 100);
+                }
                 
                 // Colorbar custom limits
                 let colorCustomMin = null;
@@ -274,6 +344,13 @@ export function getWebviewContentForPointCloud(
                 renderer.setSize(window.innerWidth, window.innerHeight);
                 renderer.autoClear = false;
                 document.body.appendChild(renderer.domElement);
+                
+                // Point cloud objects (will be created when data is available)
+                let geometry = null;
+                let pointsMaterial = null;
+                let pointsObj = null;
+                let minX = 0, maxX = 1, minY = 0, maxY = 1, minZ = 0, maxZ = 1;
+                const controls = new OrbitControls(camera, renderer.domElement);
                 
                 // Axis view using SVG for crisp vector rendering
                 const axisContainer = document.getElementById('axisView');
@@ -385,74 +462,99 @@ export function getWebviewContentForPointCloud(
                 // Initial render
                 updateAxisView();
 
-                // Calculate bounds
-                let minX = Infinity, maxX = -Infinity;
-                let minY = Infinity, maxY = -Infinity;
-                let minZ = Infinity, maxZ = -Infinity;
-                
-                points.forEach(p => {
-                    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-                    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-                    minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
-                });
-                
-                document.getElementById('pointCount').textContent = points.length;
-                document.getElementById('boundsX').textContent = \`[\${minX.toFixed(2)}, \${maxX.toFixed(2)}]\`;
-                document.getElementById('boundsY').textContent = \`[\${minY.toFixed(2)}, \${maxY.toFixed(2)}]\`;
-                document.getElementById('boundsZ').textContent = \`[\${minZ.toFixed(2)}, \${maxZ.toFixed(2)}]\`;
-
-                const geometry = new THREE.BufferGeometry();
-                const positions = new Float32Array(points.length * 3);
-                const colors = new Float32Array(points.length * 3);
-                
-                points.forEach((p, i) => {
-                    positions[i * 3] = p.x;
-                    positions[i * 3 + 1] = p.z; // Swap Y and Z for Three.js
-                    positions[i * 3 + 2] = -p.y; // Invert Y
+                // Function to initialize point cloud with data
+                function initializePointCloud(pointsData) {
+                    points = pointsData;
                     
-                    colors[i * 3] = 0.5;
-                    colors[i * 3 + 1] = 0.7;
-                    colors[i * 3 + 2] = 1.0;
-                });
-                
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                
-                const material = new THREE.PointsMaterial({
-                    size: 0.1,
-                    vertexColors: true,
-                    sizeAttenuation: true
-                });
-                
-                const pointsObj = new THREE.Points(geometry, material);
-                scene.add(pointsObj);
-                
-                // Add helper grid
-                const grid = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-                grid.rotation.x = Math.PI / 2;
-                // scene.add(grid);
+                    // Calculate bounds
+                    minX = Infinity; maxX = -Infinity;
+                    minY = Infinity; maxY = -Infinity;
+                    minZ = Infinity; maxZ = -Infinity;
+                    
+                    points.forEach(p => {
+                        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+                        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+                        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+                    });
+                    
+                    // Handle edge case of single point or identical points
+                    if (minX === maxX) { minX -= 0.5; maxX += 0.5; }
+                    if (minY === maxY) { minY -= 0.5; maxY += 0.5; }
+                    if (minZ === maxZ) { minZ -= 0.5; maxZ += 0.5; }
+                    
+                    document.getElementById('pointCount').textContent = points.length;
+                    document.getElementById('boundsX').textContent = \`[\${minX.toFixed(2)}, \${maxX.toFixed(2)}]\`;
+                    document.getElementById('boundsY').textContent = \`[\${minY.toFixed(2)}, \${maxY.toFixed(2)}]\`;
+                    document.getElementById('boundsZ').textContent = \`[\${minZ.toFixed(2)}, \${maxZ.toFixed(2)}]\`;
 
-                const controls = new OrbitControls(camera, renderer.domElement);
+                    // Remove old point cloud if exists
+                    if (pointsObj) {
+                        scene.remove(pointsObj);
+                        geometry.dispose();
+                        pointsMaterial.dispose();
+                    }
+
+                    geometry = new THREE.BufferGeometry();
+                    const positions = new Float32Array(points.length * 3);
+                    const colors = new Float32Array(points.length * 3);
+                    
+                    points.forEach((p, i) => {
+                        positions[i * 3] = p.x;
+                        positions[i * 3 + 1] = p.z; // Swap Y and Z for Three.js
+                        positions[i * 3 + 2] = -p.y; // Invert Y
+                        
+                        colors[i * 3] = 0.5;
+                        colors[i * 3 + 1] = 0.7;
+                        colors[i * 3 + 2] = 1.0;
+                    });
+                    
+                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                    
+                    pointsMaterial = new THREE.PointsMaterial({
+                        size: 0.1,
+                        vertexColors: true,
+                        sizeAttenuation: true
+                    });
+                    
+                    pointsObj = new THREE.Points(geometry, pointsMaterial);
+                    scene.add(pointsObj);
+                    
+                    // Hide loading overlay
+                    loadingOverlay.classList.add('hidden');
+                    
+                    if (pendingSyncState) {
+                        applyViewState(pendingSyncState);
+                        pendingSyncState = null;
+                    } else if (!isInitialized) {
+                        resetView();
+                    }
+                    
+                    isInitialized = true;
+                    renderer.render(scene, camera);
+                }
                 
                 function resetView() {
                     const centerX = (minX + maxX) / 2;
-                    const centerY = (minZ + maxZ) / 2;
-                    const centerZ = -(minY + maxY) / 2;
+                    const centerY = (minZ + maxZ) / 2;  // Three.js Y = World Z
+                    const centerZ = -(minY + maxY) / 2; // Three.js Z = -World Y
                     
                     const dist = Math.max(maxX - minX, maxY - minY, maxZ - minZ) * 1.5;
-                    camera.position.set(centerX + dist, centerY + dist, centerZ + dist);
+                    
+                    // Fixed isometric-like view: from front-right-top corner
+                    camera.position.set(centerX + dist * 0.7, centerY + dist * 0.7, centerZ + dist * 0.7);
+                    camera.up.set(0, 1, 0); // Y is up
                     camera.lookAt(centerX, centerY, centerZ);
                     controls.target.set(centerX, centerY, centerZ);
                     controls.update();
+                    
+                    // Emit view change for sync
+                    emitViewChange(true);
                 }
                 
-                isInitialized = true;
-                
-                if (pendingSyncState) {
-                    applyViewState(pendingSyncState);
-                    pendingSyncState = null;
-                } else {
-                    resetView();
+                // Initialize with embedded data if available
+                if (points.length > 0) {
+                    initializePointCloud(points);
                 }
 
                 function getAxisBounds(mode) {
@@ -552,16 +654,86 @@ export function getWebviewContentForPointCloud(
                     }
                 }
 
-                document.getElementById('btnSolid').onclick = () => updateColors('solid');
-                document.getElementById('btnHeightX').onclick = () => updateColors('x');
-                document.getElementById('btnHeightY').onclick = () => updateColors('y');
-                document.getElementById('btnHeightZ').onclick = () => updateColors('z');
+                document.getElementById('btnSolid').onclick = () => { updateColors('solid'); updateColorButtons('solid'); };
+                document.getElementById('btnHeightX').onclick = () => { updateColors('x'); updateColorButtons('x'); };
+                document.getElementById('btnHeightY').onclick = () => { updateColors('y'); updateColorButtons('y'); };
+                document.getElementById('btnHeightZ').onclick = () => { updateColors('z'); updateColorButtons('z'); };
                 document.getElementById('btnResetView').onclick = resetView;
                 document.getElementById('btnReload').onclick = () => {
                     vscode.postMessage({ command: 'reload' });
                 };
+                
+                // Update color button active state
+                function updateColorButtons(mode) {
+                    document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
+                    if (mode === 'solid') document.getElementById('btnSolid').classList.add('active');
+                    else if (mode === 'x') document.getElementById('btnHeightX').classList.add('active');
+                    else if (mode === 'y') document.getElementById('btnHeightY').classList.add('active');
+                    else if (mode === 'z') document.getElementById('btnHeightZ').classList.add('active');
+                }
+                
+                // View angle buttons (like CloudCompare)
+                // Note: In Three.js, Y is up. Our coordinate mapping:
+                // - World X (Right) -> Three.js X
+                // - World Y (Forward) -> Three.js -Z
+                // - World Z (Up) -> Three.js Y
+                function setViewAngle(direction) {
+                    if (!isInitialized) return;
+                    
+                    const centerX = (minX + maxX) / 2;
+                    const centerY = (minZ + maxZ) / 2;  // Three.js Y = World Z
+                    const centerZ = -(minY + maxY) / 2; // Three.js Z = -World Y
+                    
+                    const dist = Math.max(maxX - minX, maxY - minY, maxZ - minZ) * 1.5;
+                    
+                    let camPos;
+                    let upVec = new THREE.Vector3(0, 1, 0); // Default up is Y (World Z)
+                    
+                    switch (direction) {
+                        case 'top':    // Looking down from Z+ (World Z+)
+                            camPos = new THREE.Vector3(centerX, centerY + dist, centerZ);
+                            upVec = new THREE.Vector3(0, 0, -1); // Forward is -Z (World Y+)
+                            break;
+                        case 'bottom': // Looking up from Z- (World Z-)
+                            camPos = new THREE.Vector3(centerX, centerY - dist, centerZ);
+                            upVec = new THREE.Vector3(0, 0, 1); // Forward is +Z (World Y-)
+                            break;
+                        case 'front':  // Looking from Y- (World Y-), seeing front face
+                            camPos = new THREE.Vector3(centerX, centerY, centerZ + dist);
+                            break;
+                        case 'back':   // Looking from Y+ (World Y+), seeing back face
+                            camPos = new THREE.Vector3(centerX, centerY, centerZ - dist);
+                            break;
+                        case 'left':   // Looking from X- (World X-)
+                            camPos = new THREE.Vector3(centerX - dist, centerY, centerZ);
+                            break;
+                        case 'right':  // Looking from X+ (World X+)
+                            camPos = new THREE.Vector3(centerX + dist, centerY, centerZ);
+                            break;
+                        default:
+                            return;
+                    }
+                    
+                    camera.position.copy(camPos);
+                    camera.up.copy(upVec);
+                    camera.lookAt(centerX, centerY, centerZ);
+                    controls.target.set(centerX, centerY, centerZ);
+                    controls.update();
+                    
+                    // Emit view change for sync
+                    emitViewChange(true);
+                }
+                
+                document.getElementById('btnViewTop').onclick = () => setViewAngle('top');
+                document.getElementById('btnViewBottom').onclick = () => setViewAngle('bottom');
+                document.getElementById('btnViewFront').onclick = () => setViewAngle('front');
+                document.getElementById('btnViewBack').onclick = () => setViewAngle('back');
+                document.getElementById('btnViewLeft').onclick = () => setViewAngle('left');
+                document.getElementById('btnViewRight').onclick = () => setViewAngle('right');
                 document.getElementById('pointSizeInput').oninput = (e) => {
-                    material.size = parseFloat(e.target.value);
+                    if (pointsMaterial) {
+                        pointsMaterial.size = parseFloat(e.target.value);
+                    }
                 };
                 
                 // Toggle controls visibility
@@ -673,8 +845,6 @@ export function getWebviewContentForPointCloud(
                     applyColorsWithLimits();
                 });
                 
-                const vscode = acquireVsCodeApi();
-
                 document.getElementById('btnSavePLY').onclick = () => {
                     const format = document.getElementById('plyFormatSelect').value;
                     vscode.postMessage({ command: 'savePLY', format: format });
@@ -683,7 +853,24 @@ export function getWebviewContentForPointCloud(
                 let isSyncing = false;
                 window.addEventListener('message', event => {
                     const message = event.data;
-                    if (message.command === 'setView') {
+                    if (message.command === 'ready') {
+                        // Extension is ready, this is not a moved panel
+                        extensionReady = true;
+                    } else if (message.command === 'completeData') {
+                        // Received point cloud data via postMessage
+                        extensionReady = true;
+                        loadingOverlay.classList.remove('hidden');
+                        loadingText.textContent = 'Initializing point cloud...';
+                        
+                        setTimeout(() => {
+                            try {
+                                initializePointCloud(message.points);
+                            } catch (e) {
+                                console.error('Failed to initialize point cloud:', e);
+                                loadingText.textContent = 'Failed to load: ' + e.message;
+                            }
+                        }, 10);
+                    } else if (message.command === 'setView') {
                         const state = message.state;
                         if (!isInitialized) {
                             pendingSyncState = state;
@@ -696,6 +883,12 @@ export function getWebviewContentForPointCloud(
                 });
 
                 function updatePointCloudData(newPoints) {
+                    // If geometry doesn't exist yet, use initializePointCloud instead
+                    if (!geometry) {
+                        initializePointCloud(newPoints);
+                        return;
+                    }
+                    
                     points = newPoints;
                     const positions = geometry.attributes.position.array;
                     const colors = geometry.attributes.color.array;
@@ -728,8 +921,34 @@ export function getWebviewContentForPointCloud(
                         geometry.attributes.position.needsUpdate = true;
                     }
                     
+                    // Update bounds for color mapping
+                    minX = Infinity; maxX = -Infinity;
+                    minY = Infinity; maxY = -Infinity;
+                    minZ = Infinity; maxZ = -Infinity;
+                    
+                    newPoints.forEach(p => {
+                        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+                        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+                        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+                    });
+                    
+                    // Handle edge case of single point or identical points
+                    if (minX === maxX) { minX -= 0.5; maxX += 0.5; }
+                    if (minY === maxY) { minY -= 0.5; maxY += 0.5; }
+                    if (minZ === maxZ) { minZ -= 0.5; maxZ += 0.5; }
+                    
                     // Update info display
                     document.getElementById('pointCount').textContent = newPoints.length;
+                    document.getElementById('boundsX').textContent = \`[\${minX.toFixed(2)}, \${maxX.toFixed(2)}]\`;
+                    document.getElementById('boundsY').textContent = \`[\${minY.toFixed(2)}, \${maxY.toFixed(2)}]\`;
+                    document.getElementById('boundsZ').textContent = \`[\${minZ.toFixed(2)}, \${maxZ.toFixed(2)}]\`;
+                    
+                    // Re-apply current color mode with new bounds
+                    if (currentColorMode !== 'solid') {
+                        updateColorbarUI();
+                        applyColorsWithLimits();
+                    }
+                    
                     renderer.render(scene, camera);
                 }
 

@@ -204,8 +204,8 @@ void demo_3d_pointcloud() {
   std::vector<cv::Point3f> cloud_f;
   std::vector<cv::Point3d> cloud_d;
 
-  // Generate a sphere
-  const int numPoints = 3000;
+  // Generate a large sphere with 500,000 points
+  const int numPoints = 500000;
   const float radius = 5.0f;
   for (int i = 0; i < numPoints; i++) {
     float theta = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
@@ -218,8 +218,8 @@ void demo_3d_pointcloud() {
     cloud_d.push_back(cv::Point3d(x, y, z));
   }
 
-  // Add a ground plane
-  for (int i = 0; i < 1000; i++) {
+  // Add a large ground plane with 100,000 points
+  for (int i = 0; i < 100000; i++) {
     float x = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f;
     float y = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 20.0f;
     float z = -radius - 1.0f;
@@ -228,7 +228,7 @@ void demo_3d_pointcloud() {
   }
 
   // --- std::array<cv::Point3f, N> (NEW!) ---
-  constexpr size_t ARRAY_SIZE = 500;
+  constexpr size_t ARRAY_SIZE = 10000;
   std::array<cv::Point3f, ARRAY_SIZE> array_cloud_f;
   std::array<cv::Point3d, ARRAY_SIZE> array_cloud_d;
 
@@ -261,7 +261,8 @@ void demo_3d_pointcloud() {
 void demo_1d_plots() {
   std::cout << "\n=== 1D Plot Examples ===" << std::endl;
 
-  const size_t N = 200;
+  // Large data size for testing postMessage performance
+  const size_t N = 100000;
 
   // --- std::vector<T> ---
   std::vector<float> vec_sin(N), vec_cos(N);
@@ -270,29 +271,29 @@ void demo_1d_plots() {
   std::vector<uchar> vec_uchar(N);
 
   for (size_t i = 0; i < N; i++) {
-    float t = static_cast<float>(i) / N * 4.0f * M_PI;
-    vec_sin[i] = sin(t);
-    vec_cos[i] = cos(t);
-    vec_double[i] = sin(t) * cos(t * 0.5);
-    vec_int[i] = static_cast<int>(sin(t) * 100);
+    float t = static_cast<float>(i) / N * 100.0f * M_PI;
+    vec_sin[i] = sin(t) + 0.1f * sin(t * 10);
+    vec_cos[i] = cos(t) + 0.1f * cos(t * 10);
+    vec_double[i] = sin(t) * cos(t * 0.5) + 0.05 * sin(t * 20);
+    vec_int[i] = static_cast<int>(sin(t) * 100 + 50 * sin(t * 5));
     vec_uchar[i] = static_cast<uchar>((sin(t) + 1.0f) * 127.5f);
   }
 
   // --- std::array<T, N> (NEW!) ---
-  std::array<float, 100> array_float;
-  std::array<double, 100> array_double;
-  std::array<int, 100> array_int;
+  std::array<float, 10000> array_float;
+  std::array<double, 10000> array_double;
+  std::array<int, 10000> array_int;
 
-  for (size_t i = 0; i < 100; i++) {
-    float t = static_cast<float>(i) / 100.0f * 2.0f * M_PI;
-    array_float[i] = sin(t) * exp(-t * 0.1f);
-    array_double[i] = cos(t) * (1.0 - t / (2.0 * M_PI));
-    array_int[i] = static_cast<int>(sin(t * 2) * 50 + 50);
+  for (size_t i = 0; i < 10000; i++) {
+    float t = static_cast<float>(i) / 10000.0f * 20.0f * M_PI;
+    array_float[i] = sin(t) * exp(-t * 0.01f) + 0.2f * sin(t * 5);
+    array_double[i] = cos(t) * (1.0 - t / (20.0 * M_PI)) + 0.1 * cos(t * 7);
+    array_int[i] = static_cast<int>(sin(t * 2) * 50 + 50 + 20 * sin(t * 10));
   }
 
   // --- std::set<T> ---
   std::set<double> set_double;
-  for (size_t i = 0; i < 50; i++) {
+  for (size_t i = 0; i < 1000; i++) {
     set_double.insert(static_cast<double>(rand()) / RAND_MAX * 100.0);
   }
 

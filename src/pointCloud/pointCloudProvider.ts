@@ -35,55 +35,77 @@ export async function drawPointCloud(
     const panelTitle = `View: ${panelName}`;
     const bytesPerPoint = isDouble ? 24 : 12;
 
-    // Step 1: Get metadata only (size + dataPtr) without reading full data
-    let metadata: { size: number; dataPtr: string | null } = { size: 0, dataPtr: null };
-    if (variableInfo.evaluateName) {
-      try {
-        metadata = await getPointCloudMetadata(debugSession, variableInfo.evaluateName, variableInfo);
-      } catch (e) {
-        console.log("Failed to get point cloud metadata:", e);
-      }
-    }
+    // Wrap entire operation in progress indicator for immediate feedback
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Loading Point Cloud",
+        cancellable: false
+      },
+      async (progress) => {
+        // Step 1: Get metadata only (size + dataPtr) without reading full data
+        progress.report({ message: "Getting metadata..." });
+        let metadata: { size: number; dataPtr: string | null } = { size: 0, dataPtr: null };
+        if (variableInfo.evaluateName) {
+          try {
+            metadata = await getPointCloudMetadata(debugSession, variableInfo.evaluateName, variableInfo);
+          } catch (e) {
+            console.log("Failed to get point cloud metadata:", e);
+          }
+        }
 
-    // Step 2: Get or create panel (will reveal if needed)
-    const panel = PanelManager.getOrCreatePanel(
-      "3DPointViewer",
-      panelTitle,
-      debugSession.id,
-      panelName,
-      reveal,
-      metadata.dataPtr || undefined  // Enable sharing panels by data pointer
+        // Step 2: Get or create panel (will reveal if needed)
+        const panel = PanelManager.getOrCreatePanel(
+          "3DPointViewer",
+          panelTitle,
+          debugSession.id,
+          panelName,
+          reveal,
+          metadata.dataPtr || undefined  // Enable sharing panels by data pointer
+        );
+
+        // Step 3: Check if panel is fresh (only when not force)
+        if (!force && metadata.dataPtr) {
+          progress.report({ message: "Checking if data changed..." });
+          const totalBytes = metadata.size * bytesPerPoint;
+          const sample = await getMemorySample(debugSession, metadata.dataPtr, totalBytes);
+          const stateToken = `${metadata.size}|${metadata.dataPtr}|${sample}`;
+          
+          if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
+            console.log(`PointCloud panel is already up-to-date with token: ${stateToken}`);
+            return { panel, points: [], dataPtrForToken: "", skipped: true };
+          }
+        }
+
+        // Step 4: Now read full data since we need to update
+        let points: { x: number; y: number; z: number }[] = [];
+        let dataPtrForToken = "";
+        
+        if (variableInfo.evaluateName) {
+          console.log("Reading full point cloud data");
+          
+          try {
+            const readResult = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo, isDouble, progress);
+            points = readResult.points;
+            dataPtrForToken = readResult.dataPtr || "";
+            if (points.length > 0) {
+              console.log(`Loaded ${points.length} points via readMemory`);
+            }
+          } catch (e) {
+            console.log("readMemory approach failed:", e);
+          }
+        }
+
+        return { panel, points, dataPtrForToken, skipped: false };
+      }
     );
 
-    // Step 3: Check if panel is fresh (only when not force)
-    if (!force && metadata.dataPtr) {
-      const totalBytes = metadata.size * bytesPerPoint;
-      const sample = await getMemorySample(debugSession, metadata.dataPtr, totalBytes);
-      const stateToken = `${metadata.size}|${metadata.dataPtr}|${sample}`;
-      
-      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
-        console.log(`PointCloud panel is already up-to-date with token: ${stateToken}`);
-        return;
-      }
+    // If skipped (panel was fresh), we're done
+    if (result.skipped) {
+      return;
     }
 
-    // Step 4: Now read full data since we need to update
-    let points: { x: number; y: number; z: number }[] = [];
-    let dataPtrForToken = "";
-    
-    if (variableInfo.evaluateName) {
-      console.log("Reading full point cloud data");
-      try {
-        const result = await getPointCloudViaReadMemory(debugSession, variableInfo.evaluateName, variableInfo, isDouble);
-        points = result.points;
-        dataPtrForToken = result.dataPtr || "";
-        if (points.length > 0) {
-          console.log(`Loaded ${points.length} points via readMemory`);
-        }
-      } catch (e) {
-        console.log("readMemory approach failed:", e);
-      }
-    }
+    const { panel, points, dataPtrForToken } = result;
 
     console.log(`Loaded ${points.length} points`);
 
@@ -108,7 +130,11 @@ export async function drawPointCloud(
       return;
     }
 
-    panel.webview.html = getWebviewContentForPointCloud(points);
+    // Set HTML without embedding data (data will be sent via postMessage)
+    panel.webview.html = getWebviewContentForPointCloud();
+    
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
     
     SyncManager.registerPanel(panelName, panel);
 
@@ -149,6 +175,13 @@ export async function drawPointCloud(
       undefined,
       undefined
     );
+
+    // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
+    console.log(`Sending ${points.length} points to webview via postMessage`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      points: points
+    });
   } catch (error) {
     console.error("Error in drawPointCloud:", error);
     throw error;
@@ -156,6 +189,8 @@ export async function drawPointCloud(
 }
 
 // Get point cloud metadata only (size + dataPtr) without reading full data
+// OPTIMIZED: Avoid calling "variables" request for large vectors (very slow for LLDB)
+// Instead, use evaluate expressions directly to get data pointer
 async function getPointCloudMetadata(
   debugSession: vscode.DebugSession,
   evaluateName: string,
@@ -175,7 +210,7 @@ async function getPointCloudMetadata(
   }
   console.log(`Vector size: ${size}`);
   
-  // Get data pointer (same logic as getPointCloudViaReadMemory but without reading data)
+  // Get data pointer using evaluate expressions only (avoid slow "variables" request)
   let dataPtr: string | null = null;
   
   if (isUsingMSVC(debugSession)) {
@@ -189,62 +224,18 @@ async function getPointCloudMetadata(
     dataPtr = await tryGetDataPointer(debugSession, evaluateName, msvcExpressions, frameId, context);
     
   } else if (isUsingLLDB(debugSession)) {
-    // First try variables approach
-    if (variableInfo && variableInfo.variablesReference > 0) {
-      try {
-        const varsResponse = await debugSession.customRequest("variables", {
-          variablesReference: variableInfo.variablesReference
-        });
-        
-        if (varsResponse.variables && varsResponse.variables.length > 0) {
-          // Look for __begin_
-          for (const v of varsResponse.variables) {
-            if (v.name === "__begin_" || v.name.includes("__begin")) {
-              if (v.value) {
-                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
-                if (ptrMatch) {
-                  dataPtr = ptrMatch[0];
-                  break;
-                }
-              }
-              if (!dataPtr && v.memoryReference) {
-                dataPtr = v.memoryReference;
-                break;
-              }
-            }
-          }
-          
-          // Try [0] element
-          if (!dataPtr) {
-            const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
-            if (firstElement) {
-              if (firstElement.memoryReference) {
-                dataPtr = firstElement.memoryReference;
-              } else if (firstElement.value) {
-                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
-                if (ptrMatch) {
-                  dataPtr = ptrMatch[0];
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.log("Failed to get data pointer through variables:", e);
-      }
-    }
-    
-    if (!dataPtr) {
-      const lldbExpressions = [
-        `${evaluateName}.__begin_`,
-        `reinterpret_cast<long long>(${evaluateName}.__begin_)`,
-        `${evaluateName}.data()`,
-        `reinterpret_cast<long long>(${evaluateName}.data())`,
-        `&${evaluateName}[0]`,
-        `reinterpret_cast<long long>(&${evaluateName}[0])`
-      ];
-      dataPtr = await tryGetDataPointer(debugSession, evaluateName, lldbExpressions, frameId, context);
-    }
+    // OPTIMIZATION: Skip "variables" request - it's extremely slow for large vectors
+    // (e.g., 600,000 elements returns 186,650 variables, taking several seconds)
+    // Use evaluate expressions directly instead
+    const lldbExpressions = [
+      `${evaluateName}.__begin_`,
+      `reinterpret_cast<long long>(${evaluateName}.__begin_)`,
+      `${evaluateName}.data()`,
+      `reinterpret_cast<long long>(${evaluateName}.data())`,
+      `&${evaluateName}[0]`,
+      `reinterpret_cast<long long>(&${evaluateName}[0])`
+    ];
+    dataPtr = await tryGetDataPointer(debugSession, evaluateName, lldbExpressions, frameId, context);
     
   } else if (isUsingCppdbg(debugSession)) {
     const gdbExpressions = [
@@ -276,12 +267,17 @@ export async function getPointCloudViaReadMemory(
   debugSession: vscode.DebugSession,
   evaluateName: string,
   variableInfo?: any,
-  isDouble: boolean = false
+  isDouble: boolean = false,
+  progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<{ points: { x: number; y: number; z: number }[], dataPtr: string | null }> {
   const points: { x: number; y: number; z: number }[] = [];
   // Use frameId from variableInfo if available, otherwise get current frame
   const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
   const context = getEvaluateContext(debugSession);
+  
+  if (progress) {
+    progress.report({ message: "Getting vector info..." });
+  }
   
   console.log(`getPointCloudViaReadMemory: evaluateName="${evaluateName}", frameId=${frameId}, context="${context}"`);
   
@@ -314,116 +310,20 @@ export async function getPointCloudViaReadMemory(
     
   } else if (isUsingLLDB(debugSession)) {
     // LLDB approaches
-    // Note: In LLDB, evaluate may not work for member access in some contexts
-    // Try to get __begin_ through variables first, then fallback to evaluate
-    console.log("Using LLDB-specific approaches");
+    // OPTIMIZATION: Skip "variables" request - it's extremely slow for large vectors
+    // (e.g., 600,000 elements returns 186,650 variables, taking several seconds)
+    // Use evaluate expressions directly instead
+    console.log("Using LLDB-specific approaches (evaluate expressions only)");
     
-    // First, try to get data pointer through variables if we have variablesReference
-    if (variableInfo && variableInfo.variablesReference > 0) {
-      try {
-        console.log(`Trying to get data pointer through variables, variablesReference=${variableInfo.variablesReference}`);
-        const varsResponse = await debugSession.customRequest("variables", {
-          variablesReference: variableInfo.variablesReference
-        });
-        
-        // Log variable names only (not full objects to avoid truncation)
-        if (varsResponse.variables && varsResponse.variables.length > 0) {
-          const varNames = varsResponse.variables.slice(0, 10).map((v: any) => v.name).join(", ");
-          console.log(`Found ${varsResponse.variables.length} variables (first 10: ${varNames}...)`);
-          
-          // Strategy 1: Look for __begin_ in the variables
-          for (const v of varsResponse.variables) {
-            const varName = v.name;
-            if (varName === "__begin_" || varName.includes("__begin")) {
-              console.log(`Found __begin_ variable: name="${varName}", value="${v.value}", memoryReference="${v.memoryReference}"`);
-              
-              // Extract pointer from value
-              if (v.value) {
-                const ptrMatch = v.value.match(/0x[0-9a-fA-F]+/);
-                if (ptrMatch) {
-                  dataPtr = ptrMatch[0];
-                  console.log(`Extracted pointer from __begin_ variable: ${dataPtr}`);
-                  break;
-                }
-              }
-              
-              // Also check memoryReference
-              if (!dataPtr && v.memoryReference) {
-                dataPtr = v.memoryReference;
-                console.log(`Using memoryReference from __begin_ variable: ${dataPtr}`);
-                break;
-              }
-            }
-          }
-          
-          // Strategy 2: If __begin_ not found, try to get [0] element's memoryReference
-          // This works because [0] is the first element, and its address is the data pointer
-          if (!dataPtr) {
-            const firstElement = varsResponse.variables.find((v: any) => v.name === "[0]");
-            if (firstElement) {
-              console.log(`Found [0] element: value="${firstElement.value}", memoryReference="${firstElement.memoryReference}"`);
-              
-              // Use memoryReference of [0] as data pointer
-              if (firstElement.memoryReference) {
-                dataPtr = firstElement.memoryReference;
-                console.log(`Using memoryReference from [0] element as data pointer: ${dataPtr}`);
-              } else if (firstElement.value) {
-                // Try to extract address from value (e.g., "{x=1.0, y=2.0, z=3.0}" might contain address)
-                const ptrMatch = firstElement.value.match(/0x[0-9a-fA-F]+/);
-                if (ptrMatch) {
-                  dataPtr = ptrMatch[0];
-                  console.log(`Extracted pointer from [0] element value: ${dataPtr}`);
-                }
-              }
-              
-              // If [0] has variablesReference, try to get its sub-variables to find address
-              if (!dataPtr && firstElement.variablesReference > 0) {
-                try {
-                  const elemVars = await debugSession.customRequest("variables", {
-                    variablesReference: firstElement.variablesReference
-                  });
-                  console.log(`[0] has sub-variables, checking for address...`);
-                  // The address might be in a sub-variable or we can calculate it
-                  // For now, if we have the vector's memoryReference, we can try to calculate
-                  // But let's first check if any sub-variable has an address
-                  if (elemVars.variables) {
-                    for (const ev of elemVars.variables) {
-                      if (ev.memoryReference) {
-                        // This is the address of the first element
-                        dataPtr = ev.memoryReference;
-                        console.log(`Found memoryReference in [0] sub-variable: ${dataPtr}`);
-                        break;
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.log("Failed to get [0] sub-variables:", e);
-                }
-              }
-            }
-          }
-        }
-        
-        if (!dataPtr) {
-          console.log("Could not get data pointer through variables");
-        }
-      } catch (e) {
-        console.log("Failed to get data pointer through variables:", e);
-      }
-    }
-    
-    // If variables approach didn't work, try evaluate expressions
-    if (!dataPtr) {
-      const lldbExpressions = [
-        `${evaluateName}.__begin_`,                              // Get __begin_ value directly (returns pointer type)
-        `reinterpret_cast<long long>(${evaluateName}.__begin_)`, // Try C++ style cast
-        `${evaluateName}.data()`,                                // Try data() method
-        `reinterpret_cast<long long>(${evaluateName}.data())`,   // Try data() with C++ cast
-        `&${evaluateName}[0]`,                                    // Try address of first element
-        `reinterpret_cast<long long>(&${evaluateName}[0])`       // Try address with C++ cast
-      ];
-      dataPtr = await tryGetDataPointer(debugSession, evaluateName, lldbExpressions, frameId, context);
-    }
+    const lldbExpressions = [
+      `${evaluateName}.__begin_`,                              // Get __begin_ value directly (returns pointer type)
+      `reinterpret_cast<long long>(${evaluateName}.__begin_)`, // Try C++ style cast
+      `${evaluateName}.data()`,                                // Try data() method
+      `reinterpret_cast<long long>(${evaluateName}.data())`,   // Try data() with C++ cast
+      `&${evaluateName}[0]`,                                    // Try address of first element
+      `reinterpret_cast<long long>(&${evaluateName}[0])`       // Try address with C++ cast
+    ];
+    dataPtr = await tryGetDataPointer(debugSession, evaluateName, lldbExpressions, frameId, context);
     
   } else if (isUsingCppdbg(debugSession)) {
     // GDB (cppdbg) approaches
@@ -461,9 +361,17 @@ export async function getPointCloudViaReadMemory(
   const bytesPerPoint = isDouble ? 24 : 12;
   const totalBytes = size * bytesPerPoint;
   
+  if (progress) {
+    progress.report({ message: `Reading ${size} points (${Math.round(totalBytes / 1024 / 1024)}MB)...` });
+  }
+  
   console.log(`Reading ${size} points (${totalBytes} bytes, ${isDouble ? "Point3d" : "Point3f"}) from ${dataPtr}`);
   
-  const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
+  const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes, progress);
+  
+  if (progress) {
+    progress.report({ message: "Processing point data..." });
+  }
   
   if (buffer) {
     if (isDouble) {
@@ -516,67 +424,91 @@ export async function drawStdArrayPointCloud(
     const panelTitle = `View: ${panelName}`;
     const bytesPerPoint = isDouble ? 24 : 12; // Point3d: 3*8=24, Point3f: 3*4=12
 
-    // Get frame ID
-    const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+    // Wrap entire operation in progress indicator for immediate feedback
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Loading std::array Point Cloud",
+        cancellable: false
+      },
+      async (progress) => {
+        // Get frame ID
+        progress.report({ message: "Getting metadata..." });
+        const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
 
-    // Get data pointer
-    const dataPtr = await getStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
+        // Get data pointer
+        const dataPtr = await getStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
 
-    // Get or create panel
-    const panel = PanelManager.getOrCreatePanel(
-      "3DPointViewer",
-      panelTitle,
-      debugSession.id,
-      panelName,
-      reveal,
-      dataPtr || undefined  // Enable sharing panels by data pointer
-    );
+        // Get or create panel
+        const panel = PanelManager.getOrCreatePanel(
+          "3DPointViewer",
+          panelTitle,
+          debugSession.id,
+          panelName,
+          reveal,
+          dataPtr || undefined  // Enable sharing panels by data pointer
+        );
 
-    // Check if panel is fresh
-    if (!force && dataPtr && size > 0) {
-      const totalBytes = size * bytesPerPoint;
-      const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
-      const stateToken = `${size}|${dataPtr}|${sample}`;
-      
-      if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
-        console.log(`std::array PointCloud panel is already up-to-date`);
-        return;
-      }
-    }
-
-    // Read point cloud data
-    let points: { x: number; y: number; z: number }[] = [];
-    let dataPtrForToken = dataPtr || "";
-
-    if (dataPtr && size > 0) {
-      const totalBytes = size * bytesPerPoint;
-      console.log(`Reading ${size} points (${totalBytes} bytes) from ${dataPtr}`);
-      
-      const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes);
-      
-      if (buffer) {
-        if (isDouble) {
-          // Point3d: 3 doubles = 24 bytes per point
-          for (let i = 0; i < size && i * 24 + 23 < buffer.length; i++) {
-            const offset = i * 24;
-            const x = buffer.readDoubleLE(offset);
-            const y = buffer.readDoubleLE(offset + 8);
-            const z = buffer.readDoubleLE(offset + 16);
-            points.push({ x, y, z });
-          }
-        } else {
-          // Point3f: 3 floats = 12 bytes per point
-          for (let i = 0; i < size && i * 12 + 11 < buffer.length; i++) {
-            const offset = i * 12;
-            const x = buffer.readFloatLE(offset);
-            const y = buffer.readFloatLE(offset + 4);
-            const z = buffer.readFloatLE(offset + 8);
-            points.push({ x, y, z });
+        // Check if panel is fresh
+        if (!force && dataPtr && size > 0) {
+          progress.report({ message: "Checking if data changed..." });
+          const totalBytes = size * bytesPerPoint;
+          const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+          const stateToken = `${size}|${dataPtr}|${sample}`;
+          
+          if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
+            console.log(`std::array PointCloud panel is already up-to-date`);
+            return { panel, points: [], dataPtrForToken: dataPtr || "", skipped: true };
           }
         }
-        console.log(`Loaded ${points.length} points from std::array via readMemory`);
+
+        // Read point cloud data
+        let points: { x: number; y: number; z: number }[] = [];
+
+        if (dataPtr && size > 0) {
+          const totalBytes = size * bytesPerPoint;
+          console.log(`Reading ${size} points (${totalBytes} bytes) from ${dataPtr}`);
+          
+          progress.report({ message: `Reading ${size} points...` });
+          
+          const buffer = await readMemoryChunked(debugSession, dataPtr!, totalBytes, progress);
+          
+          if (buffer) {
+            progress.report({ message: "Processing point data..." });
+            
+            if (isDouble) {
+              // Point3d: 3 doubles = 24 bytes per point
+              for (let i = 0; i < size && i * 24 + 23 < buffer.length; i++) {
+                const offset = i * 24;
+                const x = buffer.readDoubleLE(offset);
+                const y = buffer.readDoubleLE(offset + 8);
+                const z = buffer.readDoubleLE(offset + 16);
+                points.push({ x, y, z });
+              }
+            } else {
+              // Point3f: 3 floats = 12 bytes per point
+              for (let i = 0; i < size && i * 12 + 11 < buffer.length; i++) {
+                const offset = i * 12;
+                const x = buffer.readFloatLE(offset);
+                const y = buffer.readFloatLE(offset + 4);
+                const z = buffer.readFloatLE(offset + 8);
+                points.push({ x, y, z });
+              }
+            }
+            console.log(`Loaded ${points.length} points from std::array via readMemory`);
+          }
+        }
+
+        return { panel, points, dataPtrForToken: dataPtr || "", skipped: false };
       }
+    );
+
+    // If skipped (panel was fresh), we're done
+    if (result.skipped) {
+      return;
     }
+
+    const { panel, points, dataPtrForToken } = result;
 
     if (points.length === 0) {
       vscode.window.showWarningMessage("No points found in the std::array. Make sure it's not empty.");
@@ -599,7 +531,11 @@ export async function drawStdArrayPointCloud(
       return;
     }
 
-    panel.webview.html = getWebviewContentForPointCloud(points);
+    // Set HTML without embedding data (data will be sent via postMessage)
+    panel.webview.html = getWebviewContentForPointCloud();
+    
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
     
     SyncManager.registerPanel(panelName, panel);
 
@@ -640,6 +576,13 @@ export async function drawStdArrayPointCloud(
       undefined,
       undefined
     );
+
+    // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
+    console.log(`Sending ${points.length} points to webview via postMessage`);
+    await panel.webview.postMessage({
+      command: 'completeData',
+      points: points
+    });
   } catch (error) {
     console.error("Error in drawStdArrayPointCloud:", error);
     throw error;
