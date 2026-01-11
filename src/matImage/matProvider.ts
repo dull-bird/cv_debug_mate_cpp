@@ -230,6 +230,9 @@ export async function drawMatImage(
       { base64: "" } // Don't embed data directly, send via message
     );
 
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
+
     SyncManager.registerPanel(variableName, panel);
     
     // Dispose previous listener if it exists to avoid multiple listeners on reused panel
@@ -647,6 +650,9 @@ export async function drawMatxImage(
       { base64: "" }
     );
     
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
+    
     SyncManager.registerPanel(panelName, panel);
     
     if ((panel as any)._syncListener) {
@@ -777,6 +783,9 @@ export async function draw2DStdArrayImage(
       depth,
       { base64: "" }
     );
+    
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
     
     SyncManager.registerPanel(panelName, panel);
     
@@ -921,6 +930,9 @@ export async function draw3DArrayImage(
       depth,
       { base64: "" }
     );
+    
+    // Send ready signal immediately so webview knows this is not a moved panel
+    panel.webview.postMessage({ command: 'ready' });
     
     SyncManager.registerPanel(panelName, panel);
     

@@ -1,17 +1,151 @@
 import * as vscode from 'vscode';
 
+// Stored state for webview serialization (used when moving to new window)
+export interface WebviewPersistedState {
+    viewType: string;
+    variableName: string;
+    sessionId: string;
+    // For Mat viewer
+    rows?: number;
+    cols?: number;
+    channels?: number;
+    depth?: number;
+    // For Plot viewer
+    plotData?: number[];
+    // Common
+    scale?: number;
+    offsetX?: number;
+    offsetY?: number;
+}
+
 export class PanelManager {
     private static panels: Map<string, { 
         panel: vscode.WebviewPanel, 
         lastStateToken?: string,
         lastRefreshedVersion?: number,
-        dataPtr?: string  // Store the data pointer for this panel
+        dataPtr?: string,  // Store the data pointer for this panel
+        persistedState?: WebviewPersistedState  // Store state for serialization
     }> = new Map();
 
     // Map from data pointer to panel key for quick lookup
     private static dataPtrToKey: Map<string, string> = new Map();
 
     private static currentDebugStateVersion = 0;
+
+    /**
+     * Initialize the panel manager with extension context.
+     * This registers the webview serializers for move/copy to new window support.
+     */
+    static initialize(context: vscode.ExtensionContext) {
+        
+        // Register serializers for each view type
+        const viewTypes = ['MatImageViewer', 'CurvePlotViewer', '3DPointViewer'];
+        
+        for (const viewType of viewTypes) {
+            context.subscriptions.push(
+                vscode.window.registerWebviewPanelSerializer(viewType, {
+                    deserializeWebviewPanel: async (panel: vscode.WebviewPanel, state: any) => {
+                        console.log(`[PanelManager] Deserializing webview panel: ${viewType}`);
+                        console.log(`[PanelManager] Panel title: ${panel.title}`);
+                        console.log(`[PanelManager] State:`, state);
+                        
+                        // For moved/copied panels, we always show reload required
+                        // because the debug data cannot be serialized
+                        // The panel title contains the variable name, extract it
+                        const title = panel.title || '';
+                        const variableName = title.replace('View: ', '').replace(' (shared)', '');
+                        
+                        console.log(`[PanelManager] Setting reload required HTML for: ${variableName}`);
+                        
+                        // Show reload required page
+                        const html = PanelManager.getReloadRequiredHtml(variableName || 'variable');
+                        panel.webview.html = html;
+                        
+                        console.log(`[PanelManager] HTML set successfully, length: ${html.length}`);
+                        
+                        // Note: We don't register this panel in our manager
+                        // because we don't have the sessionId and it would interfere
+                        // with the original panel management logic.
+                        // User needs to click on the variable again to reload.
+                    }
+                })
+            );
+        }
+        
+        console.log(`[PanelManager] Registered serializers for: ${viewTypes.join(', ')}`);
+    }
+    
+    /**
+     * Update the persisted state for a panel.
+     */
+    static updatePersistedState(viewType: string, sessionId: string, variableName: string, state: Partial<WebviewPersistedState>) {
+        const key = `${viewType}:::${sessionId}:::${variableName}`;
+        const entry = this.panels.get(key);
+        if (entry) {
+            entry.persistedState = {
+                ...entry.persistedState,
+                viewType,
+                sessionId,
+                variableName,
+                ...state
+            } as WebviewPersistedState;
+        }
+    }
+    
+    /**
+     * Get HTML content for when webview needs to be reloaded.
+     */
+    private static getReloadRequiredHtml(variableName: string): string {
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: #1e1e1e;
+                        color: #ccc;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    }
+                    .message {
+                        text-align: center;
+                        padding: 20px;
+                    }
+                    .icon {
+                        font-size: 48px;
+                        margin-bottom: 16px;
+                    }
+                    h2 {
+                        margin: 0 0 8px 0;
+                        color: #fff;
+                    }
+                    p {
+                        margin: 0;
+                        color: #888;
+                    }
+                    .hint {
+                        margin-top: 16px;
+                        font-size: 12px;
+                        color: #666;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="message">
+                    <div class="icon">🔄</div>
+                    <h2>Reload Required</h2>
+                    <p>Variable "${variableName}" needs to be reloaded.</p>
+                    <p class="hint">Click on the variable in the CV DebugMate panel to reload.</p>
+                </div>
+            </body>
+            </html>
+        `;
+    }
 
     /**
      * Increment the debug state version to track steps.

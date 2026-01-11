@@ -12,6 +12,10 @@ import { getMatInfoFromVariables } from "./matImage/matProvider";
 export function activate(context: vscode.ExtensionContext) {
   console.log('Extension "cv-debugmate-cpp" is now active.');
 
+  // Initialize PanelManager with extension context for webview serialization support
+  // This enables "Move into New Window" and "Copy into New Window" functionality
+  PanelManager.initialize(context);
+
   const cvVariablesProvider = new CVVariablesProvider();
   vscode.window.registerTreeDataProvider("cv-debugmate-variables", cvVariablesProvider);
 

@@ -396,10 +396,26 @@ export function getWebviewContentForMat(
                 let cols = ${cols};
                 let channels = ${channels};
                 let depth = ${depth};
+                
+                // Detect if this is a moved panel
+                // Extension sends 'ready' signal immediately after creating panel
+                // If we don't receive it within 100ms, this is a moved panel
+                let extensionReady = false;
+                setTimeout(() => {
+                    if (!extensionReady) {
+                        // This is a moved panel, auto-reload
+                        loadingText.innerHTML = 'Reloading...';
+                        vscode.postMessage({ command: 'reload' });
+                    }
+                }, 100);
 
                 window.addEventListener('message', event => {
                     const message = event.data;
-                    if (message.command === 'completeData') {
+                    if (message.command === 'ready') {
+                        // Extension is ready, this is not a moved panel
+                        extensionReady = true;
+                    } else if (message.command === 'completeData') {
+                        extensionReady = true;
                         if (message.rows !== undefined) rows = message.rows;
                         if (message.cols !== undefined) cols = message.cols;
                         if (message.channels !== undefined) channels = message.channels;
