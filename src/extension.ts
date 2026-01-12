@@ -20,32 +20,58 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.window.registerTreeDataProvider("cv-debugmate-variables", cvVariablesProvider);
 
   // Auto refresh when debug session stops or stack frame changes
+  let isRefreshing = false;
   context.subscriptions.push(
     vscode.debug.onDidChangeActiveStackItem(() => {
       cvVariablesProvider.refresh();
       // Debug position moved, increment global version
       PanelManager.incrementDebugStateVersion();
-      // Step triggered: Refresh visible ones immediately
-      refreshVisiblePanels(false);
+      // Step triggered: Refresh visible ones immediately (but don't block)
+      if (!isRefreshing) {
+        refreshVisiblePanels(false);
+      }
     })
   );
 
   async function refreshVisiblePanels(force: boolean = false) {
     const debugSession = vscode.debug.activeDebugSession;
     if (!debugSession) return;
+    
+    // Prevent concurrent refresh operations
+    if (isRefreshing) {
+      console.log("Skipping refresh - already in progress");
+      return;
+    }
+    isRefreshing = true;
 
-    const panels = PanelManager.getAllPanels();
-    for (const [key, entry] of panels.entries()) {
-      if (entry.panel.visible) {
-        const parts = key.split(':::');
-        const [viewType, sessionId, variableName] = parts;
-        if (sessionId === debugSession.id) {
-          try {
-            // Use force=true for steps or version refreshes to ensure memory is reread
-            await visualizeVariable({ name: variableName, evaluateName: variableName }, true, false);
-          } catch (e) {}
+    try {
+      const panels = PanelManager.getAllPanels();
+      const visiblePanels: { viewType: string; sessionId: string; variableName: string }[] = [];
+      
+      for (const [key, entry] of panels.entries()) {
+        if (entry.panel.visible) {
+          const parts = key.split(':::');
+          const [viewType, sessionId, variableName] = parts;
+          if (sessionId === debugSession.id) {
+            visiblePanels.push({ viewType, sessionId, variableName });
+          }
         }
       }
+      
+      // Limit concurrent refreshes to avoid overwhelming the debugger
+      const MAX_CONCURRENT = 2;
+      for (let i = 0; i < visiblePanels.length; i += MAX_CONCURRENT) {
+        const batch = visiblePanels.slice(i, i + MAX_CONCURRENT);
+        await Promise.all(batch.map(async ({ variableName }) => {
+          try {
+            await visualizeVariable({ name: variableName, evaluateName: variableName }, true, false);
+          } catch (e) {
+            console.log(`Failed to refresh panel for ${variableName}:`, e);
+          }
+        }));
+      }
+    } finally {
+      isRefreshing = false;
     }
   }
 

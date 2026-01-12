@@ -238,7 +238,8 @@ export async function getMemorySample(
 
 /**
  * Helper function to read memory in chunks to avoid debugger limitations.
- * Each chunk is 16MB by default.
+ * Each chunk is 8MB by default.
+ * Includes timeout protection to prevent hanging.
  */
 export async function readMemoryChunked(
   debugSession: vscode.DebugSession,
@@ -247,11 +248,12 @@ export async function readMemoryChunked(
   progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<Buffer | null> {
   const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB per chunk
+  const CHUNK_TIMEOUT = 30000; // 30 seconds timeout per chunk
   
-  // Adaptive concurrency based on CPU cores, but keep it within 2-8 range 
+  // Adaptive concurrency based on CPU cores, but keep it within 2-4 range 
   // to avoid overwhelming the debugger IPC channel.
   const cpuCount = os.cpus().length || 4;
-  const CONCURRENCY = Math.min(8, Math.max(2, cpuCount));
+  const CONCURRENCY = Math.min(4, Math.max(2, Math.floor(cpuCount / 2)));
   
   const numChunks = Math.ceil(totalBytes / CHUNK_SIZE);
   const chunks = new Array<Buffer | null>(numChunks).fill(null);
@@ -262,6 +264,20 @@ export async function readMemoryChunked(
   let totalReadBytes = 0;
   let failed = false;
 
+  // Helper function to read with timeout
+  async function readWithTimeout(offset: number, count: number): Promise<any> {
+    return Promise.race([
+      debugSession.customRequest("readMemory", {
+        memoryReference: memoryReference,
+        offset: offset,
+        count: count
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`Memory read timeout after ${CHUNK_TIMEOUT}ms`)), CHUNK_TIMEOUT)
+      )
+    ]);
+  }
+
   const worker = async () => {
     while (nextChunkIndex < numChunks && !failed) {
       const myIndex = nextChunkIndex++;
@@ -269,11 +285,7 @@ export async function readMemoryChunked(
       const count = Math.min(CHUNK_SIZE, totalBytes - offset);
 
       try {
-        const memoryResponse = await debugSession.customRequest("readMemory", {
-          memoryReference: memoryReference,
-          offset: offset,
-          count: count
-        });
+        const memoryResponse = await readWithTimeout(offset, count);
 
         if (memoryResponse && memoryResponse.data && !failed) {
           const buffer = Buffer.from(memoryResponse.data, "base64");
