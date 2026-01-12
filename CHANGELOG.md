@@ -4,6 +4,53 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.38] - 2025-01-13
+
+### Performance
+
+- **Optimized variable visualization startup**: Significantly reduced delay before progress bar appears when clicking variables
+  - Removed slow "variables" request for LLDB when reading large vectors (e.g., 600K elements now starts instantly instead of 3+ seconds)
+  - Added short-circuit optimization to skip unnecessary type detection when type is already known
+  - Wrapped entire visualization operation in progress indicator for immediate user feedback
+- **Reduced memory read concurrency**: Lowered concurrent memory reads from 8 to 4 to reduce debugger load
+- **Added timeout protection**: 30-second timeout per memory chunk read to prevent indefinite hangs
+
+### Fixed
+
+- **Debug session freezing**: Fixed issue where moving visualization panels to new windows would freeze the debug session
+  - Added session validity checks to all reload handlers (9 locations across pointCloud, plot, and mat providers)
+  - Reload requests are now skipped if debug session is no longer active
+- **Plot panel reload loop**: Fixed 1D plot panels showing "Reloading..." indefinitely when moved to new windows
+  - Added `extensionReady` flag and loading overlay hide in `updateInitialData` message handler
+- **Concurrent refresh protection**: Added `isRefreshing` flag to prevent multiple simultaneous refresh operations
+- **Batch refresh optimization**: Limited visible panel refresh to maximum 2 at a time to reduce debugger load
+
+## [0.0.37] - 2025-01-11
+
+### Added
+
+- **Point cloud view controls**: Enhanced point cloud webview with interactive camera controls
+  - 6 view angle buttons: Top, Bottom, Front, Back, Left, Right (similar to CloudCompare)
+  - Reload button for manual data refresh
+  - Reset button to return to fixed isometric view
+  - "Colored by" label with color mode buttons (Solid, Z, Y, X) with selection highlighting
+
+### Fixed
+
+- **View angle corrections**: Fixed Front/Back view directions (Front now looks from Y- direction)
+- **Reset view consistency**: Reset button now always returns to the same fixed isometric angle regardless of current view
+
+## [0.0.36] - 2025-01-11
+
+### Added
+
+- **std::array point cloud support**: Added visualization support for `std::array<cv::Point3f, N>` and `std::array<cv::Point3d, N>`
+- **2D std::array image support**: Visualize `std::array<std::array<T, cols>, rows>` as grayscale images
+
+### Fixed
+
+- **LLDB data pointer extraction**: Improved reliability of getting data pointers for std::array types in LLDB debugger
+
 ## [0.0.35] - 2025-01-10
 
 ### Added
