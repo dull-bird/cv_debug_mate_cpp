@@ -1347,11 +1347,13 @@ export function getWebviewContentForPlot(
                                 updateDataBounds(); resetView();
                             }
                         } else if (message.command === 'updateInitialData') {
+                            extensionReady = true;
                             dataY = message.data;
                             if (currentVariableNameX === "Index") {
                                 dataX = dataY.map(function(_, i) { return i; });
                             }
                             document.getElementById('info').textContent = 'Size: ' + dataY.length;
+                            loadingOverlay.classList.add('hidden');
                             updateDataBounds();
                             draw();
                         }

@@ -169,7 +169,13 @@ export async function drawPointCloud(
         } else if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       },
       undefined,
@@ -570,7 +576,13 @@ export async function drawStdArrayPointCloud(
         } else if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       },
       undefined,

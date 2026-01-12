@@ -287,7 +287,13 @@ export async function drawPlot(
                 }
             }
         } else if (message.command === 'reload') {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+            // Check if debug session is still active before reloading
+            const currentSession = vscode.debug.activeDebugSession;
+            if (currentSession && currentSession.id === debugSession.id) {
+                await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+            } else {
+                console.log('Skipping reload - debug session is no longer active or has changed');
+            }
         } else if (message.command === 'saveFile') {
             const options: vscode.SaveDialogOptions = {
                 defaultUri: vscode.Uri.file(message.defaultName),
@@ -1014,7 +1020,13 @@ export async function drawStdArrayPlot(
                     }
                 }
             } else if (message.command === 'reload') {
-                await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                // Check if debug session is still active before reloading
+                const currentSession = vscode.debug.activeDebugSession;
+                if (currentSession && currentSession.id === debugSession.id) {
+                    await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                } else {
+                    console.log('Skipping reload - debug session is no longer active or has changed');
+                }
             } else if (message.command === 'saveFile') {
                 const options: vscode.SaveDialogOptions = {
                     defaultUri: vscode.Uri.file(message.defaultName),
@@ -1341,7 +1353,13 @@ export async function drawCStyleArrayPlot(
                     }
                 }
             } else if (message.command === 'reload') {
-                await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                // Check if debug session is still active before reloading
+                const currentSession = vscode.debug.activeDebugSession;
+                if (currentSession && currentSession.id === debugSession.id) {
+                    await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                } else {
+                    console.log('Skipping reload - debug session is no longer active or has changed');
+                }
             } else if (message.command === 'saveFile') {
                 const options: vscode.SaveDialogOptions = {
                     defaultUri: vscode.Uri.file(message.defaultName),

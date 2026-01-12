@@ -245,8 +245,13 @@ export async function drawMatImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
         } else if (message.command === 'reload') {
-          // Manual reload triggered from webview
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       }
     );
@@ -664,7 +669,13 @@ export async function drawMatxImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       }
     );
@@ -798,7 +809,13 @@ export async function draw2DStdArrayImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
         } else if (message.command === 'reload') {
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       }
     );
@@ -946,8 +963,13 @@ export async function draw3DArrayImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
-          // Manual reload triggered from webview
-          await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          // Check if debug session is still active before reloading
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id) {
+            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          } else {
+            console.log('Skipping reload - debug session is no longer active or has changed');
+          }
         }
       }
     );
