@@ -16,7 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(WIN32)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         # MSVC: Set your OpenCV path here if needed
-        # set(OpenCV_DIR "C:/opencv/build/x64/vc16/lib")
+        set(OpenCV_DIR "D:/work/repos/3rdParty/OpenCV/opencv4/build/x64/vc15/lib")
         message(STATUS "Compiler: MSVC")
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # MSYS2 UCRT64 GCC
