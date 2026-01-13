@@ -114,8 +114,8 @@ void demo_2d_images() {
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       c_img[y][x][0] = static_cast<uint8_t>(y * 255 / height); // R: 纵向渐变
-      c_img[y][x][1] = static_cast<uint8_t>(x * 255 / width);  // G: 横向渐变
-      c_img[y][x][2] = 128;                                    // B: 固定值
+      c_img[y][x][1] = static_cast<uint8_t>(x * 255 / width); // G: 横向渐变
+      c_img[y][x][2] = 128;                                   // B: 固定值
     }
   }
 
@@ -168,6 +168,7 @@ void demo_2d_images() {
             << std::endl;
 
   // ===== BREAKPOINT HERE =====
+
   int bp1 = 0; // Set breakpoint here to view all 2D images
   (void)bp1;
   (void)img_bgr;
