@@ -1,0 +1,19 @@
+CompileFlags:
+  # 使用 MSVC 兼容模式
+  Add:
+    - --target=x86_64-pc-windows-msvc
+    - -std=c++17
+    - --driver-mode=cl
+  # 移除不兼容的编译器检查
+  Remove:
+    - -fms-compatibility
+    - -fms-extensions
+
+Diagnostics:
+  # 抑制编译器版本不匹配的诊断
+  Suppress:
+    - static_assert_failed
+  # 关闭特定的 Clang-Tidy 检查
+  ClangTidy:
+    Remove:
+      - misc-static-assert
