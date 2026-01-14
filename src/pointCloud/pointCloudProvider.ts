@@ -28,6 +28,13 @@ export async function drawPointCloud(
   // Use panelVariableName for panel management, variableName for data access
   const panelName = panelVariableName || variableName;
   
+  // Check if there's an existing panel that's being disposed - if so, abort immediately
+  const existingPanel = PanelManager.getPanel("3DPointViewer", debugSession.id, panelName);
+  if (existingPanel && (existingPanel as any)._isDisposing) {
+    console.log(`[drawPointCloud] Aborting - panel for ${panelName} is being disposed`);
+    return;
+  }
+  
   try {
     console.log("Drawing point cloud with debugger type:", debugSession.type);
     console.log("variableInfo:", JSON.stringify(variableInfo, null, 2));
@@ -123,10 +130,40 @@ export async function drawPointCloud(
     // If panel already has content, only send data to preserve view state
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("PointCloud panel already has HTML, sending only data");
-      await panel.webview.postMessage({
-        command: 'updateData',
-        points: points
-      });
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[drawPointCloud] Aborting data send - panel is being disposed");
+        return;
+      }
+      
+      // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+      try {
+        // Fire and forget - don't await
+        panel.webview.postMessage({
+          command: 'updateData',
+          points: points
+        });
+      } catch (e) {
+        console.log("[drawPointCloud] postMessage failed - panel likely disposed");
+        return;
+      }
+      
+      // Restore saved view state if available
+      const savedState = SyncManager.getSavedState(panelName);
+      if (savedState && !(panel as any)._isDisposing) {
+        console.log("Restoring saved PointCloud view state:", savedState);
+        setTimeout(() => {
+          if (!(panel as any)._isDisposing) {
+            try {
+              panel.webview.postMessage({
+                command: 'setView',
+                state: savedState
+              });
+            } catch (e) {}
+          }
+        }, 100);
+      }
       return;
     }
 
@@ -146,6 +183,10 @@ export async function drawPointCloud(
     // Handle messages from webview (e.g., save PLY request, view sync)
     (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
       async (message) => {
+        // Ignore all messages if panel is being disposed
+        if ((panel as any)._isDisposing) {
+          return;
+        }
         if (message.command === "savePLY") {
           try {
             const plyData = generatePLYContent(points, message.format);
@@ -171,10 +212,10 @@ export async function drawPointCloud(
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
             await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
           } else {
-            console.log('Skipping reload - debug session is no longer active or has changed');
+            console.log('Skipping reload - debug session is no longer active or panel is disposing');
           }
         }
       },
@@ -184,10 +225,23 @@ export async function drawPointCloud(
 
     // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
     console.log(`Sending ${points.length} points to webview via postMessage`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      points: points
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[drawPointCloud] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        points: points
+      });
+    } catch (e) {
+      console.log("[drawPointCloud] Final postMessage failed - panel likely disposed");
+      return;
+    }
   } catch (error) {
     console.error("Error in drawPointCloud:", error);
     throw error;
@@ -530,10 +584,40 @@ export async function drawStdArrayPointCloud(
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("std::array PointCloud panel already has HTML, sending only data");
-      await panel.webview.postMessage({
-        command: 'updateData',
-        points: points
-      });
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[drawStdArrayPointCloud] Aborting data send - panel is being disposed");
+        return;
+      }
+      
+      // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+      try {
+        // Fire and forget - don't await
+        panel.webview.postMessage({
+          command: 'updateData',
+          points: points
+        });
+      } catch (e) {
+        console.log("[drawStdArrayPointCloud] postMessage failed - panel likely disposed");
+        return;
+      }
+      
+      // Restore saved view state if available
+      const savedState = SyncManager.getSavedState(panelName);
+      if (savedState && !(panel as any)._isDisposing) {
+        console.log("Restoring saved std::array PointCloud view state:", savedState);
+        setTimeout(() => {
+          if (!(panel as any)._isDisposing) {
+            try {
+              panel.webview.postMessage({
+                command: 'setView',
+                state: savedState
+              });
+            } catch (e) {}
+          }
+        }, 100);
+      }
       return;
     }
 
@@ -591,10 +675,23 @@ export async function drawStdArrayPointCloud(
 
     // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
     console.log(`Sending ${points.length} points to webview via postMessage`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      points: points
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[drawStdArrayPointCloud] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        points: points
+      });
+    } catch (e) {
+      console.log("[drawStdArrayPointCloud] Final postMessage failed - panel likely disposed");
+      return;
+    }
   } catch (error) {
     console.error("Error in drawStdArrayPointCloud:", error);
     throw error;

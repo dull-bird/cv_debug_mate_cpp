@@ -51,7 +51,7 @@
             "stopOnEntry": false,
             "env": {
                 "PATH": "C:\\msys64\\clang64\\bin;${env:PATH}"
-            },
+            }
         },
         {
             "type": "cppvsdbg",

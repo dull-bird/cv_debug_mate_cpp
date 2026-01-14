@@ -4,7 +4,7 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [0.0.38] - 2025-01-13
+## [0.0.38] - 2025-01-14
 
 ### Performance
 
@@ -14,9 +14,15 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Wrapped entire visualization operation in progress indicator for immediate user feedback
 - **Reduced memory read concurrency**: Lowered concurrent memory reads from 8 to 4 to reduce debugger load
 - **Added timeout protection**: 30-second timeout per memory chunk read to prevent indefinite hangs
+- **Reduced console output**: Disabled INFO logs by default to reduce output noise
 
 ### Fixed
 
+- **Critical: Debug session freezing when closing new window webviews**: Fixed the root cause of debug buttons freezing when closing webview panels that were moved to new windows
+  - Changed all `postMessage` calls to fire-and-forget (non-blocking) to prevent large data transfers from blocking the debug adapter
+  - Added `_isDisposing` checks before all data send operations
+  - Disabled auto-refresh on stack item change to prevent triggering during panel disposal
+  - This fix applies to all visualization types: Mat images, point clouds, plots, Matx, 2D/3D arrays
 - **Debug session freezing**: Fixed issue where moving visualization panels to new windows would freeze the debug session
   - Added session validity checks to all reload handlers (9 locations across pointCloud, plot, and mat providers)
   - Reload requests are now skipped if debug session is no longer active

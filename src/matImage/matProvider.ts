@@ -26,6 +26,13 @@ export async function drawMatImage(
   // Use panelVariableName for panel management, variableName for data access
   const panelName = panelVariableName || variableName;
   
+  // Check if there's an existing panel that's being disposed - if so, abort immediately
+  const existingPanel = PanelManager.getPanel("MatImageViewer", debugSession.id, panelName);
+  if (existingPanel && (existingPanel as any)._isDisposing) {
+    console.log(`[drawMatImage] Aborting - panel for ${panelName} is being disposed`);
+    return;
+  }
+  
   try {
     const usingLLDB = isUsingLLDB(debugSession);
     console.log("Drawing Mat image with debugger type:", debugSession.type);
@@ -203,20 +210,67 @@ export async function drawMatImage(
       }
     );
 
+    // CRITICAL: Check if panel was disposed during data read
+    // This can happen if user closes the window while data is being read
+    if ((panel as any)._isDisposing) {
+      console.log("[drawMatImage] Panel was disposed during data read, aborting");
+      return;
+    }
+
     // Update state token AFTER data is read
     PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
 
     // If panel already has content, only send data to preserve view state (zoom/pan)
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("Panel already has HTML, sending only data to preserve view state");
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[drawMatImage] Aborting data send - panel is being disposed");
+        return;
+      }
+      
       const buffer = dataResult.buffer;
       if (buffer) {
-        await panel.webview.postMessage({
-          command: 'completeData',
-          data: new Uint8Array(buffer),
-          // Send metadata just in case they changed but didn't trigger reload
-          rows, cols, channels, depth 
-        });
+        // Double-check before sending large data
+        if ((panel as any)._isDisposing) {
+          console.log("[drawMatImage] Aborting data send - panel is being disposed (2)");
+          return;
+        }
+        
+        // CRITICAL: Use setTimeout to defer postMessage, allowing VS Code to process
+        // any pending events (like panel disposal) before we try to send data.
+        setTimeout(() => {
+          if ((panel as any)._isDisposing) {
+            return;
+          }
+          try {
+            panel.webview.postMessage({
+              command: 'completeData',
+              data: new Uint8Array(buffer),
+              rows, cols, channels, depth 
+            });
+          } catch (e) {
+            // Panel was disposed, ignore
+          }
+        }, 0);
+        
+        // Restore saved view state if available
+        const savedState = SyncManager.getSavedState(variableName);
+        if (savedState && !(panel as any)._isDisposing) {
+          setTimeout(() => {
+            if (!(panel as any)._isDisposing) {
+              try {
+                panel.webview.postMessage({
+                  command: 'setView',
+                  state: savedState
+                });
+              } catch (e) {
+                // Panel was disposed
+              }
+            }
+          }, 100);
+        }
         return;
       }
     }
@@ -242,15 +296,19 @@ export async function drawMatImage(
 
     (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
       async (message) => {
+        // Ignore all messages if panel is being disposed
+        if ((panel as any)._isDisposing) {
+          return;
+        }
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
             await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
           } else {
-            console.log('Skipping reload - debug session is no longer active or has changed');
+            console.log('Skipping reload - debug session is no longer active or panel is disposing');
           }
         }
       }
@@ -261,16 +319,25 @@ export async function drawMatImage(
     if (!buffer) {
         throw new Error("Failed to read Mat data");
     }
-    const totalLength = buffer.length;
 
-    console.log(`Sending ${totalLength} bytes to webview at once`);
-
-    await panel.webview.postMessage({
-      command: 'completeData',
-      data: new Uint8Array(buffer)
-    });
-
-    console.log('Complete data sent to webview');
+    // CRITICAL: Use setTimeout to defer postMessage
+    if ((panel as any)._isDisposing) {
+      return;
+    }
+    
+    setTimeout(() => {
+      if ((panel as any)._isDisposing) {
+        return;
+      }
+      try {
+        panel.webview.postMessage({
+          command: 'completeData',
+          data: new Uint8Array(buffer)
+        });
+      } catch (e) {
+        // Panel was disposed, ignore
+      }
+    }, 0);
   } catch (error) {
     console.error("Error drawing Mat image:", error);
     throw error;
@@ -635,13 +702,27 @@ export async function drawMatxImage(
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("Matx panel already has HTML, sending only data");
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[drawMatxImage] Aborting data send - panel is being disposed");
+        return;
+      }
+      
       const buffer = dataResult.buffer;
       if (buffer) {
-        await panel.webview.postMessage({
-          command: 'completeData',
-          data: new Uint8Array(buffer),
-          rows, cols, channels, depth
-        });
+        // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+        try {
+          // Fire and forget - don't await
+          panel.webview.postMessage({
+            command: 'completeData',
+            data: new Uint8Array(buffer),
+            rows, cols, channels, depth
+          });
+        } catch (e) {
+          console.log("[drawMatxImage] postMessage failed - panel likely disposed");
+          return;
+        }
         return;
       }
     }
@@ -686,10 +767,23 @@ export async function drawMatxImage(
     }
     
     console.log(`Sending ${buffer.length} bytes to Matx webview`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      data: new Uint8Array(buffer)
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[drawMatxImage] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        data: new Uint8Array(buffer)
+      });
+    } catch (e) {
+      console.log("[drawMatxImage] Final postMessage failed - panel likely disposed");
+      return;
+    }
     
     console.log('Matx data sent to webview');
   } catch (error) {
@@ -775,13 +869,27 @@ export async function draw2DStdArrayImage(
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("2D std::array panel already has HTML, sending only data");
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[draw2DStdArrayImage] Aborting data send - panel is being disposed");
+        return;
+      }
+      
       const buffer = dataResult.buffer;
       if (buffer) {
-        await panel.webview.postMessage({
-          command: 'completeData',
-          data: new Uint8Array(buffer),
-          rows, cols, channels, depth
-        });
+        // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+        try {
+          // Fire and forget - don't await
+          panel.webview.postMessage({
+            command: 'completeData',
+            data: new Uint8Array(buffer),
+            rows, cols, channels, depth
+          });
+        } catch (e) {
+          console.log("[draw2DStdArrayImage] postMessage failed - panel likely disposed");
+          return;
+        }
         return;
       }
     }
@@ -826,10 +934,23 @@ export async function draw2DStdArrayImage(
     }
     
     console.log(`Sending ${buffer.length} bytes to 2D std::array webview`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      data: new Uint8Array(buffer)
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[draw2DStdArrayImage] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        data: new Uint8Array(buffer)
+      });
+    } catch (e) {
+      console.log("[draw2DStdArrayImage] Final postMessage failed - panel likely disposed");
+      return;
+    }
     
     console.log('2D std::array data sent to webview');
   } catch (error) {
@@ -928,13 +1049,27 @@ export async function draw3DArrayImage(
     // If panel already has content, only send data to preserve view state (zoom/pan)
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("3D array panel already has HTML, sending only data to preserve view state");
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[draw3DArrayImage] Aborting data send - panel is being disposed");
+        return;
+      }
+      
       const buffer = dataResult.buffer;
       if (buffer) {
-        await panel.webview.postMessage({
-          command: 'completeData',
-          data: new Uint8Array(buffer),
-          rows, cols, channels, depth
-        });
+        // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+        try {
+          // Fire and forget - don't await
+          panel.webview.postMessage({
+            command: 'completeData',
+            data: new Uint8Array(buffer),
+            rows, cols, channels, depth
+          });
+        } catch (e) {
+          console.log("[draw3DArrayImage] postMessage failed - panel likely disposed");
+          return;
+        }
         return;
       }
     }
@@ -980,11 +1115,24 @@ export async function draw3DArrayImage(
     }
     
     console.log(`Sending ${buffer.length} bytes to 3D array webview`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      data: new Uint8Array(buffer),
-      rows, cols, channels, depth
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[draw3DArrayImage] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        data: new Uint8Array(buffer),
+        rows, cols, channels, depth
+      });
+    } catch (e) {
+      console.log("[draw3DArrayImage] Final postMessage failed - panel likely disposed");
+      return;
+    }
     
     console.log('3D array data sent to webview');
   } catch (error) {

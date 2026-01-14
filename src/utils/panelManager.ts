@@ -45,28 +45,32 @@ export class PanelManager {
             context.subscriptions.push(
                 vscode.window.registerWebviewPanelSerializer(viewType, {
                     deserializeWebviewPanel: async (panel: vscode.WebviewPanel, state: any) => {
-                        console.log(`[PanelManager] Deserializing webview panel: ${viewType}`);
-                        console.log(`[PanelManager] Panel title: ${panel.title}`);
-                        console.log(`[PanelManager] State:`, state);
+                        // Mark panel as deserializing to prevent any operations
+                        (panel as any)._isDeserializing = true;
+                        (panel as any)._isDisposing = true;  // Also mark as disposing to be extra safe
+                        (panel as any)._isNewWindowPanel = true;  // Mark as new window panel
+                        
+                        console.log(`[PanelManager] Deserializing webview panel: ${viewType}, title: ${panel.title}`);
                         
                         // For moved/copied panels, we always show reload required
                         // because the debug data cannot be serialized
-                        // The panel title contains the variable name, extract it
                         const title = panel.title || '';
                         const variableName = title.replace('View: ', '').replace(' (shared)', '');
                         
-                        console.log(`[PanelManager] Setting reload required HTML for: ${variableName}`);
+                        // Show reload required page - this is a static HTML with no JS that could cause issues
+                        panel.webview.html = PanelManager.getReloadRequiredHtml(variableName || 'variable');
                         
-                        // Show reload required page
-                        const html = PanelManager.getReloadRequiredHtml(variableName || 'variable');
-                        panel.webview.html = html;
+                        // CRITICAL: Do NOT register any message listeners on deserialized panels
+                        // This prevents any debug operations from being triggered when the panel is closed
                         
-                        console.log(`[PanelManager] HTML set successfully, length: ${html.length}`);
+                        // Register a minimal dispose handler that does nothing
+                        panel.onDidDispose(() => {
+                            console.log(`[PanelManager] Deserialized panel disposed (new window): ${variableName}`);
+                            // Do nothing else - no cleanup needed for deserialized panels
+                            // This is intentionally empty to prevent any blocking operations
+                        });
                         
-                        // Note: We don't register this panel in our manager
-                        // because we don't have the sessionId and it would interfere
-                        // with the original panel management logic.
-                        // User needs to click on the variable again to reload.
+                        console.log(`[PanelManager] Deserialized panel setup complete: ${variableName}`);
                     }
                 })
             );
@@ -181,8 +185,18 @@ export class PanelManager {
     static needsVersionRefresh(viewType: string, sessionId: string, variableName: string): boolean {
         const key = `${viewType}:::${sessionId}:::${variableName}`;
         const entry = this.panels.get(key);
-        if (!entry) return false;
+        if (!entry) {
+            return false;
+        }
         return (entry.lastRefreshedVersion ?? -1) < this.currentDebugStateVersion;
+    }
+
+    /**
+     * Get a panel by its identifiers (for checking if it exists and its state)
+     */
+    static getPanel(viewType: string, sessionId: string, variableName: string): vscode.WebviewPanel | undefined {
+        const key = `${viewType}:::${sessionId}:::${variableName}`;
+        return this.panels.get(key)?.panel;
     }
 
     /**
@@ -190,7 +204,9 @@ export class PanelManager {
      * This allows different variables pointing to the same data to share a panel.
      */
     static findPanelByDataPtr(viewType: string, sessionId: string, dataPtr: string): { key: string; panel: vscode.WebviewPanel } | null {
-        if (!dataPtr) return null;
+        if (!dataPtr) {
+            return null;
+        }
         
         const ptrKey = `${viewType}:::${sessionId}:::ptr:${dataPtr}`;
         const existingKey = this.dataPtrToKey.get(ptrKey);
@@ -206,7 +222,9 @@ export class PanelManager {
      * Register a data pointer for a panel, enabling pointer-based lookup.
      */
     static registerDataPtr(viewType: string, sessionId: string, variableName: string, dataPtr: string) {
-        if (!dataPtr) return;
+        if (!dataPtr) {
+            return;
+        }
         
         const key = `${viewType}:::${sessionId}:::${variableName}`;
         const ptrKey = `${viewType}:::${sessionId}:::ptr:${dataPtr}`;
@@ -289,34 +307,74 @@ export class PanelManager {
         }
 
         panel.onDidDispose(() => {
-            // Clean up all references to this panel
-            const entry = this.panels.get(key);
-            if (entry?.dataPtr) {
-                const ptrKey = `${viewType}:::${sessionId}:::ptr:${entry.dataPtr}`;
-                this.dataPtrToKey.delete(ptrKey);
-            }
+            // Mark panel as disposing IMMEDIATELY to prevent any operations
+            (panel as any)._isDisposing = true;
             
-            // Remove all keys that point to this panel
-            for (const [k, v] of this.panels.entries()) {
-                if (v.panel === panel) {
-                    this.panels.delete(k);
+            // CRITICAL: Do NOTHING else synchronously in onDidDispose!
+            // Any operation here can potentially block when the panel is in an auxiliary window.
+            // The message listeners will be garbage collected automatically.
+            // The panel entries in our maps will become stale but that's fine - 
+            // they'll be cleaned up on next access or when the debug session ends.
+            
+            // Schedule cleanup for later (non-blocking) using setTimeout with 0ms
+            setTimeout(() => {
+                // Clean up all references to this panel
+                const entry = this.panels.get(key);
+                if (entry?.dataPtr) {
+                    const ptrKey = `${viewType}:::${sessionId}:::ptr:${entry.dataPtr}`;
+                    this.dataPtrToKey.delete(ptrKey);
                 }
-            }
+                
+                // Remove all keys that point to this panel
+                for (const [k, v] of this.panels.entries()) {
+                    if (v.panel === panel) {
+                        this.panels.delete(k);
+                    }
+                }
+            }, 0);
         });
 
+        // DISABLED: onDidChangeViewState refresh causes debug to hang when closing new windows
+        // Users can manually refresh using the reload button in the webview
+        /*
         panel.onDidChangeViewState(e => {
-            if (e.webviewPanel.visible) {
+            // Only trigger refresh if panel is visible AND not being disposed
+            if (e.webviewPanel.visible && !(e.webviewPanel as any)._isDisposing) {
                 const parts = key.split(':::');
                 if (parts.length === 3) {
                     const [vType, sid, vName] = parts;
                     if (PanelManager.needsVersionRefresh(vType, sid, vName)) {
-                        vscode.commands.executeCommand('cv-debugmate.refreshVisiblePanels', true);
+                        // Add a small delay to avoid triggering during dispose
+                        setTimeout(() => {
+                            if (e.webviewPanel.visible && !(e.webviewPanel as any)._isDisposing) {
+                                vscode.commands.executeCommand('cv-debugmate.refreshVisiblePanels', true);
+                            }
+                        }, 100);
                     }
                 }
             }
         });
+        */
 
         return panel;
+    }
+
+    /**
+     * Wrap a message handler to ignore messages when panel is disposing
+     */
+    static wrapMessageHandler(panel: vscode.WebviewPanel, handler: (message: any) => Promise<void>) {
+        return async (message: any) => {
+            // Ignore messages if panel is being disposed
+            if ((panel as any)._isDisposing) {
+                return;
+            }
+            try {
+                await handler(message);
+            } catch (e) {
+                // Silently ignore errors during message handling to prevent crashes
+                console.error('Error in message handler:', e);
+            }
+        };
     }
 
     /**

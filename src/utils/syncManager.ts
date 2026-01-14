@@ -45,6 +45,9 @@ export class SyncManager {
         this.panels.set(variableName, panel);
         this.variableHasSynced.delete(variableName); // Reset sync flag for new/reused panel
         
+        // Check if this variable has a saved state (from previous panel)
+        const savedState = this.variableStates.get(variableName);
+        
         // If this variable is in a group and that group has a state, sync it immediately
         const groupId = this.variableToGroup.get(variableName);
         if (groupId) {
@@ -60,11 +63,22 @@ export class SyncManager {
                     }
                 }, 500);
             }
+        } else if (savedState) {
+            // Not in a group, but has a saved state from previous panel - restore it
+            setTimeout(() => {
+                if (this.panels.get(variableName) === panel) {
+                    panel.webview.postMessage({
+                        command: 'setView',
+                        state: savedState
+                    });
+                }
+            }, 500);
         }
 
         panel.onDidDispose(() => {
             this.panels.delete(variableName);
-            this.variableStates.delete(variableName);
+            // DON'T delete variableStates - keep it for when panel is reopened
+            // this.variableStates.delete(variableName);
             this.variableHasSynced.delete(variableName);
         });
     }
@@ -231,5 +245,22 @@ export class SyncManager {
             }
         }
         return [];
+    }
+
+    // Clear all states when debug session ends
+    static clearAllStates() {
+        this.variableStates.clear();
+        this.variableToGroup.clear();
+        this.groupToVariables.clear();
+        this.groupStates.clear();
+        this.groupToIndex.clear();
+        this.variableHasSynced.clear();
+        this.confirmed1DVariables.clear();
+        this.nextGroupIndex = 0;
+    }
+    
+    // Get saved view state for a variable
+    static getSavedState(variableName: string): ViewState | undefined {
+        return this.variableStates.get(variableName);
     }
 }

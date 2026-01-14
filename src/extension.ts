@@ -8,9 +8,13 @@ import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
 import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
+import { logDebug, logInfo, logError } from "./utils/logger";
+
+// Request deduplication: prevent multiple simultaneous requests for the same variable
+const pendingRequests = new Map<string, Promise<void>>();
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('Extension "cv-debugmate-cpp" is now active.');
+  logInfo('Extension "cv-debugmate-cpp" is now active.');
 
   // Initialize PanelManager with extension context for webview serialization support
   // This enables "Move into New Window" and "Copy into New Window" functionality
@@ -26,20 +30,24 @@ export function activate(context: vscode.ExtensionContext) {
       cvVariablesProvider.refresh();
       // Debug position moved, increment global version
       PanelManager.incrementDebugStateVersion();
-      // Step triggered: Refresh visible ones immediately (but don't block)
-      if (!isRefreshing) {
-        refreshVisiblePanels(false);
-      }
+      // DISABLED: Auto-refresh causes issues when panels are in new windows
+      // Users can manually refresh using the Reload button in each webview
+      // if (!isRefreshing) {
+      //   refreshVisiblePanels(false);
+      // }
     })
   );
 
   async function refreshVisiblePanels(force: boolean = false) {
     const debugSession = vscode.debug.activeDebugSession;
-    if (!debugSession) return;
+    if (!debugSession) {
+      isRefreshing = false;
+      return;
+    }
     
     // Prevent concurrent refresh operations
     if (isRefreshing) {
-      console.log("Skipping refresh - already in progress");
+      logDebug("Skipping refresh - already in progress");
       return;
     }
     isRefreshing = true;
@@ -49,6 +57,9 @@ export function activate(context: vscode.ExtensionContext) {
       const visiblePanels: { viewType: string; sessionId: string; variableName: string }[] = [];
       
       for (const [key, entry] of panels.entries()) {
+        // Skip panels that are being disposed
+        if ((entry.panel as any)._isDisposing) continue;
+        
         if (entry.panel.visible) {
           const parts = key.split(':::');
           const [viewType, sessionId, variableName] = parts;
@@ -58,18 +69,32 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
       
+      // Double-check debug session is still active before refreshing
+      if (!vscode.debug.activeDebugSession || vscode.debug.activeDebugSession.id !== debugSession.id) {
+        logDebug("Debug session changed during refresh preparation, aborting");
+        return;
+      }
+      
       // Limit concurrent refreshes to avoid overwhelming the debugger
       const MAX_CONCURRENT = 2;
       for (let i = 0; i < visiblePanels.length; i += MAX_CONCURRENT) {
+        // Check again before each batch
+        if (!vscode.debug.activeDebugSession || vscode.debug.activeDebugSession.id !== debugSession.id) {
+          logDebug("Debug session changed during refresh, aborting");
+          break;
+        }
+        
         const batch = visiblePanels.slice(i, i + MAX_CONCURRENT);
         await Promise.all(batch.map(async ({ variableName }) => {
           try {
             await visualizeVariable({ name: variableName, evaluateName: variableName }, true, false);
           } catch (e) {
-            console.log(`Failed to refresh panel for ${variableName}:`, e);
+            logDebug(`Failed to refresh panel for ${variableName}:`, e);
           }
         }));
       }
+    } catch (e) {
+      logError("Error in refreshVisiblePanels:", e);
     } finally {
       isRefreshing = false;
     }
@@ -80,6 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.debug.onDidTerminateDebugSession((session) => {
       cvVariablesProvider.refresh();
       PanelManager.closeSessionPanels(session.id);
+      SyncManager.clearAllStates(); // Clear all saved view states
     })
   );
 
@@ -140,7 +166,6 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   async function visualizeVariable(variable: any, force: boolean = false, reveal: boolean = true) {
-    console.log("========== OpenCV Visualizer Start ==========");
     const debugSession = vscode.debug.activeDebugSession;
 
     if (!debugSession) {
@@ -161,8 +186,51 @@ export function activate(context: vscode.ExtensionContext) {
       // This ensures pointer and its pointee share the same panel
       const panelVariableName = variable.name || variableName.replace(/^\(\*/, '').replace(/\)$/, '');
       
-      console.log(`Visualizing variable: ${variableName}, isPointer=${isPointer}, force=${shouldForce}, reveal=${reveal}`);
-
+      // Request deduplication: if already processing this variable, wait for it
+      const requestKey = `${debugSession.id}:${panelVariableName}`;
+      if (pendingRequests.has(requestKey)) {
+        logDebug(`Request for ${panelVariableName} already in progress, waiting...`);
+        await pendingRequests.get(requestKey);
+        return;
+      }
+      
+      // Create promise for this request
+      const requestPromise = (async () => {
+        try {
+          await visualizeVariableInternal(variable, variableName, panelVariableName, isPointer, baseType, shouldForce, reveal, debugSession);
+        } finally {
+          pendingRequests.delete(requestKey);
+        }
+      })();
+      
+      pendingRequests.set(requestKey, requestPromise);
+      await requestPromise;
+      
+    } catch (error: any) {
+      if (reveal) vscode.window.showErrorMessage(`Error: ${error.message || error}`);
+      logError("ERROR during execution:", error);
+    }
+  }
+  
+  async function visualizeVariableInternal(
+    variable: any,
+    variableName: string,
+    panelVariableName: string,
+    isPointer: boolean,
+    baseType: string,
+    shouldForce: boolean,
+    reveal: boolean,
+    debugSession: vscode.DebugSession
+  ) {
+    // Check if there's an existing panel for this variable that's being disposed
+    // If so, skip this request to avoid triggering debug operations during cleanup
+    const existingPanels = PanelManager.getAllPanels();
+    for (const [key, entry] of existingPanels.entries()) {
+      if (key.includes(panelVariableName) && (entry.panel as any)._isDisposing) {
+        logDebug(`Skipping visualization - panel for ${panelVariableName} is being disposed`);
+        return;
+      }
+    }
       // Get the current thread and stack frame
       // First, try to use the user's currently selected stack frame (important for multi-threaded debugging)
       let frameId: number;
@@ -611,12 +679,6 @@ export function activate(context: vscode.ExtensionContext) {
       
       // Successfully visualized, mark this panel as up-to-date for the current debug version
       PanelManager.markAsRefreshed(viewType, debugSession.id, panelVariableName);
-      
-      console.log("========== OpenCV Visualizer End ==========");
-    } catch (error: any) {
-      if (reveal) vscode.window.showErrorMessage(`Error: ${error.message || error}`);
-      console.log("ERROR during execution:", error);
-    }
   }
 
   // Register the command to visualize from context menu

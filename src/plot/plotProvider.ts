@@ -14,6 +14,7 @@ import {
 } from "../utils/debugger";
 import { getWebviewContentForPlot } from "./plotWebview";
 import { PanelManager } from "../utils/panelManager";
+import { SyncManager } from "../utils/syncManager";
 import * as fs from 'fs';
 import { getMatInfoFromVariables } from "../matImage/matProvider";
 import { getBytesPerElement, is1DStdArray } from "../utils/opencv";
@@ -53,6 +54,13 @@ export async function drawPlot(
 ) {
   // Use panelVariableName for panel management, variableName for data access
   const panelName = panelVariableName || variableName;
+  
+  // Check if there's an existing panel that's being disposed - if so, abort immediately
+  const existingPanel = PanelManager.getPanel("CurvePlotViewer", debugSession.id, panelName);
+  if (existingPanel && (existingPanel as any)._isDisposing) {
+    console.log(`[drawPlot] Aborting - panel for ${panelName} is being disposed`);
+    return;
+  }
   
   try {
     const panelTitle = `View: ${panelName}`;
@@ -176,10 +184,40 @@ export async function drawPlot(
     // If panel already has content, only send data to preserve view state
     if (panel.webview.html && panel.webview.html.length > 0) {
       console.log("Plot panel already has HTML, sending only data");
-      await panel.webview.postMessage({
-        command: 'updateInitialData',
-        data: initialData
-      });
+      
+      // Check if panel is being disposed before sending data
+      if ((panel as any)._isDisposing) {
+        console.log("[drawPlot] Aborting data send - panel is being disposed");
+        return;
+      }
+      
+      // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+      try {
+        // Fire and forget - don't await
+        panel.webview.postMessage({
+          command: 'updateInitialData',
+          data: initialData
+        });
+      } catch (e) {
+        console.log("[drawPlot] postMessage failed - panel likely disposed");
+        return;
+      }
+      
+      // Restore saved view state if available
+      const savedState = SyncManager.getSavedState(panelName);
+      if (savedState && !(panel as any)._isDisposing) {
+        console.log("Restoring saved plot view state:", savedState);
+        setTimeout(() => {
+          if (!(panel as any)._isDisposing) {
+            try {
+              panel.webview.postMessage({
+                command: 'setView',
+                state: savedState
+              });
+            } catch (e) {}
+          }
+        }, 100);
+      }
       return;
     }
 
@@ -188,6 +226,9 @@ export async function drawPlot(
     
     // Send ready signal immediately so webview knows this is not a moved panel
     panel.webview.postMessage({ command: 'ready' });
+    
+    // Register panel with SyncManager for view state persistence
+    SyncManager.registerPanel(panelName, panel);
 
     // Dispose old listener to avoid duplicates
     if ((panel as any)._messageListener) {
@@ -294,6 +335,9 @@ export async function drawPlot(
             } else {
                 console.log('Skipping reload - debug session is no longer active or has changed');
             }
+        } else if (message.command === 'viewChanged') {
+            // Save view state for persistence across tab switches
+            SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'saveFile') {
             const options: vscode.SaveDialogOptions = {
                 defaultUri: vscode.Uri.file(message.defaultName),
@@ -315,10 +359,23 @@ export async function drawPlot(
 
     // Send plot data via postMessage (better memory efficiency than embedding in HTML)
     console.log(`Sending ${initialData.length} data points to webview via postMessage`);
-    await panel.webview.postMessage({
-      command: 'completeData',
-      data: initialData
-    });
+    
+    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+    if ((panel as any)._isDisposing) {
+      console.log("[drawPlot] Aborting final data send - panel is being disposed");
+      return;
+    }
+    
+    try {
+      // Fire and forget - don't await
+      panel.webview.postMessage({
+        command: 'completeData',
+        data: initialData
+      });
+    } catch (e) {
+      console.log("[drawPlot] Final postMessage failed - panel likely disposed");
+      return;
+    }
 
   } catch (error: any) {
     vscode.window.showErrorMessage(`Failed to draw plot: ${error.message}`);
@@ -912,10 +969,24 @@ export async function drawStdArrayPlot(
         // If panel already has content, only send data
         if (panel.webview.html && panel.webview.html.length > 0) {
             console.log("std::array plot panel already has HTML, sending only data");
-            await panel.webview.postMessage({
-                command: 'updateInitialData',
-                data: initialData
-            });
+            
+            // Check if panel is being disposed before sending data
+            if ((panel as any)._isDisposing) {
+                console.log("[drawStdArrayPlot] Aborting data send - panel is being disposed");
+                return;
+            }
+            
+            // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+            try {
+                // Fire and forget - don't await
+                panel.webview.postMessage({
+                    command: 'updateInitialData',
+                    data: initialData
+                });
+            } catch (e) {
+                console.log("[drawStdArrayPlot] postMessage failed - panel likely disposed");
+                return;
+            }
             return;
         }
 
@@ -1241,10 +1312,24 @@ export async function drawCStyleArrayPlot(
         // If panel already has content, only send data
         if (panel.webview.html && panel.webview.html.length > 0) {
             console.log("C-style array plot panel already has HTML, sending only data");
-            await panel.webview.postMessage({
-                command: 'updateInitialData',
-                data: initialData
-            });
+            
+            // Check if panel is being disposed before sending data
+            if ((panel as any)._isDisposing) {
+                console.log("[drawCStyleArrayPlot] Aborting data send - panel is being disposed");
+                return;
+            }
+            
+            // CRITICAL: Don't await postMessage - it can block and cause debug freeze
+            try {
+                // Fire and forget - don't await
+                panel.webview.postMessage({
+                    command: 'updateInitialData',
+                    data: initialData
+                });
+            } catch (e) {
+                console.log("[drawCStyleArrayPlot] postMessage failed - panel likely disposed");
+                return;
+            }
             return;
         }
 

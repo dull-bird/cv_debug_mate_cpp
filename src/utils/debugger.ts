@@ -79,6 +79,11 @@ export async function evaluateWithTimeout(
   frameId: number,
   timeout: number
 ): Promise<any> {
+  // Check if debug session is still active
+  if (!vscode.debug.activeDebugSession || vscode.debug.activeDebugSession.id !== debugSession.id) {
+    throw new Error("Debug session is no longer active");
+  }
+  
   const context = getEvaluateContext(debugSession);
   
   return Promise.race([
@@ -166,6 +171,12 @@ export function buildSizeExpressions(
 // Uses the user's currently selected stack frame in the debugger, falling back to first thread's top frame
 export async function getCurrentFrameId(debugSession: vscode.DebugSession): Promise<number> {
   try {
+    // Check if debug session is still active
+    if (!vscode.debug.activeDebugSession || vscode.debug.activeDebugSession.id !== debugSession.id) {
+      console.log("Debug session is no longer active");
+      throw new Error("Debug session is no longer active");
+    }
+    
     // First, try to get the user's currently selected stack frame
     // This is important for multi-threaded debugging where the user may have selected a different thread
     const activeStackItem = vscode.debug.activeStackItem;
@@ -177,20 +188,33 @@ export async function getCurrentFrameId(debugSession: vscode.DebugSession): Prom
     }
     
     // Fallback: get the first thread's top frame (original behavior)
-    const threadsResponse = await debugSession.customRequest("threads", {});
+    // Add timeout to prevent hanging
+    const threadsResponse = await Promise.race([
+      debugSession.customRequest("threads", {}),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Threads request timeout")), 5000))
+    ]) as any;
+    
     if (threadsResponse.threads && threadsResponse.threads.length > 0) {
       const threadId = threadsResponse.threads[0].id;
-      const stackResponse = await debugSession.customRequest("stackTrace", {
-        threadId: threadId,
-        startFrame: 0,
-        levels: 1
-      });
+      const stackResponse = await Promise.race([
+        debugSession.customRequest("stackTrace", {
+          threadId: threadId,
+          startFrame: 0,
+          levels: 1
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("StackTrace request timeout")), 5000))
+      ]) as any;
+      
       if (stackResponse.stackFrames && stackResponse.stackFrames.length > 0) {
         return stackResponse.stackFrames[0].id;
       }
     }
-  } catch (e) {
-    console.log("Error getting frame ID:", e);
+  } catch (e: any) {
+    console.log("Error getting frame ID:", e.message || e);
+    // If we get "Invalid frame reference" or "Not available while the process is running", throw
+    if (e.message && (e.message.includes("Invalid frame") || e.message.includes("process is running"))) {
+      throw e;
+    }
   }
   return 0;
 }
@@ -240,12 +264,14 @@ export async function getMemorySample(
  * Helper function to read memory in chunks to avoid debugger limitations.
  * Each chunk is 8MB by default.
  * Includes timeout protection to prevent hanging.
+ * @param cancellationCheck Optional function that returns true if the operation should be cancelled
  */
 export async function readMemoryChunked(
   debugSession: vscode.DebugSession,
   memoryReference: string,
   totalBytes: number,
-  progress?: vscode.Progress<{ message?: string; increment?: number }>
+  progress?: vscode.Progress<{ message?: string; increment?: number }>,
+  cancellationCheck?: () => boolean
 ): Promise<Buffer | null> {
   const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB per chunk
   const CHUNK_TIMEOUT = 30000; // 30 seconds timeout per chunk
@@ -263,6 +289,7 @@ export async function readMemoryChunked(
   let nextChunkIndex = 0;
   let totalReadBytes = 0;
   let failed = false;
+  let cancelled = false;
 
   // Helper function to read with timeout
   async function readWithTimeout(offset: number, count: number): Promise<any> {
@@ -279,7 +306,14 @@ export async function readMemoryChunked(
   }
 
   const worker = async () => {
-    while (nextChunkIndex < numChunks && !failed) {
+    while (nextChunkIndex < numChunks && !failed && !cancelled) {
+      // Check for cancellation before starting each chunk
+      if (cancellationCheck && cancellationCheck()) {
+        console.log("Memory read cancelled by cancellation check");
+        cancelled = true;
+        return;
+      }
+      
       const myIndex = nextChunkIndex++;
       const offset = myIndex * CHUNK_SIZE;
       const count = Math.min(CHUNK_SIZE, totalBytes - offset);
@@ -287,7 +321,14 @@ export async function readMemoryChunked(
       try {
         const memoryResponse = await readWithTimeout(offset, count);
 
-        if (memoryResponse && memoryResponse.data && !failed) {
+        // Check for cancellation after each chunk
+        if (cancellationCheck && cancellationCheck()) {
+          console.log("Memory read cancelled after chunk completion");
+          cancelled = true;
+          return;
+        }
+
+        if (memoryResponse && memoryResponse.data && !failed && !cancelled) {
           const buffer = Buffer.from(memoryResponse.data, "base64");
           chunks[myIndex] = buffer;
           totalReadBytes += buffer.length;
@@ -299,13 +340,15 @@ export async function readMemoryChunked(
               increment: (buffer.length / totalBytes) * 100
             });
           }
-        } else if (!failed) {
+        } else if (!failed && !cancelled) {
           console.error(`readMemory returned no data for chunk ${myIndex}`);
           failed = true;
         }
       } catch (e: any) {
-        console.error(`Error reading memory chunk ${myIndex}:`, e.message || e);
-        failed = true;
+        if (!cancelled) {
+          console.error(`Error reading memory chunk ${myIndex}:`, e.message || e);
+          failed = true;
+        }
       }
     }
   };
@@ -313,6 +356,11 @@ export async function readMemoryChunked(
   // Start workers
   const workers = Array(CONCURRENCY).fill(null).map(() => worker());
   await Promise.all(workers);
+
+  if (cancelled) {
+    console.log("Memory read was cancelled, returning null");
+    return null;
+  }
 
   if (failed || chunks.some(c => c === null)) {
     // If some chunks failed but we have some data, try to return what we have

@@ -1273,6 +1273,14 @@ export function getWebviewContentForPlot(
                         tickCache.y.result = null;
                         draw();
                         pushHistory();
+                        emitViewChange();
+                    }
+                    
+                    function emitViewChange() {
+                        vscode.postMessage({
+                            command: 'viewChanged',
+                            state: { scaleX: scaleX, scaleY: scaleY, offsetX: offsetX, offsetY: offsetY }
+                        });
                     }
 
                     // 下拉菜单切换逻辑
@@ -1355,6 +1363,17 @@ export function getWebviewContentForPlot(
                             document.getElementById('info').textContent = 'Size: ' + dataY.length;
                             loadingOverlay.classList.add('hidden');
                             updateDataBounds();
+                            draw();
+                        } else if (message.command === 'setView') {
+                            // Restore saved view state (zoom/pan)
+                            const state = message.state;
+                            if (state.scaleX !== undefined) scaleX = state.scaleX;
+                            if (state.scaleY !== undefined) scaleY = state.scaleY;
+                            if (state.offsetX !== undefined) offsetX = state.offsetX;
+                            if (state.offsetY !== undefined) offsetY = state.offsetY;
+                            // Invalidate tick cache when view state changes
+                            tickCache.x.result = null;
+                            tickCache.y.result = null;
                             draw();
                         }
                     });
@@ -1570,6 +1589,7 @@ export function getWebviewContentForPlot(
                                 zoomRectEl.style.display = 'none';
                             }
                             pushHistory();
+                            emitViewChange();
                         }
                         isDragging = false;
                     });

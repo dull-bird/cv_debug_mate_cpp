@@ -27,6 +27,11 @@
         "point cloud",
         "c++"
     ],
+    "activationEvents": [
+        "onWebviewPanel:MatImageViewer",
+        "onWebviewPanel:CurvePlotViewer",
+        "onWebviewPanel:3DPointViewer"
+    ],
     "main": "./dist/extension.js",
     "contributes": {
         "commands": [
