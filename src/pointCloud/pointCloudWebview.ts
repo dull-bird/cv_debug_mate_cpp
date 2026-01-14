@@ -975,22 +975,9 @@ export function getWebviewContentForPointCloud(
                     isSyncing = false;
                 }
 
-                let lastSyncTime = 0;
+                // Disable view sync back to extension to avoid closure issues
                 function emitViewChange(force = false) {
-                    if (isSyncing || !isInitialized) return;
-                    const now = Date.now();
-                    if (!force && (now - lastSyncTime < 30)) return; // Throttle to ~30fps
-                    lastSyncTime = now;
-                    
-                    vscode.postMessage({
-                        command: 'viewChanged',
-                        state: {
-                            cameraPosition: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-                            cameraQuaternion: { x: camera.quaternion.x, y: camera.quaternion.y, z: camera.quaternion.z, w: camera.quaternion.w },
-                            cameraUp: { x: camera.up.x, y: camera.up.y, z: camera.up.z },
-                            controlsTarget: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
-                        }
-                    });
+                    return;
                 }
 
                 controls.addEventListener('change', () => {

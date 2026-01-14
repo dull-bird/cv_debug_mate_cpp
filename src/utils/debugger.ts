@@ -73,6 +73,26 @@ export function getEvaluateContext(debugSession: vscode.DebugSession): string {
 export const STL_ARRAY_MEMBERS = ["__elems_", "_M_elems", "_Elems"];
 export const STL_VECTOR_DATA_MEMBERS = ["__begin_", "_M_start", "_Myfirst"];
 
+// Global counter for tracking customRequest calls
+let customRequestCounter = 0;
+
+/**
+ * Traced wrapper for debugSession.customRequest for debugging purposes.
+ */
+async function tracedCustomRequest(debugSession: vscode.DebugSession, command: string, args: any): Promise<any> {
+  const id = ++customRequestCounter;
+  const startTime = Date.now();
+  console.log(`[DEBUG-TRACE] customRequest #${id} START: ${command} at ${startTime}`);
+  try {
+    const result = await debugSession.customRequest(command, args);
+    console.log(`[DEBUG-TRACE] customRequest #${id} END: ${command} at ${Date.now()} (took ${Date.now() - startTime}ms)`);
+    return result;
+  } catch (e) {
+    console.log(`[DEBUG-TRACE] customRequest #${id} FAILED: ${command} at ${Date.now()} (took ${Date.now() - startTime}ms)`, e);
+    throw e;
+  }
+}
+
 export async function evaluateWithTimeout(
   debugSession: vscode.DebugSession,
   expression: string,
@@ -620,8 +640,9 @@ export async function get2DStdArrayDataPointer(
   frameId: number,
   variableInfo?: any
 ): Promise<string | null> {
+  const startTime = Date.now();
   const context = getEvaluateContext(debugSession);
-  console.log(`get2DStdArrayDataPointer: variableName="${variableName}", debugger=${debugSession.type}`);
+  console.log(`[DEBUG-TRACE] get2DStdArrayDataPointer START: variableName="${variableName}", debugger=${debugSession.type}, at ${startTime}`);
   
   let dataPtr: string | null = null;
   
@@ -788,7 +809,7 @@ export async function get2DStdArrayDataPointer(
     dataPtr = await tryGetDataPointer(debugSession, variableName, expressions, frameId, context);
   }
   
-  console.log(`get2DStdArrayDataPointer result: ${dataPtr}`);
+  console.log(`[DEBUG-TRACE] get2DStdArrayDataPointer END: result=${dataPtr}, took ${Date.now() - startTime}ms`);
   return dataPtr;
 }
 

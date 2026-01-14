@@ -303,13 +303,22 @@ export async function drawMatImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
         } else if (message.command === 'reload') {
+          const reloadStartTime = Date.now();
+          console.log(`[DEBUG-TRACE] reload message received for ${variableName} at ${reloadStartTime}`);
+          
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
           if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+            console.log(`[DEBUG-TRACE] reload: starting executeCommand (fire-and-forget) at ${Date.now()}`);
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] reload: executeCommand completed at ${Date.now()}`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] reload: executeCommand failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or panel is disposing');
           }
+          
+          console.log(`[DEBUG-TRACE] reload handler finished for ${variableName} at ${Date.now()}`);
         }
       }
     );
@@ -322,20 +331,26 @@ export async function drawMatImage(
 
     // CRITICAL: Use setTimeout to defer postMessage
     if ((panel as any)._isDisposing) {
+      console.log(`[DEBUG-TRACE] postMessage skipped - panel disposing (before setTimeout)`);
       return;
     }
     
+    console.log(`[DEBUG-TRACE] postMessage: scheduling setTimeout at ${Date.now()}`);
     setTimeout(() => {
+      console.log(`[DEBUG-TRACE] postMessage: setTimeout callback at ${Date.now()}, isDisposing=${(panel as any)._isDisposing}`);
       if ((panel as any)._isDisposing) {
+        console.log(`[DEBUG-TRACE] postMessage skipped - panel disposing (in setTimeout)`);
         return;
       }
       try {
+        console.log(`[DEBUG-TRACE] postMessage: sending completeData (${buffer.length} bytes) at ${Date.now()}`);
         panel.webview.postMessage({
           command: 'completeData',
           data: new Uint8Array(buffer)
         });
+        console.log(`[DEBUG-TRACE] postMessage: sent successfully at ${Date.now()}`);
       } catch (e) {
-        // Panel was disposed, ignore
+        console.log(`[DEBUG-TRACE] postMessage: FAILED with error:`, e);
       }
     }, 0);
   } catch (error) {
@@ -752,8 +767,11 @@ export async function drawMatxImage(
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] Matx reload completed`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] Matx reload failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or has changed');
           }
@@ -813,7 +831,7 @@ export async function draw2DStdArrayImage(
     const bytesPerElement = getBytesPerElement(depth);
     const totalBytes = dataSize * bytesPerElement;
     
-    console.log(`Drawing 2D std::array image: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage START at ${Date.now()}: ${rows}x${cols}, depth=${depth}, totalBytes=${totalBytes}`);
     
     const panelTitle = `View: ${panelName}`;
     
@@ -821,20 +839,25 @@ export async function draw2DStdArrayImage(
     // Determine if this is a C-style array or std::array based on type information
     const isCStyleArray = variableInfo.type && /\s*\[\s*\d+\s*\]\s*\[\s*\d+\s*\]/.test(variableInfo.type);
     let dataPtr: string | null;
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: getting data pointer at ${Date.now()}`);
     if (isCStyleArray) {
       dataPtr = await getCStyle2DArrayDataPointer(debugSession, variableName, frameId, variableInfo);
     } else {
       dataPtr = await get2DStdArrayDataPointer(debugSession, variableName, frameId, variableInfo);
     }
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: got data pointer at ${Date.now()}, dataPtr=${dataPtr}`);
     
     if (!dataPtr) {
       throw new Error("Cannot get data pointer from 2D std::array. Make sure it's a valid std::array.");
     }
     
     // Check if panel is fresh
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: getting memory sample at ${Date.now()}`);
     const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: got memory sample at ${Date.now()}`);
     const stateToken = `${rows}|${cols}|${channels}|${depth}|${dataPtr}|${sample}`;
     
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: getting/creating panel at ${Date.now()}`);
     const panel = PanelManager.getOrCreatePanel(
       "MatImageViewer",
       panelTitle,
@@ -843,6 +866,13 @@ export async function draw2DStdArrayImage(
       reveal,
       dataPtr  // Enable sharing panels by data pointer
     );
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: got panel at ${Date.now()}, isDisposing=${(panel as any)._isDisposing}`);
+
+    // CRITICAL: Check if panel was disposed during async operations
+    if ((panel as any)._isDisposing) {
+      console.log(`[DEBUG-TRACE] draw2DStdArrayImage: ABORTING - panel was disposed during data pointer fetch`);
+      return;
+    }
 
     if (!force && PanelManager.isPanelFresh("MatImageViewer", debugSession.id, panelName, stateToken)) {
       console.log(`2D std::array panel is already up-to-date with token: ${stateToken}`);
@@ -850,6 +880,7 @@ export async function draw2DStdArrayImage(
     }
     
     // Read data with progress indicator
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: starting readMemoryChunked at ${Date.now()}`);
     const dataResult = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -862,13 +893,20 @@ export async function draw2DStdArrayImage(
         return { buffer };
       }
     );
+    console.log(`[DEBUG-TRACE] draw2DStdArrayImage: readMemoryChunked completed at ${Date.now()}, isDisposing=${(panel as any)._isDisposing}`);
+    
+    // CRITICAL: Check if panel was disposed during memory read
+    if ((panel as any)._isDisposing) {
+      console.log(`[DEBUG-TRACE] draw2DStdArrayImage: ABORTING - panel was disposed during memory read`);
+      return;
+    }
     
     // Update state token
     PanelManager.updateStateToken("MatImageViewer", debugSession.id, panelName, stateToken);
     
     // If panel already has content, only send data
     if (panel.webview.html && panel.webview.html.length > 0) {
-      console.log("2D std::array panel already has HTML, sending only data");
+      console.log(`[DEBUG-TRACE] draw2DStdArrayImage: panel already has HTML, sending only data at ${Date.now()}`);
       
       // Check if panel is being disposed before sending data
       if ((panel as any)._isDisposing) {
@@ -878,18 +916,24 @@ export async function draw2DStdArrayImage(
       
       const buffer = dataResult.buffer;
       if (buffer) {
-        // CRITICAL: Don't await postMessage - it can block and cause debug freeze
-        try {
-          // Fire and forget - don't await
-          panel.webview.postMessage({
-            command: 'completeData',
-            data: new Uint8Array(buffer),
-            rows, cols, channels, depth
-          });
-        } catch (e) {
-          console.log("[draw2DStdArrayImage] postMessage failed - panel likely disposed");
-          return;
-        }
+        // CRITICAL: Use setTimeout to defer postMessage, giving VS Code time to process events
+        const panelRef = panel;
+        setTimeout(() => {
+          if ((panelRef as any)._isDisposing) {
+            console.log("[draw2DStdArrayImage] Aborting deferred data send - panel is being disposed");
+            return;
+          }
+          try {
+            console.log(`[DEBUG-TRACE] draw2DStdArrayImage: sending deferred postMessage at ${Date.now()}`);
+            panelRef.webview.postMessage({
+              command: 'completeData',
+              data: new Uint8Array(buffer),
+              rows, cols, channels, depth
+            });
+          } catch (e) {
+            console.log("[draw2DStdArrayImage] Deferred postMessage failed - panel likely disposed");
+          }
+        }, 0);
         return;
       }
     }
@@ -919,8 +963,11 @@ export async function draw2DStdArrayImage(
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] 2D array reload completed`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] 2D array reload failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or has changed');
           }
@@ -1098,13 +1145,22 @@ export async function draw3DArrayImage(
         if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'reload') {
+          const reloadStartTime = Date.now();
+          console.log(`[DEBUG-TRACE] 3D array reload message received for ${panelName} at ${reloadStartTime}`);
+          
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+            console.log(`[DEBUG-TRACE] 3D array reload: starting executeCommand (fire-and-forget) at ${Date.now()}`);
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] 3D array reload: executeCommand completed at ${Date.now()} (took ${Date.now() - reloadStartTime}ms)`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] 3D array reload: executeCommand failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or has changed');
           }
+          
+          console.log(`[DEBUG-TRACE] 3D array reload handler finished for ${panelName} at ${Date.now()}`);
         }
       }
     );
@@ -1114,27 +1170,29 @@ export async function draw3DArrayImage(
       throw new Error("Failed to read 3D array data");
     }
     
-    console.log(`Sending ${buffer.length} bytes to 3D array webview`);
+    console.log(`[DEBUG-TRACE] 3D array: Sending ${buffer.length} bytes to webview at ${Date.now()}`);
     
     // CRITICAL: Don't await postMessage - it can block and cause debug freeze
     if ((panel as any)._isDisposing) {
-      console.log("[draw3DArrayImage] Aborting final data send - panel is being disposed");
+      console.log("[DEBUG-TRACE] 3D array: Aborting final data send - panel is being disposed");
       return;
     }
     
     try {
       // Fire and forget - don't await
+      console.log(`[DEBUG-TRACE] 3D array: postMessage starting at ${Date.now()}`);
       panel.webview.postMessage({
         command: 'completeData',
         data: new Uint8Array(buffer),
         rows, cols, channels, depth
       });
+      console.log(`[DEBUG-TRACE] 3D array: postMessage completed at ${Date.now()}`);
     } catch (e) {
-      console.log("[draw3DArrayImage] Final postMessage failed - panel likely disposed");
+      console.log("[DEBUG-TRACE] 3D array: postMessage FAILED:", e);
       return;
     }
     
-    console.log('3D array data sent to webview');
+    console.log(`[DEBUG-TRACE] 3D array data sent to webview at ${Date.now()}`);
   } catch (error) {
     console.error("Error drawing 3D array image:", error);
     throw error;

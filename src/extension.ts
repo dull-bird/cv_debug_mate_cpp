@@ -14,6 +14,14 @@ import { logDebug, logInfo, logError } from "./utils/logger";
 const pendingRequests = new Map<string, Promise<void>>();
 
 export function activate(context: vscode.ExtensionContext) {
+  // Global safety nets to surface unexpected errors that may desync UI
+  process.on('unhandledRejection', (reason: any) => {
+    console.error('[cv-debugmate] UnhandledPromiseRejection:', reason);
+  });
+  process.on('uncaughtException', (error: any) => {
+    console.error('[cv-debugmate] UncaughtException:', error);
+  });
+
   logInfo('Extension "cv-debugmate-cpp" is now active.');
 
   // Initialize PanelManager with extension context for webview serialization support

@@ -171,7 +171,13 @@ export async function drawPointCloud(
     panel.webview.html = getWebviewContentForPointCloud();
     
     // Send ready signal immediately so webview knows this is not a moved panel
-    panel.webview.postMessage({ command: 'ready' });
+    try {
+      if (!(panel as any)._isDisposing) {
+        panel.webview.postMessage({ command: 'ready' });
+      }
+    } catch (e) {
+      console.log("[drawPointCloud] ready postMessage failed - panel likely disposed");
+    }
     
     SyncManager.registerPanel(panelName, panel);
 
@@ -213,7 +219,10 @@ export async function drawPointCloud(
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
           if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] PointCloud reload completed`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] PointCloud reload failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or panel is disposing');
           }
@@ -226,7 +235,6 @@ export async function drawPointCloud(
     // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
     console.log(`Sending ${points.length} points to webview via postMessage`);
     
-    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
     if ((panel as any)._isDisposing) {
       console.log("[drawPointCloud] Aborting final data send - panel is being disposed");
       return;
@@ -662,8 +670,11 @@ export async function drawStdArrayPointCloud(
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
-          if (currentSession && currentSession.id === debugSession.id) {
-            await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true });
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+            // CRITICAL: Fire-and-forget - don't await to avoid blocking
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: panelName, evaluateName: variableName, skipToken: true }))
+              .then(() => console.log(`[DEBUG-TRACE] StdArray PointCloud reload completed`))
+              .catch((e: Error) => console.log(`[DEBUG-TRACE] StdArray PointCloud reload failed:`, e));
           } else {
             console.log('Skipping reload - debug session is no longer active or has changed');
           }
@@ -676,7 +687,6 @@ export async function drawStdArrayPointCloud(
     // Send point cloud data via postMessage (better memory efficiency than embedding in HTML)
     console.log(`Sending ${points.length} points to webview via postMessage`);
     
-    // CRITICAL: Don't await postMessage - it can block and cause debug freeze
     if ((panel as any)._isDisposing) {
       console.log("[drawStdArrayPointCloud] Aborting final data send - panel is being disposed");
       return;

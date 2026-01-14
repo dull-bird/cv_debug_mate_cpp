@@ -319,19 +319,27 @@ export async function drawPlot(
                 }
                 
                 if (newData) {
-                    panel.webview.postMessage({ 
-                        command: 'updateData', 
-                        target: message.target, 
-                        data: newData, 
-                        name: message.name 
-                    });
+                    if ((panel as any)._isDisposing) return;
+                    try {
+                        panel.webview.postMessage({ 
+                            command: 'updateData', 
+                            target: message.target, 
+                            data: newData, 
+                            name: message.name 
+                        });
+                    } catch (e) {
+                        console.log("[drawPlot] updateData postMessage failed - panel likely disposed");
+                    }
                 }
             }
         } else if (message.command === 'reload') {
             // Check if debug session is still active before reloading
             const currentSession = vscode.debug.activeDebugSession;
-            if (currentSession && currentSession.id === debugSession.id) {
-                await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+            if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+                // CRITICAL: Fire-and-forget - don't await to avoid blocking
+                Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+                    .then(() => console.log(`[DEBUG-TRACE] Plot reload completed`))
+                    .catch((e: Error) => console.log(`[DEBUG-TRACE] Plot reload failed:`, e));
             } else {
                 console.log('Skipping reload - debug session is no longer active or has changed');
             }
@@ -1082,19 +1090,27 @@ export async function drawStdArrayPlot(
                     }
                     
                     if (newData) {
-                        panel.webview.postMessage({ 
-                            command: 'updateData', 
-                            target: message.target, 
-                            data: newData, 
-                            name: message.name 
-                        });
+                        if ((panel as any)._isDisposing) return;
+                        try {
+                            panel.webview.postMessage({ 
+                                command: 'updateData', 
+                                target: message.target, 
+                                data: newData, 
+                                name: message.name 
+                            });
+                        } catch (e) {
+                            console.log("[drawPlot/std::array] updateData postMessage failed - panel likely disposed");
+                        }
                     }
                 }
             } else if (message.command === 'reload') {
                 // Check if debug session is still active before reloading
                 const currentSession = vscode.debug.activeDebugSession;
-                if (currentSession && currentSession.id === debugSession.id) {
-                    await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+                    // CRITICAL: Fire-and-forget - don't await to avoid blocking
+                    Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+                        .then(() => console.log(`[DEBUG-TRACE] Vector plot reload completed`))
+                        .catch((e: Error) => console.log(`[DEBUG-TRACE] Vector plot reload failed:`, e));
                 } else {
                     console.log('Skipping reload - debug session is no longer active or has changed');
                 }
@@ -1440,8 +1456,11 @@ export async function drawCStyleArrayPlot(
             } else if (message.command === 'reload') {
                 // Check if debug session is still active before reloading
                 const currentSession = vscode.debug.activeDebugSession;
-                if (currentSession && currentSession.id === debugSession.id) {
-                    await vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true });
+                if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+                    // CRITICAL: Fire-and-forget - don't await to avoid blocking
+                    Promise.resolve(vscode.commands.executeCommand('cv-debugmate.viewVariable', { name: variableName, evaluateName: variableName, skipToken: true }))
+                        .then(() => console.log(`[DEBUG-TRACE] Array plot reload completed`))
+                        .catch((e: Error) => console.log(`[DEBUG-TRACE] Array plot reload failed:`, e));
                 } else {
                     console.log('Skipping reload - debug session is no longer active or has changed');
                 }

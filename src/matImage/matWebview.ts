@@ -17,7 +17,7 @@ export function getWebviewContentForMat(
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}' 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <title>Matrix Image Viewer</title>
         <style nonce="${nonce}">
             body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #333; }
@@ -401,13 +401,15 @@ export function getWebviewContentForMat(
                 // Extension sends 'ready' signal immediately after creating panel
                 // If we don't receive it within 100ms, this is a moved panel
                 let extensionReady = false;
-                setTimeout(() => {
-                    if (!extensionReady) {
-                        // This is a moved panel, auto-reload
-                        loadingText.innerHTML = 'Reloading...';
-                        vscode.postMessage({ command: 'reload' });
-                    }
-                }, 100);
+                // DISABLED: Auto-reload may cause debug freeze when closing auxiliary windows
+                // setTimeout(() => {
+                //     if (!extensionReady) {
+                //         // This is a moved panel, auto-reload
+                //         loadingText.innerHTML = 'Reloading...';
+                //         vscode.postMessage({ command: 'reload' });
+                //     }
+                // }, 100);
+                console.log('[DEBUG] Auto-reload DISABLED for testing');
 
                 window.addEventListener('message', event => {
                     const message = event.data;
@@ -447,18 +449,17 @@ export function getWebviewContentForMat(
                 });
 
                 function applyViewState(state) {
-                    if (state.scale !== undefined) scale = state.scale;
+                    if (state.scale !== undefined) scale = Math.max(0.05, Math.min(100, state.scale));
                     if (state.offsetX !== undefined) offsetX = state.offsetX;
                     if (state.offsetY !== undefined) offsetY = state.offsetY;
                     requestRender();
                 }
 
+                // Disable syncing view state back to extension to avoid closure issues
                 function emitViewChange() {
-                    if (!isInitialized) return;
-                    vscode.postMessage({
-                        command: 'viewChanged',
-                        state: { scale, offsetX, offsetY }
-                    });
+                    // no-op: we intentionally do not postMessage to the extension
+                    // to avoid any auxiliary-window closure side effects
+                    return;
                 }
 
                 function bytesToTypedArray(bytes, depth) {
@@ -510,6 +511,7 @@ export function getWebviewContentForMat(
                 const MAX_PIXEL_TEXT_LABELS = 15000; // 视野内超过这个像素数就不画文字（防止卡顿）
                 let pixelTextEnabled = true; // 可手动关掉
                 let renderQueued = false;
+                let isShuttingDown = false; // 面板即将关闭时阻断交互
 
                 // Make controls draggable
                 let controlsDragging = false;
@@ -1503,12 +1505,14 @@ export function getWebviewContentForMat(
 
                 // Interaction
                 container.addEventListener('mousedown', (e) => {
+                    if (isShuttingDown) return;
                     isDragging = true;
                     startX = e.clientX - offsetX;
                     startY = e.clientY - offsetY;
                 });
 
                 document.addEventListener('mousemove', (e) => {
+                    if (isShuttingDown) return;
                     lastMouseX = e.clientX;
                     lastMouseY = e.clientY;
                     hasLastMouse = true;
@@ -1544,6 +1548,7 @@ export function getWebviewContentForMat(
                 });
 
                 container.addEventListener('wheel', (e) => {
+                    if (isShuttingDown) return;
                     e.preventDefault();
                     const delta = -e.deltaY;
                     const factor = delta > 0 ? 1.1 : 1 / 1.1;
@@ -1554,6 +1559,16 @@ export function getWebviewContentForMat(
                     updateCanvasSize();
                     updateUiScale();
                     requestRender();
+                });
+
+                // Mark shutting down to block further interactions/sync
+                window.addEventListener('beforeunload', () => {
+                    isShuttingDown = true;
+                });
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') {
+                        isShuttingDown = true;
+                    }
                 });
 
                 // Initial setup

@@ -37,7 +37,13 @@ export class PanelManager {
      * This registers the webview serializers for move/copy to new window support.
      */
     static initialize(context: vscode.ExtensionContext) {
+        // DISABLED: WebviewPanelSerializer may cause issues when closing auxiliary windows
+        // Without serializers, "Move to New Window" will show empty panel that needs manual reload
+        // This is a test to see if serializers are causing the debug freeze
         
+        console.log(`[PanelManager] Serializers DISABLED for testing`);
+        
+        /*
         // Register serializers for each view type
         const viewTypes = ['MatImageViewer', 'CurvePlotViewer', '3DPointViewer'];
         
@@ -77,6 +83,7 @@ export class PanelManager {
         }
         
         console.log(`[PanelManager] Registered serializers for: ${viewTypes.join(', ')}`);
+        */
     }
     
     /**
@@ -288,13 +295,14 @@ export class PanelManager {
         }
 
         // Create a new panel
+        // NOTE: retainContextWhenHidden removed to test if it causes auxiliary window bugs
         const panel = vscode.window.createWebviewPanel(
             viewType,
             title,
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true,
+                // retainContextWhenHidden: true,  // DISABLED - may cause bugs when closing auxiliary windows
             }
         );
 
@@ -307,31 +315,95 @@ export class PanelManager {
         }
 
         panel.onDidDispose(() => {
-            // Mark panel as disposing IMMEDIATELY to prevent any operations
+            const disposeTime = Date.now();
+            console.log(`[DISPOSE-WATCHDOG] onDidDispose START at ${disposeTime}`);
+            
+            // Mark as disposing to prevent any other code from using this panel
             (panel as any)._isDisposing = true;
             
-            // CRITICAL: Do NOTHING else synchronously in onDidDispose!
-            // Any operation here can potentially block when the panel is in an auxiliary window.
-            // The message listeners will be garbage collected automatically.
-            // The panel entries in our maps will become stale but that's fine - 
-            // they'll be cleaned up on next access or when the debug session ends.
+            // CRITICAL FIX: If debugger is running (not paused), pause it to prevent freeze
+            const debugSession = vscode.debug.activeDebugSession;
+            if (debugSession) {
+                console.log(`[DISPOSE-WATCHDOG] Sending pause command at ${Date.now()}`);
+                // Send pause command (fire-and-forget, don't wait)
+                Promise.resolve(debugSession.customRequest('pause', { threadId: 0 }))
+                    .then(() => console.log(`[DISPOSE-WATCHDOG] Pause command succeeded at ${Date.now()}`))
+                    .catch((e) => console.log(`[DISPOSE-WATCHDOG] Pause command failed: ${e}`));
+                
+                // Clear any context keys that might block debug UI
+                vscode.commands.executeCommand('setContext', 'cvDebugMate.webviewOpen', false);
+            }
             
-            // Schedule cleanup for later (non-blocking) using setTimeout with 0ms
+            console.log(`[DISPOSE-WATCHDOG] onDidDispose SYNC END at ${Date.now()} (took ${Date.now() - disposeTime}ms)`);
+            
+            // FIX: Aggressive UI refresh sequence (buttons/console假卡)
+            const refreshUI = async (label: string) => {
+                try {
+                    // 聚焦编辑器 -> 调试视图 -> 调试控制台
+                    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                    await vscode.commands.executeCommand('workbench.view.debug');
+                    await vscode.commands.executeCommand('workbench.debug.action.focusRepl');
+                    await vscode.commands.executeCommand('workbench.debug.action.focusCallStackView');
+                    await vscode.commands.executeCommand('workbench.debug.action.focusVariablesView');
+                    // Toggle到资源管理器再回调试视图，强制刷新
+                    await vscode.commands.executeCommand('workbench.view.explorer');
+                    await vscode.commands.executeCommand('workbench.view.debug');
+
+                    // 触发一次 threads 请求，强制调试状态同步
+                    const session = vscode.debug.activeDebugSession;
+                    if (session) {
+                        Promise.resolve(session.customRequest('threads', {}))
+                            .catch(() => {});
+                    }
+                    console.log(`[DISPOSE-WATCHDOG] UI refresh step (${label}) done`);
+                } catch (e) {
+                    console.log(`[DISPOSE-WATCHDOG] UI refresh step (${label}) failed: ${e}`);
+                }
+            };
+
+            // 多次尝试，避免一次失败
+            setTimeout(() => refreshUI('t1-200ms'), 200);
+            setTimeout(() => refreshUI('t2-400ms'), 400);
+            setTimeout(() => refreshUI('t3-800ms'), 800);
+
+            // Heartbeat: 再做几次 threads 请求，确认调试状态恢复
+            const session = vscode.debug.activeDebugSession;
+            if (session) {
+                let hbCount = 0;
+                const hbTimer = setInterval(() => {
+                    hbCount++;
+                    Promise.resolve(session.customRequest('threads', {}))
+                        .then(() => console.log(`[DISPOSE-WATCHDOG] Heartbeat threads #${hbCount} ok`))
+                        .catch((e) => console.log(`[DISPOSE-WATCHDOG] Heartbeat threads #${hbCount} failed: ${e}`));
+                    if (hbCount >= 3) {
+                        clearInterval(hbTimer);
+                    }
+                }, 500);
+            }
+
+            // 温和提示用户可用的手动恢复手势（减少骚扰：仅在我们发送过 pause 时提示）
+            if (debugSession) {
+                setTimeout(() => {
+                    vscode.window.showInformationMessage(
+                        '调试器已暂停以避免辅助窗口关闭时卡住。如果按钮或Console看起来卡住，请按 F5 或切换到调试面板/Console。'
+                    );
+                }, 300);
+            }
+            
+            // Clean up panel references (deferred to avoid blocking)
             setTimeout(() => {
-                // Clean up all references to this panel
                 const entry = this.panels.get(key);
                 if (entry?.dataPtr) {
                     const ptrKey = `${viewType}:::${sessionId}:::ptr:${entry.dataPtr}`;
                     this.dataPtrToKey.delete(ptrKey);
                 }
-                
-                // Remove all keys that point to this panel
                 for (const [k, v] of this.panels.entries()) {
                     if (v.panel === panel) {
                         this.panels.delete(k);
                     }
                 }
-            }, 0);
+                console.log(`[DISPOSE-WATCHDOG] Cleanup complete at ${Date.now()}`);
+            }, 100);
         });
 
         // DISABLED: onDidChangeViewState refresh causes debug to hang when closing new windows

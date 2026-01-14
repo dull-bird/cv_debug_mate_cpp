@@ -1273,14 +1273,12 @@ export function getWebviewContentForPlot(
                         tickCache.y.result = null;
                         draw();
                         pushHistory();
-                        emitViewChange();
+                        // emitViewChange disabled to avoid auxiliary-window close issues
                     }
                     
                     function emitViewChange() {
-                        vscode.postMessage({
-                            command: 'viewChanged',
-                            state: { scaleX: scaleX, scaleY: scaleY, offsetX: offsetX, offsetY: offsetY }
-                        });
+                        // no-op: disable syncing view state to extension (avoid close-window issues)
+                        return;
                     }
 
                     // 下拉菜单切换逻辑
