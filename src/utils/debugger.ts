@@ -293,13 +293,15 @@ export async function readMemoryChunked(
   progress?: vscode.Progress<{ message?: string; increment?: number }>,
   cancellationCheck?: () => boolean
 ): Promise<Buffer | null> {
-  const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB per chunk
+  // Use smaller chunks (4MB) to allow more parallel requests
+  // MSVC debugger may process requests serially, so smaller chunks help
+  const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk
   const CHUNK_TIMEOUT = 30000; // 30 seconds timeout per chunk
   
-  // Adaptive concurrency based on CPU cores, but keep it within 2-4 range 
-  // to avoid overwhelming the debugger IPC channel.
+  // Adaptive concurrency, but limit to avoid overwhelming the debugger
+  // MSVC debugger may queue requests, so moderate concurrency works better
   const cpuCount = os.cpus().length || 4;
-  const CONCURRENCY = Math.min(4, Math.max(2, Math.floor(cpuCount / 2)));
+  const CONCURRENCY = Math.min(8, Math.max(4, Math.floor(cpuCount / 2)));
   
   const numChunks = Math.ceil(totalBytes / CHUNK_SIZE);
   const chunks = new Array<Buffer | null>(numChunks).fill(null);
@@ -325,11 +327,11 @@ export async function readMemoryChunked(
     ]);
   }
 
-  const worker = async () => {
+  const worker = async (workerId: number) => {
     while (nextChunkIndex < numChunks && !failed && !cancelled) {
       // Check for cancellation before starting each chunk
       if (cancellationCheck && cancellationCheck()) {
-        console.log("Memory read cancelled by cancellation check");
+        console.log(`[Worker ${workerId}] Memory read cancelled by cancellation check`);
         cancelled = true;
         return;
       }
@@ -338,12 +340,16 @@ export async function readMemoryChunked(
       const offset = myIndex * CHUNK_SIZE;
       const count = Math.min(CHUNK_SIZE, totalBytes - offset);
 
+      const chunkStartTime = Date.now();
+      console.log(`[Worker ${workerId}] Starting chunk ${myIndex}/${numChunks} (offset=${offset}, size=${count} bytes)`);
+
       try {
         const memoryResponse = await readWithTimeout(offset, count);
+        const chunkTime = Date.now() - chunkStartTime;
 
         // Check for cancellation after each chunk
         if (cancellationCheck && cancellationCheck()) {
-          console.log("Memory read cancelled after chunk completion");
+          console.log(`[Worker ${workerId}] Memory read cancelled after chunk completion`);
           cancelled = true;
           return;
         }
@@ -353,6 +359,9 @@ export async function readMemoryChunked(
           chunks[myIndex] = buffer;
           totalReadBytes += buffer.length;
 
+          const mbps = (buffer.length / 1024 / 1024) / (chunkTime / 1000);
+          console.log(`[Worker ${workerId}] Chunk ${myIndex} completed in ${chunkTime}ms (${(buffer.length / 1024 / 1024).toFixed(2)}MB @ ${mbps.toFixed(2)}MB/s)`);
+
           if (progress) {
             const percent = Math.round((totalReadBytes / totalBytes) * 100);
             progress.report({
@@ -361,21 +370,30 @@ export async function readMemoryChunked(
             });
           }
         } else if (!failed && !cancelled) {
-          console.error(`readMemory returned no data for chunk ${myIndex}`);
+          console.error(`[Worker ${workerId}] readMemory returned no data for chunk ${myIndex}`);
           failed = true;
         }
       } catch (e: any) {
+        const chunkTime = Date.now() - chunkStartTime;
         if (!cancelled) {
-          console.error(`Error reading memory chunk ${myIndex}:`, e.message || e);
+          console.error(`[Worker ${workerId}] Error reading memory chunk ${myIndex} (took ${chunkTime}ms):`, e.message || e);
           failed = true;
         }
       }
     }
+    console.log(`[Worker ${workerId}] Finished (processed ${nextChunkIndex} chunks)`);
   };
 
-  // Start workers
-  const workers = Array(CONCURRENCY).fill(null).map(() => worker());
+  // Start workers with IDs for logging
+  const overallStartTime = Date.now();
+  console.log(`[Memory Read] Starting ${CONCURRENCY} workers to read ${numChunks} chunks (${(totalBytes / 1024 / 1024).toFixed(2)}MB total)`);
+  
+  const workers = Array(CONCURRENCY).fill(null).map((_, idx) => worker(idx));
   await Promise.all(workers);
+  
+  const overallTime = Date.now() - overallStartTime;
+  const overallMbps = (totalBytes / 1024 / 1024) / (overallTime / 1000);
+  console.log(`[Memory Read] All chunks completed in ${overallTime}ms (${(totalBytes / 1024 / 1024).toFixed(2)}MB @ ${overallMbps.toFixed(2)}MB/s)`);
 
   if (cancelled) {
     console.log("Memory read was cancelled, returning null");

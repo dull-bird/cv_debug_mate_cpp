@@ -1,12 +1,8 @@
 // Function to generate the webview content for the point cloud
-// If points is empty, the webview will wait for data via postMessage
-export function getWebviewContentForPointCloud(
-  points?: { x: number; y: number; z: number }[]
-): string {
-  // If points provided, embed them (legacy mode for compatibility)
-  // If not provided, webview will wait for postMessage
-  const pointsArray = points && points.length > 0 ? JSON.stringify(points) : '[]';
-  const waitForData = !points || points.length === 0;
+// Data is always sent via postMessage for better memory efficiency
+export function getWebviewContentForPointCloud(): string {
+  // Always start with empty data - data will be sent via postMessage
+  const waitForData = true;
   return `
         <!DOCTYPE html>
         <html lang="en">
@@ -311,7 +307,7 @@ export function getWebviewContentForPointCloud(
                 const loadingOverlay = document.getElementById('loading');
                 const loadingText = document.getElementById('loading-text');
                 
-                let points = ${pointsArray};
+                let points = [];
                 let isInitialized = false;
                 let pendingSyncState = null;
                 let extensionReady = false;

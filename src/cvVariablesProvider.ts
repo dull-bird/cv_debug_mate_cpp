@@ -34,6 +34,14 @@ function getColoredIcon(kind: 'mat' | 'pointcloud' | 'plot' | 'group', color: st
     return { light: iconUri, dark: iconUri };
 }
 
+function getColoredCircleIcon(color: string): { light: vscode.Uri, dark: vscode.Uri } {
+    // Create a simple filled circle SVG
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6" fill="${color}"/></svg>`;
+    const base64 = Buffer.from(svg).toString('base64');
+    const iconUri = vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);
+    return { light: iconUri, dark: iconUri };
+}
+
 export class CVVariable extends vscode.TreeItem {
     public readonly isEmpty: boolean;
 
@@ -67,7 +75,14 @@ export class CVVariable extends vscode.TreeItem {
         const pointerIndicator = this.isPointer ? '→ ' : '';
         this.description = `${pointerIndicator}[${displaySize}]`;
 
-        if (isPaired && groupIndex !== undefined && kind !== 'plot') {
+        // For mat (image) variables, always use file-media icon regardless of pairing
+        if (kind === 'mat') {
+            this.iconPath = new vscode.ThemeIcon('file-media');
+            this.contextValue = isPaired 
+                ? `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`
+                : `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
+        } else if (isPaired && groupIndex !== undefined && kind !== 'plot') {
+            // For pointcloud, use colored icon when paired
             const color = COLORS[groupIndex % COLORS.length];
             this.iconPath = getColoredIcon(kind, color);
             this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
@@ -98,9 +113,9 @@ export class CVGroup extends vscode.TreeItem {
         
         if (groupIndex !== undefined) {
             const color = COLORS[groupIndex % COLORS.length];
-            this.iconPath = getColoredIcon('group', color);
+            this.iconPath = getColoredCircleIcon(color);
         } else {
-            this.iconPath = new vscode.ThemeIcon('symbol-group');
+            this.iconPath = new vscode.ThemeIcon('circle-filled');
         }
     }
 }

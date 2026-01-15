@@ -179,6 +179,13 @@ export class PanelManager {
             // Mark as disposing to prevent any other code from using this panel
             (panel as any)._isDisposing = true;
             
+            // Show shortcut tip when closing panel (helps with auxiliary window freeze issue)
+            if (vscode.debug.activeDebugSession) {
+                vscode.window.showInformationMessage(
+                    '⚠️ Closing auxiliary window may cause debug buttons to freeze. Use shortcuts: ▶️ Continue (F5) | ⏭️ Step Over (F10) | ⬇️ Step Into (F11) | ⬆️ Step Out (Shift+F11) | ⏹️ Stop (Shift+F5)'
+                );
+            }
+            
             // Clean up all references to this panel
             const entry = this.panels.get(key);
             if (entry?.dataPtr) {

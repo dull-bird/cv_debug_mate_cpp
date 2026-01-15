@@ -443,6 +443,14 @@ export function getWebviewContentForMat(
                             return;
                         }
                         applyViewState(state);
+                    } else if (message.command === 'setPixelHighlight') {
+                        // Receive pixel highlight from synced panel
+                        highlightPixelX = message.pixelX;
+                        highlightPixelY = message.pixelY;
+                        requestRender();
+                        
+                        // Update pixel info display for synced highlight
+                        updatePixelInfoForHighlight(message.pixelX, message.pixelY);
                     }
                 });
 
@@ -511,6 +519,12 @@ export function getWebviewContentForMat(
                 let pixelTextEnabled = true; // 可手动关掉
                 let renderQueued = false;
                 let isShuttingDown = false; // 面板即将关闭时阻断交互
+                
+                // Pixel highlight for synchronized viewing
+                let highlightPixelX = null;
+                let highlightPixelY = null;
+                let localHoverPixelX = null;
+                let localHoverPixelY = null;
 
                 // Make controls draggable
                 let controlsDragging = false;
@@ -1054,6 +1068,29 @@ export function getWebviewContentForMat(
                     return String(v | 0).padStart(3, ' ');
                 }
 
+                // Update pixel info display for synced highlight from other panels
+                function updatePixelInfoForHighlight(px, py) {
+                    if (px === null || py === null) {
+                        pixelInfo.textContent = '';
+                        return;
+                    }
+                    
+                    if (px >= 0 && px < cols && py >= 0 && py < rows) {
+                        const idx = (py * cols + px) * channels;
+                        let valStr = '';
+                        if (channels === 1) {
+                            valStr = formatValue(rawData[idx]);
+                        } else if (channels === 4) {
+                            valStr = \`R:\${formatValue(rawData[idx])} G:\${formatValue(rawData[idx+1])} B:\${formatValue(rawData[idx+2])} A:\${formatValue(rawData[idx+3])}\`;
+                        } else {
+                            valStr = \`R:\${formatValue(rawData[idx])} G:\${formatValue(rawData[idx+1])} B:\${formatValue(rawData[idx+2])}\`;
+                        }
+                        pixelInfo.textContent = \`(\${px}, \${py}) : \${valStr}\`;
+                    } else {
+                        pixelInfo.textContent = '';
+                    }
+                }
+
                 function updateCanvasSize() {
                     const containerRect = container.getBoundingClientRect();
                     const dpr = window.devicePixelRatio || 1;
@@ -1285,11 +1322,36 @@ export function getWebviewContentForMat(
                     drawGrid();
                     drawPixelTextOverlay();
                     
+                    // Draw pixel highlight (blue border) for synchronized viewing
+                    drawPixelHighlight();
+                    
                     // Update zoom level display
                     // Fixed-width zoom display: min 1 digit, max 5 digits, padded to 5 with spaces + 4 trailing spaces
                     const pct = Math.max(0, Math.round(scale * 100));
                     const pctStr = String(pct).slice(0, 5).padStart(5, ' ');
                     zoomLevelDisplay.textContent = pctStr + '%    ';
+                }
+                
+                // Draw pixel highlight with blue border (for synced panels)
+                function drawPixelHighlight() {
+                    // Use either synced highlight or local hover
+                    const px = highlightPixelX !== null ? highlightPixelX : localHoverPixelX;
+                    const py = highlightPixelY !== null ? highlightPixelY : localHoverPixelY;
+                    
+                    if (px === null || py === null) return;
+                    if (px < 0 || px >= cols || py < 0 || py >= rows) return;
+                    
+                    // Calculate screen position of the pixel
+                    const screenX = offsetX + px * scale;
+                    const screenY = offsetY + py * scale;
+                    const pixelSize = scale;
+                    
+                    // Draw blue border (2px thick)
+                    ctx.save();
+                    ctx.strokeStyle = '#00aaff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(screenX, screenY, pixelSize, pixelSize);
+                    ctx.restore();
                 }
 
                 function requestRender() {
@@ -1537,8 +1599,37 @@ export function getWebviewContentForMat(
                             valStr = \`R:\${formatValue(rawData[idx])} G:\${formatValue(rawData[idx+1])} B:\${formatValue(rawData[idx+2])}\`;
                         }
                         pixelInfo.textContent = \`(\${imgX}, \${imgY}) : \${valStr}\`;
+                        
+                        // Update local hover pixel and send to sync
+                        if (localHoverPixelX !== imgX || localHoverPixelY !== imgY) {
+                            localHoverPixelX = imgX;
+                            localHoverPixelY = imgY;
+                            requestRender();
+                            // Send pixel highlight to synced panels
+                            if (!isShuttingDown && isInitialized) {
+                                vscode.postMessage({
+                                    command: 'pixelHighlight',
+                                    pixelX: imgX,
+                                    pixelY: imgY
+                                });
+                            }
+                        }
                     } else {
                         pixelInfo.textContent = '';
+                        // Clear local hover
+                        if (localHoverPixelX !== null || localHoverPixelY !== null) {
+                            localHoverPixelX = null;
+                            localHoverPixelY = null;
+                            requestRender();
+                            // Clear highlight on synced panels
+                            if (!isShuttingDown && isInitialized) {
+                                vscode.postMessage({
+                                    command: 'pixelHighlight',
+                                    pixelX: null,
+                                    pixelY: null
+                                });
+                            }
+                        }
                     }
                 });
 

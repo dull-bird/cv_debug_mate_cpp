@@ -998,7 +998,10 @@ export async function drawStdArrayPlot(
             return;
         }
 
-        panel.webview.html = getWebviewContentForPlot(panelName, initialData);
+        panel.webview.html = getWebviewContentForPlot(panelName);
+        
+        // Send ready signal immediately so webview knows this is not a moved panel
+        panel.webview.postMessage({ command: 'ready' });
 
         // Dispose old listener
         if ((panel as any)._messageListener) {
@@ -1132,6 +1135,24 @@ export async function drawStdArrayPlot(
                 }
             }
         });
+
+        // Send plot data via postMessage (better memory efficiency than embedding in HTML)
+        console.log(`[drawStdArrayPlot] Sending ${initialData.length} data points to webview via postMessage`);
+        
+        if ((panel as any)._isDisposing) {
+            console.log("[drawStdArrayPlot] Aborting final data send - panel is being disposed");
+            return;
+        }
+        
+        try {
+            panel.webview.postMessage({
+                command: 'completeData',
+                data: initialData
+            });
+        } catch (e) {
+            console.log("[drawStdArrayPlot] Final postMessage failed - panel likely disposed");
+            return;
+        }
 
     } catch (error: any) {
         vscode.window.showErrorMessage(`Failed to draw std::array plot: ${error.message}`);
@@ -1349,7 +1370,10 @@ export async function drawCStyleArrayPlot(
             return;
         }
 
-        panel.webview.html = getWebviewContentForPlot(panelName, initialData);
+        panel.webview.html = getWebviewContentForPlot(panelName);
+        
+        // Send ready signal immediately so webview knows this is not a moved panel
+        panel.webview.postMessage({ command: 'ready' });
 
         // Dispose old listener
         if ((panel as any)._messageListener) {
@@ -1482,6 +1506,24 @@ export async function drawCStyleArrayPlot(
                 }
             }
         });
+
+        // Send plot data via postMessage (better memory efficiency than embedding in HTML)
+        console.log(`[drawCStyleArrayPlot] Sending ${initialData.length} data points to webview via postMessage`);
+        
+        if ((panel as any)._isDisposing) {
+            console.log("[drawCStyleArrayPlot] Aborting final data send - panel is being disposed");
+            return;
+        }
+        
+        try {
+            panel.webview.postMessage({
+                command: 'completeData',
+                data: initialData
+            });
+        } catch (e) {
+            console.log("[drawCStyleArrayPlot] Final postMessage failed - panel likely disposed");
+            return;
+        }
 
     } catch (error: any) {
         vscode.window.showErrorMessage(`Failed to draw C-style array plot: ${error.message}`);

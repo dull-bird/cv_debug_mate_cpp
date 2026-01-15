@@ -1,12 +1,11 @@
 import * as vscode from "vscode";
 
 export function getWebviewContentForPlot(
-  variableName: string,
-  data?: number[]
+  variableName: string
 ): string {
   const nonce = getNonce();
-  const jsonData = data && data.length > 0 ? JSON.stringify(data) : '[]';
-  const waitForData = !data || data.length === 0;
+  // Always start with empty data - data will be sent via postMessage
+  const waitForData = true;
 
   return `
     <!DOCTYPE html>
@@ -353,7 +352,7 @@ export function getWebviewContentForPlot(
                 <!-- 设置按钮 -->
                 <button id="btnSettings" class="btn" title="Plot Settings">⚙️ Settings</button>
                 
-                <span id="info">Size: ${data ? data.length : 0}</span>
+                <span id="info">Size: 0</span>
                 <span id="viewRange" style="font-size: 11px; color: #888; margin-left: 10px; font-family: monospace;"></span>
             </div>
         </div>
@@ -451,8 +450,8 @@ export function getWebviewContentForPlot(
                     const loadingOverlay = document.getElementById('loading');
                     const loadingText = document.getElementById('loading-text');
                     
-                    let dataY = ${jsonData};
-                    let dataX = dataY.map(function(_, i) { return i; });
+                    let dataY = [];
+                    let dataX = [];
                     let currentVariableNameY = "${variableName}";
                     let currentVariableNameX = "Index";
                     let extensionReady = false;
