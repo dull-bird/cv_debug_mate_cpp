@@ -302,6 +302,8 @@ export async function drawMatImage(
         }
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'pixelHighlight') {
+          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           const reloadStartTime = Date.now();
           console.log(`[DEBUG-TRACE] reload message received for ${variableName} at ${reloadStartTime}`);
@@ -764,6 +766,8 @@ export async function drawMatxImage(
       async (message) => {
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'pixelHighlight') {
+          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
@@ -960,6 +964,8 @@ export async function draw2DStdArrayImage(
       async (message) => {
         if (message.command === 'viewChanged') {
           SyncManager.syncView(variableName, message.state);
+        } else if (message.command === 'pixelHighlight') {
+          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
@@ -1144,6 +1150,8 @@ export async function draw3DArrayImage(
       async (message) => {
         if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
+        } else if (message.command === 'pixelHighlight') {
+          SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           const reloadStartTime = Date.now();
           console.log(`[DEBUG-TRACE] 3D array reload message received for ${panelName} at ${reloadStartTime}`);

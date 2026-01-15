@@ -263,4 +263,31 @@ export class SyncManager {
     static getSavedState(variableName: string): ViewState | undefined {
         return this.variableStates.get(variableName);
     }
+    
+    /**
+     * Sync pixel highlight across all panels in the same group.
+     * @param sourceVar The variable that triggered the highlight
+     * @param pixelX The X coordinate of the pixel (in image space)
+     * @param pixelY The Y coordinate of the pixel (in image space)
+     */
+    static syncPixelHighlight(sourceVar: string, pixelX: number | null, pixelY: number | null) {
+        const groupId = this.variableToGroup.get(sourceVar);
+        if (!groupId) return;
+        
+        const varsInGroup = this.groupToVariables.get(groupId);
+        if (!varsInGroup) return;
+        
+        for (const targetVar of varsInGroup) {
+            if (targetVar !== sourceVar) {
+                const targetPanel = this.panels.get(targetVar);
+                if (targetPanel) {
+                    targetPanel.webview.postMessage({
+                        command: 'setPixelHighlight',
+                        pixelX,
+                        pixelY
+                    });
+                }
+            }
+        }
+    }
 }

@@ -10,8 +10,13 @@ import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2D
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 import { logDebug, logInfo, logError } from "./utils/logger";
 
-// Request deduplication: prevent multiple simultaneous requests for the same variable
-const pendingRequests = new Map<string, Promise<void>>();
+// Request management: cancel old requests when new ones arrive
+interface PendingRequest {
+  promise: Promise<void>;
+  cancel: () => void;
+  cancelled: boolean;
+}
+const pendingRequests = new Map<string, PendingRequest>();
 
 export function activate(context: vscode.ExtensionContext) {
   // Global safety nets to surface unexpected errors that may desync UI
@@ -143,7 +148,10 @@ export function activate(context: vscode.ExtensionContext) {
       const variables = cvVariablesProvider.getVariables();
       const options = variables
         .filter(v => v.name !== cvVar.name && v.kind === cvVar.kind)
-        .map(v => ({ label: v.name, description: v.type }));
+        .map(v => ({ 
+          label: v.name, 
+          description: v.sizeInfo ? `[${v.sizeInfo}]` : v.isEmpty ? '[empty]' : '' 
+        }));
 
       if (options.length === 0) {
         vscode.window.showInformationMessage(`No other ${cvVar.kind === 'mat' ? 'image' : 'point cloud'} variables found to pair with.`);
@@ -193,24 +201,34 @@ export function activate(context: vscode.ExtensionContext) {
       // This ensures pointer and its pointee share the same panel
       const panelVariableName = variable.name || variableName.replace(/^\(\*/, '').replace(/\)$/, '');
       
-      // Request deduplication: if already processing this variable, wait for it
+      // Request management: cancel old request if exists
       const requestKey = `${debugSession.id}:${panelVariableName}`;
-      if (pendingRequests.has(requestKey)) {
-        logDebug(`Request for ${panelVariableName} already in progress, waiting...`);
-        await pendingRequests.get(requestKey);
-        return;
+      const existingRequest = pendingRequests.get(requestKey);
+      if (existingRequest) {
+        logDebug(`Cancelling previous request for ${panelVariableName}`);
+        existingRequest.cancel();
+        existingRequest.cancelled = true;
       }
+      
+      // Create cancellation state for this request
+      let isCancelled = false;
+      const cancellationCheck = () => isCancelled;
+      const cancel = () => { isCancelled = true; };
       
       // Create promise for this request
       const requestPromise = (async () => {
         try {
-          await visualizeVariableInternal(variable, variableName, panelVariableName, isPointer, baseType, shouldForce, reveal, debugSession);
+          await visualizeVariableInternal(variable, variableName, panelVariableName, isPointer, baseType, shouldForce, reveal, debugSession, cancellationCheck);
         } finally {
-          pendingRequests.delete(requestKey);
+          // Only delete if this is still the current request
+          const current = pendingRequests.get(requestKey);
+          if (current && current.cancel === cancel) {
+            pendingRequests.delete(requestKey);
+          }
         }
       })();
       
-      pendingRequests.set(requestKey, requestPromise);
+      pendingRequests.set(requestKey, { promise: requestPromise, cancel, cancelled: false });
       await requestPromise;
       
     } catch (error: any) {
@@ -227,8 +245,14 @@ export function activate(context: vscode.ExtensionContext) {
     baseType: string,
     shouldForce: boolean,
     reveal: boolean,
-    debugSession: vscode.DebugSession
+    debugSession: vscode.DebugSession,
+    cancellationCheck?: () => boolean
   ) {
+    // Check if cancelled before starting
+    if (cancellationCheck && cancellationCheck()) {
+      logDebug(`Request for ${panelVariableName} was cancelled before starting`);
+      return;
+    }
     // Check if there's an existing panel for this variable that's being disposed
     // If so, skip this request to avoid triggering debug operations during cleanup
     const existingPanels = PanelManager.getAllPanels();
