@@ -38,11 +38,10 @@ export function activate(context: vscode.ExtensionContext) {
       cvVariablesProvider.refresh();
       // Debug position moved, increment global version
       PanelManager.incrementDebugStateVersion();
-      // DISABLED: Auto-refresh causes issues when panels are in new windows
-      // Users can manually refresh using the Reload button in each webview
-      // if (!isRefreshing) {
-      //   refreshVisiblePanels(false);
-      // }
+      // Step triggered: Refresh visible panels
+      if (!isRefreshing) {
+        refreshVisiblePanels(false);
+      }
     })
   );
 

@@ -456,12 +456,13 @@ export function getWebviewContentForPlot(
                     let currentVariableNameY = "${variableName}";
                     let currentVariableNameX = "Index";
                     let extensionReady = false;
+                    let isShuttingDown = false;
                     
                     // Detect if this is a moved panel (same logic as Mat viewer)
                     const waitForData = ${waitForData};
                     if (waitForData) {
                         setTimeout(function() {
-                            if (!extensionReady) {
+                            if (!extensionReady && !isShuttingDown) {
                                 loadingText.innerHTML = 'Reloading...';
                                 vscode.postMessage({ command: 'reload' });
                             }
@@ -1273,12 +1274,15 @@ export function getWebviewContentForPlot(
                         tickCache.y.result = null;
                         draw();
                         pushHistory();
-                        // emitViewChange disabled to avoid auxiliary-window close issues
+                        emitViewChange();
                     }
                     
                     function emitViewChange() {
-                        // no-op: disable syncing view state to extension (avoid close-window issues)
-                        return;
+                        if (isShuttingDown) return;
+                        vscode.postMessage({
+                            command: 'viewChanged',
+                            state: { scaleX: scaleX, scaleY: scaleY, offsetX: offsetX, offsetY: offsetY }
+                        });
                     }
 
                     // 下拉菜单切换逻辑
@@ -1788,6 +1792,16 @@ export function getWebviewContentForPlot(
                         pushHistory(); // 记录初始状态
                     }, 100);
                     vscode.postMessage({ command: 'requestOptions' });
+
+                    // Mark shutting down to block further interactions/sync
+                    window.addEventListener('beforeunload', function() {
+                        isShuttingDown = true;
+                    });
+                    document.addEventListener('visibilitychange', function() {
+                        if (document.visibilityState === 'hidden') {
+                            isShuttingDown = true;
+                        }
+                    });
 
                 } catch (err) {
                     console.error('Plot script error:', err);

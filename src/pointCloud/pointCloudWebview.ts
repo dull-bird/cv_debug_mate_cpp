@@ -315,17 +315,23 @@ export function getWebviewContentForPointCloud(
                 let isInitialized = false;
                 let pendingSyncState = null;
                 let extensionReady = false;
+                let isShuttingDownEarly = false;  // For use before full init
                 
                 // Detect if this is a moved panel (same logic as Mat viewer)
                 const waitForData = ${waitForData};
                 if (waitForData) {
                     setTimeout(() => {
-                        if (!extensionReady) {
+                        if (!extensionReady && !isShuttingDownEarly) {
                             loadingText.innerHTML = 'Reloading...';
                             vscode.postMessage({ command: 'reload' });
                         }
                     }, 100);
                 }
+                
+                // Mark shutting down early (before full initialization)
+                window.addEventListener('beforeunload', () => {
+                    isShuttingDownEarly = true;
+                });
                 
                 // Colorbar custom limits
                 let colorCustomMin = null;
@@ -851,6 +857,8 @@ export function getWebviewContentForPointCloud(
                 };
 
                 let isSyncing = false;
+                let isShuttingDown = false;
+                
                 window.addEventListener('message', event => {
                     const message = event.data;
                     if (message.command === 'ready') {
@@ -975,9 +983,22 @@ export function getWebviewContentForPointCloud(
                     isSyncing = false;
                 }
 
-                // Disable view sync back to extension to avoid closure issues
+                let lastSyncTime = 0;
                 function emitViewChange(force = false) {
-                    return;
+                    if (isSyncing || !isInitialized || isShuttingDown) return;
+                    const now = Date.now();
+                    if (!force && (now - lastSyncTime < 30)) return; // Throttle to ~30fps
+                    lastSyncTime = now;
+                    
+                    vscode.postMessage({
+                        command: 'viewChanged',
+                        state: {
+                            cameraPosition: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                            cameraQuaternion: { x: camera.quaternion.x, y: camera.quaternion.y, z: camera.quaternion.z, w: camera.quaternion.w },
+                            cameraUp: { x: camera.up.x, y: camera.up.y, z: camera.up.z },
+                            controlsTarget: { x: controls.target.x, y: controls.target.y, z: controls.target.z }
+                        }
+                    });
                 }
 
                 controls.addEventListener('change', () => {
@@ -1000,6 +1021,16 @@ export function getWebviewContentForPointCloud(
                     camera.aspect = window.innerWidth / window.innerHeight;
                     camera.updateProjectionMatrix();
                     renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+                
+                // Mark shutting down to block further interactions/sync
+                window.addEventListener('beforeunload', () => {
+                    isShuttingDown = true;
+                });
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') {
+                        isShuttingDown = true;
+                    }
                 });
             </script>
         </body>
