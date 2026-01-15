@@ -401,15 +401,13 @@ export function getWebviewContentForMat(
                 // Extension sends 'ready' signal immediately after creating panel
                 // If we don't receive it within 100ms, this is a moved panel
                 let extensionReady = false;
-                // DISABLED: Auto-reload may cause debug freeze when closing auxiliary windows
-                // setTimeout(() => {
-                //     if (!extensionReady) {
-                //         // This is a moved panel, auto-reload
-                //         loadingText.innerHTML = 'Reloading...';
-                //         vscode.postMessage({ command: 'reload' });
-                //     }
-                // }, 100);
-                console.log('[DEBUG] Auto-reload DISABLED for testing');
+                setTimeout(() => {
+                    if (!extensionReady && !isShuttingDown) {
+                        // This is a moved panel, auto-reload
+                        loadingText.innerHTML = 'Reloading...';
+                        vscode.postMessage({ command: 'reload' });
+                    }
+                }, 100);
 
                 window.addEventListener('message', event => {
                     const message = event.data;
@@ -455,11 +453,12 @@ export function getWebviewContentForMat(
                     requestRender();
                 }
 
-                // Disable syncing view state back to extension to avoid closure issues
                 function emitViewChange() {
-                    // no-op: we intentionally do not postMessage to the extension
-                    // to avoid any auxiliary-window closure side effects
-                    return;
+                    if (!isInitialized || isShuttingDown) return;
+                    vscode.postMessage({
+                        command: 'viewChanged',
+                        state: { scale, offsetX, offsetY }
+                    });
                 }
 
                 function bytesToTypedArray(bytes, depth) {

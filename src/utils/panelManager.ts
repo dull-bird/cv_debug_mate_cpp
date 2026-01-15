@@ -1,30 +1,11 @@
 import * as vscode from 'vscode';
 
-// Stored state for webview serialization (used when moving to new window)
-export interface WebviewPersistedState {
-    viewType: string;
-    variableName: string;
-    sessionId: string;
-    // For Mat viewer
-    rows?: number;
-    cols?: number;
-    channels?: number;
-    depth?: number;
-    // For Plot viewer
-    plotData?: number[];
-    // Common
-    scale?: number;
-    offsetX?: number;
-    offsetY?: number;
-}
-
 export class PanelManager {
     private static panels: Map<string, { 
         panel: vscode.WebviewPanel, 
         lastStateToken?: string,
         lastRefreshedVersion?: number,
-        dataPtr?: string,  // Store the data pointer for this panel
-        persistedState?: WebviewPersistedState  // Store state for serialization
+        dataPtr?: string  // Store the data pointer for this panel
     }> = new Map();
 
     // Map from data pointer to panel key for quick lookup
@@ -34,128 +15,9 @@ export class PanelManager {
 
     /**
      * Initialize the panel manager with extension context.
-     * This registers the webview serializers for move/copy to new window support.
      */
     static initialize(context: vscode.ExtensionContext) {
-        // DISABLED: WebviewPanelSerializer may cause issues when closing auxiliary windows
-        // Without serializers, "Move to New Window" will show empty panel that needs manual reload
-        // This is a test to see if serializers are causing the debug freeze
-        
-        console.log(`[PanelManager] Serializers DISABLED for testing`);
-        
-        /*
-        // Register serializers for each view type
-        const viewTypes = ['MatImageViewer', 'CurvePlotViewer', '3DPointViewer'];
-        
-        for (const viewType of viewTypes) {
-            context.subscriptions.push(
-                vscode.window.registerWebviewPanelSerializer(viewType, {
-                    deserializeWebviewPanel: async (panel: vscode.WebviewPanel, state: any) => {
-                        // Mark panel as deserializing to prevent any operations
-                        (panel as any)._isDeserializing = true;
-                        (panel as any)._isDisposing = true;  // Also mark as disposing to be extra safe
-                        (panel as any)._isNewWindowPanel = true;  // Mark as new window panel
-                        
-                        console.log(`[PanelManager] Deserializing webview panel: ${viewType}, title: ${panel.title}`);
-                        
-                        // For moved/copied panels, we always show reload required
-                        // because the debug data cannot be serialized
-                        const title = panel.title || '';
-                        const variableName = title.replace('View: ', '').replace(' (shared)', '');
-                        
-                        // Show reload required page - this is a static HTML with no JS that could cause issues
-                        panel.webview.html = PanelManager.getReloadRequiredHtml(variableName || 'variable');
-                        
-                        // CRITICAL: Do NOT register any message listeners on deserialized panels
-                        // This prevents any debug operations from being triggered when the panel is closed
-                        
-                        // Register a minimal dispose handler that does nothing
-                        panel.onDidDispose(() => {
-                            console.log(`[PanelManager] Deserialized panel disposed (new window): ${variableName}`);
-                            // Do nothing else - no cleanup needed for deserialized panels
-                            // This is intentionally empty to prevent any blocking operations
-                        });
-                        
-                        console.log(`[PanelManager] Deserialized panel setup complete: ${variableName}`);
-                    }
-                })
-            );
-        }
-        
-        console.log(`[PanelManager] Registered serializers for: ${viewTypes.join(', ')}`);
-        */
-    }
-    
-    /**
-     * Update the persisted state for a panel.
-     */
-    static updatePersistedState(viewType: string, sessionId: string, variableName: string, state: Partial<WebviewPersistedState>) {
-        const key = `${viewType}:::${sessionId}:::${variableName}`;
-        const entry = this.panels.get(key);
-        if (entry) {
-            entry.persistedState = {
-                ...entry.persistedState,
-                viewType,
-                sessionId,
-                variableName,
-                ...state
-            } as WebviewPersistedState;
-        }
-    }
-    
-    /**
-     * Get HTML content for when webview needs to be reloaded.
-     */
-    private static getReloadRequiredHtml(variableName: string): string {
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
-                        height: 100vh;
-                        margin: 0;
-                        background: #1e1e1e;
-                        color: #ccc;
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    }
-                    .message {
-                        text-align: center;
-                        padding: 20px;
-                    }
-                    .icon {
-                        font-size: 48px;
-                        margin-bottom: 16px;
-                    }
-                    h2 {
-                        margin: 0 0 8px 0;
-                        color: #fff;
-                    }
-                    p {
-                        margin: 0;
-                        color: #888;
-                    }
-                    .hint {
-                        margin-top: 16px;
-                        font-size: 12px;
-                        color: #666;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="message">
-                    <div class="icon">🔄</div>
-                    <h2>Reload Required</h2>
-                    <p>Variable "${variableName}" needs to be reloaded.</p>
-                    <p class="hint">Click on the variable in the CV DebugMate panel to reload.</p>
-                </div>
-            </body>
-            </html>
-        `;
+        console.log(`[PanelManager] Initialized`);
     }
 
     /**
@@ -295,14 +157,13 @@ export class PanelManager {
         }
 
         // Create a new panel
-        // NOTE: retainContextWhenHidden removed to test if it causes auxiliary window bugs
         const panel = vscode.window.createWebviewPanel(
             viewType,
             title,
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                // retainContextWhenHidden: true,  // DISABLED - may cause bugs when closing auxiliary windows
+                retainContextWhenHidden: true,
             }
         );
 
@@ -315,100 +176,24 @@ export class PanelManager {
         }
 
         panel.onDidDispose(() => {
-            const disposeTime = Date.now();
-            console.log(`[DISPOSE-WATCHDOG] onDidDispose START at ${disposeTime}`);
-            
             // Mark as disposing to prevent any other code from using this panel
             (panel as any)._isDisposing = true;
             
-            // CRITICAL FIX: If debugger is running (not paused), pause it to prevent freeze
-            const debugSession = vscode.debug.activeDebugSession;
-            if (debugSession) {
-                console.log(`[DISPOSE-WATCHDOG] Sending pause command at ${Date.now()}`);
-                // Send pause command (fire-and-forget, don't wait)
-                Promise.resolve(debugSession.customRequest('pause', { threadId: 0 }))
-                    .then(() => console.log(`[DISPOSE-WATCHDOG] Pause command succeeded at ${Date.now()}`))
-                    .catch((e) => console.log(`[DISPOSE-WATCHDOG] Pause command failed: ${e}`));
-                
-                // Clear any context keys that might block debug UI
-                vscode.commands.executeCommand('setContext', 'cvDebugMate.webviewOpen', false);
+            // Clean up all references to this panel
+            const entry = this.panels.get(key);
+            if (entry?.dataPtr) {
+                const ptrKey = `${viewType}:::${sessionId}:::ptr:${entry.dataPtr}`;
+                this.dataPtrToKey.delete(ptrKey);
             }
             
-            console.log(`[DISPOSE-WATCHDOG] onDidDispose SYNC END at ${Date.now()} (took ${Date.now() - disposeTime}ms)`);
-            
-            // FIX: Aggressive UI refresh sequence (buttons/console假卡)
-            const refreshUI = async (label: string) => {
-                try {
-                    // 聚焦编辑器 -> 调试视图 -> 调试控制台
-                    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-                    await vscode.commands.executeCommand('workbench.view.debug');
-                    await vscode.commands.executeCommand('workbench.debug.action.focusRepl');
-                    await vscode.commands.executeCommand('workbench.debug.action.focusCallStackView');
-                    await vscode.commands.executeCommand('workbench.debug.action.focusVariablesView');
-                    // Toggle到资源管理器再回调试视图，强制刷新
-                    await vscode.commands.executeCommand('workbench.view.explorer');
-                    await vscode.commands.executeCommand('workbench.view.debug');
-
-                    // 触发一次 threads 请求，强制调试状态同步
-                    const session = vscode.debug.activeDebugSession;
-                    if (session) {
-                        Promise.resolve(session.customRequest('threads', {}))
-                            .catch(() => {});
-                    }
-                    console.log(`[DISPOSE-WATCHDOG] UI refresh step (${label}) done`);
-                } catch (e) {
-                    console.log(`[DISPOSE-WATCHDOG] UI refresh step (${label}) failed: ${e}`);
+            // Remove all keys that point to this panel
+            for (const [k, v] of this.panels.entries()) {
+                if (v.panel === panel) {
+                    this.panels.delete(k);
                 }
-            };
-
-            // 多次尝试，避免一次失败
-            setTimeout(() => refreshUI('t1-200ms'), 200);
-            setTimeout(() => refreshUI('t2-400ms'), 400);
-            setTimeout(() => refreshUI('t3-800ms'), 800);
-
-            // Heartbeat: 再做几次 threads 请求，确认调试状态恢复
-            const session = vscode.debug.activeDebugSession;
-            if (session) {
-                let hbCount = 0;
-                const hbTimer = setInterval(() => {
-                    hbCount++;
-                    Promise.resolve(session.customRequest('threads', {}))
-                        .then(() => console.log(`[DISPOSE-WATCHDOG] Heartbeat threads #${hbCount} ok`))
-                        .catch((e) => console.log(`[DISPOSE-WATCHDOG] Heartbeat threads #${hbCount} failed: ${e}`));
-                    if (hbCount >= 3) {
-                        clearInterval(hbTimer);
-                    }
-                }, 500);
             }
-
-            // 温和提示用户可用的手动恢复手势（减少骚扰：仅在我们发送过 pause 时提示）
-            if (debugSession) {
-                setTimeout(() => {
-                    vscode.window.showInformationMessage(
-                        '调试器已暂停以避免辅助窗口关闭时卡住。如果按钮或Console看起来卡住，请按 F5 或切换到调试面板/Console。'
-                    );
-                }, 300);
-            }
-            
-            // Clean up panel references (deferred to avoid blocking)
-            setTimeout(() => {
-                const entry = this.panels.get(key);
-                if (entry?.dataPtr) {
-                    const ptrKey = `${viewType}:::${sessionId}:::ptr:${entry.dataPtr}`;
-                    this.dataPtrToKey.delete(ptrKey);
-                }
-                for (const [k, v] of this.panels.entries()) {
-                    if (v.panel === panel) {
-                        this.panels.delete(k);
-                    }
-                }
-                console.log(`[DISPOSE-WATCHDOG] Cleanup complete at ${Date.now()}`);
-            }, 100);
         });
 
-        // DISABLED: onDidChangeViewState refresh causes debug to hang when closing new windows
-        // Users can manually refresh using the reload button in the webview
-        /*
         panel.onDidChangeViewState(e => {
             // Only trigger refresh if panel is visible AND not being disposed
             if (e.webviewPanel.visible && !(e.webviewPanel as any)._isDisposing) {
@@ -426,7 +211,6 @@ export class PanelManager {
                 }
             }
         });
-        */
 
         return panel;
     }
