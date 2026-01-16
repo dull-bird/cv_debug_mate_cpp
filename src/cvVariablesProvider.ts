@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
+import { PanelManager } from './utils/panelManager';
 
 const COLORS = [
     '#3794ef', // Blue
@@ -59,7 +60,8 @@ export class CVVariable extends vscode.TreeItem {
         public pairedWith?: string,
         public groupIndex?: number,
         public readonly isPointer: boolean = false,
-        public readonly baseType: string = ''
+        public readonly baseType: string = '',
+        public readonly sessionId?: string  // Add sessionId to check panel status
     ) {
         super(name, collapsibleState);
         this.tooltip = `${this.name}: ${this.type}${this.pairedWith ? ` (Paired with ${this.pairedWith})` : ''}${this.isPointer ? ' (pointer)' : ''}`;
@@ -71,24 +73,28 @@ export class CVVariable extends vscode.TreeItem {
         this.isEmpty = (sizeInfo === '0' || sizeInfo === '0x0' || sizeInfo === '' || size === 0);
         const displaySize = this.isEmpty ? 'empty' : sizeInfo;
         
-        // Show pointer indicator in description
+        // Check if panel is open
+        const isOpen = sessionId ? this.checkIfPanelOpen(kind, sessionId, name) : false;
+        
+        // Show pointer indicator and open status in description
         const pointerIndicator = this.isPointer ? '→ ' : '';
-        this.description = `${pointerIndicator}[${displaySize}]`;
+        const openIndicator = isOpen ? '● ' : '';
+        this.description = `${openIndicator}${pointerIndicator}[${displaySize}]`;
 
         // For mat (image) variables, always use file-media icon regardless of pairing
         if (kind === 'mat') {
             this.iconPath = new vscode.ThemeIcon('file-media');
             this.contextValue = isPaired 
-                ? `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`
-                : `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
+                ? `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}${isOpen ? ':open' : ''}`
+                : `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}${isOpen ? ':open' : ''}`;
         } else if (isPaired && groupIndex !== undefined && kind !== 'plot') {
             // For pointcloud, use colored icon when paired
             const color = COLORS[groupIndex % COLORS.length];
             this.iconPath = getColoredIcon(kind, color);
-            this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
+            this.contextValue = `cvVariablePaired:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}${isOpen ? ':open' : ''}`;
         } else {
             this.iconPath = new vscode.ThemeIcon(typeIcon);
-            this.contextValue = `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}`;
+            this.contextValue = `cvVariable:${kind}${this.isEmpty ? ':empty' : ''}${this.isPointer ? ':pointer' : ''}${isOpen ? ':open' : ''}`;
         }
 
         if (!this.isEmpty) {
@@ -98,6 +104,17 @@ export class CVVariable extends vscode.TreeItem {
                 arguments: [this]
             };
         }
+    }
+    
+    private checkIfPanelOpen(kind: string, sessionId: string, variableName: string): boolean {
+        const viewTypeMap: Record<string, string> = {
+            'mat': 'MatImageViewer',
+            'pointcloud': 'PointCloudViewer',
+            'plot': 'PlotViewer'
+        };
+        const viewType = viewTypeMap[kind];
+        if (!viewType) return false;
+        return PanelManager.hasPanel(viewType, sessionId, variableName);
     }
 }
 
@@ -576,7 +593,8 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                                 pairedVars.length > 0 ? pairedVars.join(', ') : undefined,
                                 groupIndex,
                                 pointerInfo.isPointer,
-                                pointerInfo.baseType
+                                pointerInfo.baseType,
+                                debugSession.id  // Pass sessionId
                             );
                         }
                         return null;

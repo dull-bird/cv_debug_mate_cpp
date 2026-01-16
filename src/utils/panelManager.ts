@@ -49,6 +49,14 @@ export class PanelManager {
     }
 
     /**
+     * Check if a panel exists for the given view type, session, and variable name.
+     */
+    static hasPanel(viewType: string, sessionId: string, variableName: string): boolean {
+        const key = `${viewType}:::${sessionId}:::${variableName}`;
+        return this.panels.has(key);
+    }
+
+    /**
      * Check if a panel needs refreshing because the debug state has moved forward.
      */
     static needsVersionRefresh(viewType: string, sessionId: string, variableName: string): boolean {
@@ -174,15 +182,21 @@ export class PanelManager {
             const ptrKey = `${viewType}:::${sessionId}:::ptr:${dataPtr}`;
             this.dataPtrToKey.set(ptrKey, key);
         }
+        
+        // Trigger tree view refresh after panel creation
+        Promise.resolve(vscode.commands.executeCommand('cv-debugmate.refreshVariables')).catch(() => {
+            // Silently ignore if command doesn't exist yet
+        });
 
         panel.onDidDispose(() => {
             // Mark as disposing to prevent any other code from using this panel
             (panel as any)._isDisposing = true;
             
             // Show shortcut tip when closing panel (helps with auxiliary window freeze issue)
-            if (vscode.debug.activeDebugSession) {
+            // Panel is in auxiliary window if viewColumn is undefined
+            if (vscode.debug.activeDebugSession && panel.viewColumn === undefined) {
                 vscode.window.showInformationMessage(
-                    '⚠️ Closing auxiliary window may cause debug buttons to freeze. Use shortcuts: ▶️ Continue (F5) | ⏭️ Step Over (F10) | ⬇️ Step Into (F11) | ⬆️ Step Out (Shift+F11) | ⏹️ Stop (Shift+F5)'
+                    'Debug shortcuts: Continue(F5) | Step Over(F10) | Step Into(F11) | Step Out(Shift+F11) | Stop(Shift+F5). Closing auxiliary window may freeze debug buttons.'
                 );
             }
             
@@ -199,6 +213,11 @@ export class PanelManager {
                     this.panels.delete(k);
                 }
             }
+            
+            // Trigger tree view refresh after panel disposal
+            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.refreshVariables')).catch(() => {
+                // Silently ignore if command doesn't exist yet
+            });
         });
 
         panel.onDidChangeViewState(e => {

@@ -272,20 +272,31 @@ export class SyncManager {
      */
     static syncPixelHighlight(sourceVar: string, pixelX: number | null, pixelY: number | null) {
         const groupId = this.variableToGroup.get(sourceVar);
-        if (!groupId) return;
+        if (!groupId) {
+            console.log(`[SyncManager] syncPixelHighlight: ${sourceVar} is not in a group`);
+            return;
+        }
         
         const varsInGroup = this.groupToVariables.get(groupId);
-        if (!varsInGroup) return;
+        if (!varsInGroup) {
+            console.log(`[SyncManager] syncPixelHighlight: group ${groupId} has no variables`);
+            return;
+        }
+        
+        console.log(`[SyncManager] syncPixelHighlight: ${sourceVar} -> group ${groupId}, syncing to ${varsInGroup.size - 1} other panels`);
         
         for (const targetVar of varsInGroup) {
             if (targetVar !== sourceVar) {
                 const targetPanel = this.panels.get(targetVar);
                 if (targetPanel) {
+                    console.log(`[SyncManager] syncPixelHighlight: sending to ${targetVar}, pixel=(${pixelX}, ${pixelY})`);
                     targetPanel.webview.postMessage({
                         command: 'setPixelHighlight',
                         pixelX,
                         pixelY
                     });
+                } else {
+                    console.log(`[SyncManager] syncPixelHighlight: panel for ${targetVar} not found`);
                 }
             }
         }
