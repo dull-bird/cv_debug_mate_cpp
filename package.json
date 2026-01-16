@@ -91,22 +91,22 @@
             "view/item/context": [
                 {
                     "command": "cv-debugmate.pairVariable",
-                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariable:mat' || viewItem == 'cvVariable:pointcloud')",
+                    "when": "view == cv-debugmate-variables && (viewItem =~ /^cvVariable:(mat|pointcloud)/)",
                     "group": "inline@2"
                 },
                 {
                     "command": "cv-debugmate.unpairVariable",
-                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariablePaired:mat' || viewItem == 'cvVariablePaired:pointcloud')",
+                    "when": "view == cv-debugmate-variables && (viewItem =~ /^cvVariablePaired:(mat|pointcloud)/)",
                     "group": "inline@2"
                 },
                 {
                     "command": "cv-debugmate.pairVariable",
-                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariable:mat' || viewItem == 'cvVariable:pointcloud')",
+                    "when": "view == cv-debugmate-variables && (viewItem =~ /^cvVariable:(mat|pointcloud)/)",
                     "group": "1_pairing"
                 },
                 {
                     "command": "cv-debugmate.unpairVariable",
-                    "when": "view == cv-debugmate-variables && (viewItem == 'cvVariablePaired:mat' || viewItem == 'cvVariablePaired:pointcloud')",
+                    "when": "view == cv-debugmate-variables && (viewItem =~ /^cvVariablePaired:(mat|pointcloud)/)",
                     "group": "1_pairing"
                 }
             ]

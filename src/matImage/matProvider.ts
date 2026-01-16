@@ -287,7 +287,7 @@ export async function drawMatImage(
     // Send ready signal immediately so webview knows this is not a moved panel
     panel.webview.postMessage({ command: 'ready' });
 
-    SyncManager.registerPanel(variableName, panel);
+    SyncManager.registerPanel(panelName, panel);
     
     // Dispose previous listener if it exists to avoid multiple listeners on reused panel
     if ((panel as any)._syncListener) {
@@ -301,9 +301,9 @@ export async function drawMatImage(
           return;
         }
         if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
-          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
+          SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           const reloadStartTime = Date.now();
           console.log(`[DEBUG-TRACE] reload message received for ${variableName} at ${reloadStartTime}`);
@@ -765,9 +765,9 @@ export async function drawMatxImage(
     (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
-          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
+          SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
@@ -963,9 +963,9 @@ export async function draw2DStdArrayImage(
     (panel as any)._syncListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if (message.command === 'viewChanged') {
-          SyncManager.syncView(variableName, message.state);
+          SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
-          SyncManager.syncPixelHighlight(variableName, message.pixelX, message.pixelY);
+          SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;

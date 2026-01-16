@@ -444,13 +444,21 @@ export function getWebviewContentForMat(
                         }
                         applyViewState(state);
                     } else if (message.command === 'setPixelHighlight') {
+                        console.log('[MatWebview] Received setPixelHighlight: pixel=(' + message.pixelX + ', ' + message.pixelY + '), localHover=(' + localHoverPixelX + ', ' + localHoverPixelY + ')');
                         // Receive pixel highlight from synced panel
+                        // Always update the synced highlight
                         highlightPixelX = message.pixelX;
                         highlightPixelY = message.pixelY;
+                        
+                        // Always render - drawPixelHighlight will handle priority
+                        // (local hover takes priority over synced highlight in drawPixelHighlight)
+                        console.log('[MatWebview] Updating synced highlight and rendering: (' + highlightPixelX + ', ' + highlightPixelY + ')');
                         requestRender();
                         
-                        // Update pixel info display for synced highlight
-                        updatePixelInfoForHighlight(message.pixelX, message.pixelY);
+                        // Update pixel info display for synced highlight only if local mouse is not hovering
+                        if (localHoverPixelX === null && localHoverPixelY === null) {
+                            updatePixelInfoForHighlight(message.pixelX, message.pixelY);
+                        }
                     }
                 });
 
@@ -1334,11 +1342,22 @@ export function getWebviewContentForMat(
                 
                 // Draw pixel highlight with blue border (for synced panels)
                 function drawPixelHighlight() {
-                    // Use either synced highlight or local hover
-                    const px = highlightPixelX !== null ? highlightPixelX : localHoverPixelX;
-                    const py = highlightPixelY !== null ? highlightPixelY : localHoverPixelY;
+                    // Priority: local hover > synced highlight
+                    // If local mouse is hovering, show local; otherwise show synced
+                    let px, py;
+                    if (localHoverPixelX !== null && localHoverPixelY !== null) {
+                        // Local mouse is active, use local hover
+                        px = localHoverPixelX;
+                        py = localHoverPixelY;
+                    } else if (highlightPixelX !== null && highlightPixelY !== null) {
+                        // No local hover, show synced highlight
+                        px = highlightPixelX;
+                        py = highlightPixelY;
+                    } else {
+                        // No highlight to show
+                        return;
+                    }
                     
-                    if (px === null || py === null) return;
                     if (px < 0 || px >= cols || py < 0 || py >= rows) return;
                     
                     // Calculate screen position of the pixel
@@ -1568,25 +1587,35 @@ export function getWebviewContentForMat(
                 container.addEventListener('mousedown', (e) => {
                     if (isShuttingDown) return;
                     isDragging = true;
-                    startX = e.clientX - offsetX;
-                    startY = e.clientY - offsetY;
+                    const containerRect = container.getBoundingClientRect();
+                    const mouseX = e.clientX - containerRect.left;
+                    const mouseY = e.clientY - containerRect.top;
+                    startX = mouseX - offsetX;
+                    startY = mouseY - offsetY;
                 });
 
-                document.addEventListener('mousemove', (e) => {
+                // Use container for mousemove to ensure it works in both main window and auxiliary window
+                container.addEventListener('mousemove', (e) => {
                     if (isShuttingDown) return;
-                    lastMouseX = e.clientX;
-                    lastMouseY = e.clientY;
+                    
+                    // Get mouse position relative to container
+                    const containerRect = container.getBoundingClientRect();
+                    const mouseX = e.clientX - containerRect.left;
+                    const mouseY = e.clientY - containerRect.top;
+                    
+                    lastMouseX = mouseX;
+                    lastMouseY = mouseY;
                     hasLastMouse = true;
 
                     if (isDragging) {
-                        offsetX = e.clientX - startX;
-                        offsetY = e.clientY - startY;
+                        offsetX = mouseX - startX;
+                        offsetY = mouseY - startY;
                         requestRenderWithSync();
                     }
 
-                    // Update pixel info
-                    const imgX = Math.floor((e.clientX - offsetX) / scale);
-                    const imgY = Math.floor((e.clientY - offsetY) / scale);
+                    // Update pixel info - use relative coordinates
+                    const imgX = Math.floor((mouseX - offsetX) / scale);
+                    const imgY = Math.floor((mouseY - offsetY) / scale);
 
                     if (imgX >= 0 && imgX < cols && imgY >= 0 && imgY < rows) {
                         const idx = (imgY * cols + imgX) * channels;
@@ -1604,9 +1633,11 @@ export function getWebviewContentForMat(
                         if (localHoverPixelX !== imgX || localHoverPixelY !== imgY) {
                             localHoverPixelX = imgX;
                             localHoverPixelY = imgY;
+                            // Don't clear synced highlight - it's stored and drawPixelHighlight will decide priority
                             requestRender();
                             // Send pixel highlight to synced panels
                             if (!isShuttingDown && isInitialized) {
+                                console.log('[MatWebview] Sending pixelHighlight: (' + imgX + ', ' + imgY + ')');
                                 vscode.postMessage({
                                     command: 'pixelHighlight',
                                     pixelX: imgX,
@@ -1616,7 +1647,7 @@ export function getWebviewContentForMat(
                         }
                     } else {
                         pixelInfo.textContent = '';
-                        // Clear local hover
+                        // Clear local hover when mouse leaves image area
                         if (localHoverPixelX !== null || localHoverPixelY !== null) {
                             localHoverPixelX = null;
                             localHoverPixelY = null;
@@ -1630,6 +1661,8 @@ export function getWebviewContentForMat(
                                 });
                             }
                         }
+                        // When mouse leaves image area, allow synced highlight to show (don't clear it)
+                        // This allows other windows' highlights to be visible when local mouse is outside
                     }
                 });
 
@@ -1642,7 +1675,10 @@ export function getWebviewContentForMat(
                     e.preventDefault();
                     const delta = -e.deltaY;
                     const factor = delta > 0 ? 1.1 : 1 / 1.1;
-                    setZoomAt(e.clientX, e.clientY, scale * factor);
+                    const containerRect = container.getBoundingClientRect();
+                    const mouseX = e.clientX - containerRect.left;
+                    const mouseY = e.clientY - containerRect.top;
+                    setZoomAt(mouseX, mouseY, scale * factor);
                 }, { passive: false });
 
                 window.addEventListener('resize', () => {
