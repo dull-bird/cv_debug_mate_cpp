@@ -193,8 +193,9 @@ export class PanelManager {
             (panel as any)._isDisposing = true;
             
             // Show shortcut tip when closing panel (helps with auxiliary window freeze issue)
-            // Panel is in auxiliary window if viewColumn is undefined
-            if (vscode.debug.activeDebugSession && panel.viewColumn === undefined) {
+            // Check if panel was in auxiliary window using stored flag
+            const wasInAuxiliaryWindow = (panel as any)._wasInAuxiliaryWindow === true;
+            if (vscode.debug.activeDebugSession && wasInAuxiliaryWindow) {
                 vscode.window.showInformationMessage(
                     'Debug shortcuts: Continue(F5) | Step Over(F10) | Step Into(F11) | Step Out(Shift+F11) | Stop(Shift+F5). Closing auxiliary window may freeze debug buttons.'
                 );
@@ -215,18 +216,36 @@ export class PanelManager {
             }
             
             // Trigger tree view refresh after panel disposal
-            Promise.resolve(vscode.commands.executeCommand('cv-debugmate.refreshVariables')).catch(() => {
-                // Silently ignore if command doesn't exist yet
-            });
+            // Use setTimeout to ensure panel is fully removed from Map before refresh
+            setTimeout(() => {
+                Promise.resolve(vscode.commands.executeCommand('cv-debugmate.refreshVariables')).catch(() => {
+                    // Silently ignore if command doesn't exist yet
+                });
+            }, 100);
         });
 
         panel.onDidChangeViewState(e => {
+            // Track if panel was moved to auxiliary window
+            // When viewColumn becomes undefined, panel is in auxiliary window
+            if (e.webviewPanel.viewColumn === undefined) {
+                (e.webviewPanel as any)._wasInAuxiliaryWindow = true;
+            } else if (e.webviewPanel.viewColumn !== undefined) {
+                // Panel is in main window
+                (e.webviewPanel as any)._wasInAuxiliaryWindow = false;
+            }
+            
             // Only trigger refresh if panel is visible AND not being disposed
+            // AND panel was already visible before (to avoid refreshing on initial show or when moving to auxiliary window)
             if (e.webviewPanel.visible && !(e.webviewPanel as any)._isDisposing) {
                 const parts = key.split(':::');
                 if (parts.length === 3) {
                     const [vType, sid, vName] = parts;
-                    if (PanelManager.needsVersionRefresh(vType, sid, vName)) {
+                    // Only refresh if panel was already visible (not just became visible)
+                    // This prevents duplicate loading when opening auxiliary window or pairing
+                    const wasVisible = (e.webviewPanel as any)._wasVisible || false;
+                    (e.webviewPanel as any)._wasVisible = true;
+                    
+                    if (wasVisible && PanelManager.needsVersionRefresh(vType, sid, vName)) {
                         // Add a small delay to avoid triggering during dispose
                         setTimeout(() => {
                             if (e.webviewPanel.visible && !(e.webviewPanel as any)._isDisposing) {
@@ -235,6 +254,9 @@ export class PanelManager {
                         }, 100);
                     }
                 }
+            } else {
+                // Panel is not visible, mark as not visible
+                (e.webviewPanel as any)._wasVisible = false;
             }
         });
 

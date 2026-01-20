@@ -58,6 +58,11 @@
                 "command": "cv-debugmate.unpairVariable",
                 "title": "Unpair",
                 "icon": "$(link-external)"
+            },
+            {
+                "command": "cv-debugmate.addToGroup",
+                "title": "Add to Group",
+                "icon": "$(plus)"
             }
         ],
         "views": {
@@ -108,6 +113,11 @@
                     "command": "cv-debugmate.unpairVariable",
                     "when": "view == cv-debugmate-variables && (viewItem =~ /^cvVariablePaired:(mat|pointcloud)/)",
                     "group": "1_pairing"
+                },
+                {
+                    "command": "cv-debugmate.addToGroup",
+                    "when": "view == cv-debugmate-variables && viewItem == 'cvGroup:paired'",
+                    "group": "inline@1"
                 }
             ]
         }

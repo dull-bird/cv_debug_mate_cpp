@@ -118,6 +118,27 @@ export class CVVariable extends vscode.TreeItem {
     }
 }
 
+export class CVCategoryGroup extends vscode.TreeItem {
+    constructor(
+        public readonly label: string,
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly kind: 'mat' | 'plot' | 'pointcloud',
+        public readonly children: (CVGroup | CVVariable)[]
+    ) {
+        super(label, collapsibleState);
+        this.contextValue = `cvCategory:${kind}`;
+        
+        // Set icon based on category type
+        if (kind === 'mat') {
+            this.iconPath = new vscode.ThemeIcon('file-media');
+        } else if (kind === 'plot') {
+            this.iconPath = new vscode.ThemeIcon('graph');
+        } else if (kind === 'pointcloud') {
+            this.iconPath = new vscode.ThemeIcon('layers');
+        }
+    }
+}
+
 export class CVGroup extends vscode.TreeItem {
     constructor(
         public readonly label: string,
@@ -126,7 +147,8 @@ export class CVGroup extends vscode.TreeItem {
         public readonly groupIndex?: number
     ) {
         super(label, collapsibleState);
-        this.contextValue = 'cvGroup';
+        // Only paired groups (with groupIndex) can have add button
+        this.contextValue = groupIndex !== undefined ? 'cvGroup:paired' : 'cvGroup';
         
         if (groupIndex !== undefined) {
             const color = COLORS[groupIndex % COLORS.length];
@@ -137,9 +159,9 @@ export class CVGroup extends vscode.TreeItem {
     }
 }
 
-export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable | CVGroup> {
-    private _onDidChangeTreeData: vscode.EventEmitter<CVVariable | CVGroup | undefined | void> = new vscode.EventEmitter<CVVariable | CVGroup | undefined | void>();
-    readonly onDidChangeTreeData: vscode.Event<CVVariable | CVGroup | undefined | void> = this._onDidChangeTreeData.event;
+export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable | CVGroup | CVCategoryGroup> {
+    private _onDidChangeTreeData: vscode.EventEmitter<CVVariable | CVGroup | CVCategoryGroup | undefined | void> = new vscode.EventEmitter<CVVariable | CVGroup | CVCategoryGroup | undefined | void>();
+    readonly onDidChangeTreeData: vscode.Event<CVVariable | CVGroup | CVCategoryGroup | undefined | void> = this._onDidChangeTreeData.event;
 
     private variables: CVVariable[] = [];
     private groups: CVGroup[] = [];
@@ -166,19 +188,38 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
         return this.variables;
     }
 
-    getTreeItem(element: CVVariable | CVGroup): vscode.TreeItem {
+    getTreeItem(element: CVVariable | CVGroup | CVCategoryGroup): vscode.TreeItem {
         return element;
     }
 
-    async getChildren(element?: CVVariable | CVGroup): Promise<(CVVariable | CVGroup)[]> {
+    async getChildren(element?: CVVariable | CVGroup | CVCategoryGroup): Promise<(CVVariable | CVGroup | CVCategoryGroup)[]> {
+        // Level 3: Variable children (no children)
+        if (element instanceof CVVariable) {
+            return [];
+        }
+        
+        // Level 2: Group children (return variables in the group)
         if (element instanceof CVGroup) {
             return element.variables;
         }
         
-        if (element instanceof CVVariable) {
-            return [];
+        // Level 1: Category children (return groups + unpaired variables)
+        if (element instanceof CVCategoryGroup) {
+            const result: (CVGroup | CVVariable)[] = [];
+            
+            // Add paired groups
+            const pairedGroups = element.children.filter(c => c instanceof CVGroup && (c as CVGroup).groupIndex !== undefined) as CVGroup[];
+            pairedGroups.sort((a, b) => (a.groupIndex || 0) - (b.groupIndex || 0));
+            result.push(...pairedGroups);
+            
+            // Add unpaired variables
+            const unpairedVars = element.children.filter(c => c instanceof CVVariable && !(c as CVVariable).isPaired) as CVVariable[];
+            result.push(...unpairedVars);
+            
+            return result;
         }
-
+        
+        // Level 0: Root (return category groups)
         const debugSession = vscode.debug.activeDebugSession;
         if (!debugSession) {
             this.variables = [];
@@ -611,39 +652,73 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
             
             this.variables = visualizableVariables;
             
-            const groupMap = new Map<number | undefined, CVVariable[]>();
-            for (const v of visualizableVariables) {
-                const idx = v.groupIndex;
-                if (!groupMap.has(idx)) {
-                    groupMap.set(idx, []);
-                }
-                groupMap.get(idx)!.push(v);
-            }
-
-            const resultGroups: CVGroup[] = [];
-            const sortedIndices = Array.from(groupMap.keys())
-                .filter((idx): idx is number => idx !== undefined)
-                .sort((a, b) => a - b);
+            // Separate variables by type
+            const matVars = visualizableVariables.filter(v => v.kind === 'mat');
+            const plotVars = visualizableVariables.filter(v => v.kind === 'plot');
+            const pointcloudVars = visualizableVariables.filter(v => v.kind === 'pointcloud');
             
-            for (const idx of sortedIndices) {
-                resultGroups.push(new CVGroup(
-                    `Group ${idx + 1}`,
+            const resultCategories: CVCategoryGroup[] = [];
+            
+            // 1. Images (2D) category
+            if (matVars.length > 0) {
+                const matChildren: (CVGroup | CVVariable)[] = [];
+                
+                // Group paired mat variables
+                const groupMap = new Map<number, CVVariable[]>();
+                for (const v of matVars) {
+                    if (v.isPaired && v.groupIndex !== undefined) {
+                        if (!groupMap.has(v.groupIndex)) {
+                            groupMap.set(v.groupIndex, []);
+                        }
+                        groupMap.get(v.groupIndex)!.push(v);
+                    }
+                }
+                
+                // Create paired groups
+                const sortedIndices = Array.from(groupMap.keys()).sort((a, b) => a - b);
+                for (const idx of sortedIndices) {
+                    const vars = groupMap.get(idx)!;
+                    matChildren.push(new CVGroup(
+                        `Group ${idx + 1}`,
+                        vscode.TreeItemCollapsibleState.Expanded,
+                        vars,
+                        idx
+                    ));
+                }
+                
+                // Add unpaired mat variables
+                const unpairedMatVars = matVars.filter(v => !v.isPaired);
+                matChildren.push(...unpairedMatVars);
+                
+                resultCategories.push(new CVCategoryGroup(
+                    'Images (2D)',
                     vscode.TreeItemCollapsibleState.Expanded,
-                    groupMap.get(idx)!,
-                    idx
+                    'mat',
+                    matChildren
+                ));
+            }
+            
+            // 2. Plot (1D) category
+            if (plotVars.length > 0) {
+                resultCategories.push(new CVCategoryGroup(
+                    'Plot (1D)',
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    'plot',
+                    plotVars
+                ));
+            }
+            
+            // 3. Points (3D) category
+            if (pointcloudVars.length > 0) {
+                resultCategories.push(new CVCategoryGroup(
+                    'Points (3D)',
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    'pointcloud',
+                    pointcloudVars
                 ));
             }
 
-            const ungrouped = groupMap.get(undefined);
-            if (ungrouped && ungrouped.length > 0) {
-                resultGroups.push(new CVGroup(
-                    '(ungrouped)',
-                    vscode.TreeItemCollapsibleState.Expanded,
-                    ungrouped
-                ));
-            }
-
-            return resultGroups;
+            return resultCategories;
         } catch (error) {
             console.error('Error fetching variables:', error);
             this.variables = [];

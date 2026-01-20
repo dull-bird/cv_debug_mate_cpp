@@ -450,15 +450,19 @@ export function getWebviewContentForMat(
                         highlightPixelX = message.pixelX;
                         highlightPixelY = message.pixelY;
                         
+                        // Clear local hover state when receiving sync message
+                        // This ensures that synced highlight from another window takes priority
+                        // when mouse is not in this window
+                        localHoverPixelX = null;
+                        localHoverPixelY = null;
+                        
                         // Always render - drawPixelHighlight will handle priority
                         // (local hover takes priority over synced highlight in drawPixelHighlight)
                         console.log('[MatWebview] Updating synced highlight and rendering: (' + highlightPixelX + ', ' + highlightPixelY + ')');
                         requestRender();
                         
-                        // Update pixel info display for synced highlight only if local mouse is not hovering
-                        if (localHoverPixelX === null && localHoverPixelY === null) {
-                            updatePixelInfoForHighlight(message.pixelX, message.pixelY);
-                        }
+                        // Always update pixel info display for synced highlight
+                        updatePixelInfoForHighlight(message.pixelX, message.pixelY);
                     }
                 });
 
@@ -1663,6 +1667,17 @@ export function getWebviewContentForMat(
                         }
                         // When mouse leaves image area, allow synced highlight to show (don't clear it)
                         // This allows other windows' highlights to be visible when local mouse is outside
+                    }
+                });
+
+                // Clear local hover when mouse leaves container
+                container.addEventListener('mouseleave', () => {
+                    if (isShuttingDown) return;
+                    // Clear local hover state to allow synced highlight to show
+                    if (localHoverPixelX !== null || localHoverPixelY !== null) {
+                        localHoverPixelX = null;
+                        localHoverPixelY = null;
+                        requestRender();
                     }
                 });
 

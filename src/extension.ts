@@ -3,7 +3,7 @@ import { getEvaluateContext, is2DStdArrayEnhanced, is2DCStyleArrayEnhanced, is1D
 import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage, drawMatxImage, draw2DStdArrayImage, draw3DArrayImage } from "./matImage/matProvider";
 import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProvider";
-import { CVVariablesProvider, CVVariable } from "./cvVariablesProvider";
+import { CVVariablesProvider, CVVariable, CVGroup } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
 import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from "./utils/opencv";
@@ -146,25 +146,79 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("cv-debugmate.pairVariable", async (cvVar: CVVariable) => {
       const variables = cvVariablesProvider.getVariables();
-      const options = variables
-        .filter(v => v.name !== cvVar.name && v.kind === cvVar.kind)
-        .map(v => ({ 
-          label: v.name, 
-          description: v.sizeInfo ? `[${v.sizeInfo}]` : v.isEmpty ? '[empty]' : '' 
-        }));
-
-      if (options.length === 0) {
+      const sameKindVars = variables.filter(v => v.name !== cvVar.name && v.kind === cvVar.kind);
+      
+      if (sameKindVars.length === 0) {
         vscode.window.showInformationMessage(`No other ${cvVar.kind === 'mat' ? 'image' : 'point cloud'} variables found to pair with.`);
         return;
+      }
+      
+      // Organize variables by groups (matching the tree structure)
+      const groupMap = new Map<number | undefined, CVVariable[]>();
+      for (const v of sameKindVars) {
+        const idx = v.groupIndex;
+        if (!groupMap.has(idx)) {
+          groupMap.set(idx, []);
+        }
+        groupMap.get(idx)!.push(v);
+      }
+      
+      const options: vscode.QuickPickItem[] = [];
+      
+      // Add paired groups
+      const pairedGroups = Array.from(groupMap.entries())
+        .filter(([idx]) => idx !== undefined)
+        .sort(([a], [b]) => (a as number) - (b as number));
+      
+      for (const [idx, vars] of pairedGroups) {
+        options.push({ 
+          label: `Group ${(idx as number) + 1}`, 
+          kind: vscode.QuickPickItemKind.Separator 
+        });
+        for (const v of vars) {
+          const openIndicator = PanelManager.hasPanel(
+            cvVar.kind === 'mat' ? 'MatImageViewer' : (cvVar.kind === 'pointcloud' ? 'PointCloudViewer' : 'PlotViewer'),
+            vscode.debug.activeDebugSession?.id || '',
+            v.name
+          ) ? '● ' : '';
+          const sizeInfo = v.sizeInfo || (v.isEmpty ? '[empty]' : '');
+          options.push({
+            label: `  ${v.name}`,
+            description: `${openIndicator}[${sizeInfo}]`
+          });
+        }
+      }
+      
+      // Add unpaired variables
+      const unpairedVars = groupMap.get(undefined) || [];
+      if (unpairedVars.length > 0) {
+        options.push({ 
+          label: 'Unpaired', 
+          kind: vscode.QuickPickItemKind.Separator 
+        });
+        for (const v of unpairedVars) {
+          const openIndicator = PanelManager.hasPanel(
+            cvVar.kind === 'mat' ? 'MatImageViewer' : (cvVar.kind === 'pointcloud' ? 'PointCloudViewer' : 'PlotViewer'),
+            vscode.debug.activeDebugSession?.id || '',
+            v.name
+          ) ? '● ' : '';
+          const sizeInfo = v.sizeInfo || (v.isEmpty ? '[empty]' : '');
+          options.push({
+            label: v.name,
+            description: `${openIndicator}[${sizeInfo}]`
+          });
+        }
       }
 
       const selected = await vscode.window.showQuickPick(options, {
         placeHolder: `Select a variable to pair with ${cvVar.name}`
       });
 
-      if (selected) {
-        cvVariablesProvider.setPairing(cvVar.name, selected.label);
-        vscode.window.showInformationMessage(`Paired ${cvVar.name} with ${selected.label}`);
+      if (selected && selected.kind !== vscode.QuickPickItemKind.Separator) {
+        // Extract variable name (remove leading spaces if from a group)
+        const varName = selected.label.trim();
+        cvVariablesProvider.setPairing(cvVar.name, varName);
+        vscode.window.showInformationMessage(`Paired ${cvVar.name} with ${varName}`);
       }
     })
   );
@@ -176,6 +230,43 @@ export function activate(context: vscode.ExtensionContext) {
       cvVariablesProvider.unpair(cvVar.name);
       if (pairedVars.length > 0) {
         vscode.window.showInformationMessage(`Unpaired ${cvVar.name} from group (${pairedVars.join(', ')})`);
+      }
+    })
+  );
+
+  // Add variable to group command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("cv-debugmate.addToGroup", async (group: CVGroup) => {
+      if (group.groupIndex === undefined || group.variables.length === 0) {
+        vscode.window.showErrorMessage("Cannot add to this group.");
+        return;
+      }
+      
+      const firstVar = group.variables[0];
+      const variables = cvVariablesProvider.getVariables();
+      const options = variables
+        .filter(v => 
+          v.name !== firstVar.name && 
+          v.kind === firstVar.kind &&
+          !v.isPaired  // Only show unpaired variables
+        )
+        .map(v => ({ 
+          label: v.name, 
+          description: v.sizeInfo ? `[${v.sizeInfo}]` : v.isEmpty ? '[empty]' : '' 
+        }));
+
+      if (options.length === 0) {
+        vscode.window.showInformationMessage(`No other unpaired ${firstVar.kind === 'mat' ? 'image' : 'point cloud'} variables found to add to this group.`);
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(options, {
+        placeHolder: `Select a variable to add to group`
+      });
+
+      if (selected) {
+        cvVariablesProvider.setPairing(firstVar.name, selected.label);
+        vscode.window.showInformationMessage(`Added ${selected.label} to group`);
       }
     })
   );
