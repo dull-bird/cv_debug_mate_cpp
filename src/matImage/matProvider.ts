@@ -304,6 +304,9 @@ export async function drawMatImage(
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
           SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
+        } else if (message.command === 'webviewReady') {
+          console.log(`[DEBUG-TRACE] webviewReady received for ${panelName}, restoring state`);
+          SyncManager.restoreState(panelName);
         } else if (message.command === 'reload') {
           const reloadStartTime = Date.now();
           console.log(`[DEBUG-TRACE] reload message received for ${variableName} at ${reloadStartTime}`);
@@ -768,6 +771,9 @@ export async function drawMatxImage(
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
           SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
+        } else if (message.command === 'webviewReady') {
+          console.log(`[DEBUG-TRACE] webviewReady received for Matx ${panelName}, restoring state`);
+          SyncManager.restoreState(panelName);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
@@ -966,6 +972,9 @@ export async function draw2DStdArrayImage(
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
           SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
+        } else if (message.command === 'webviewReady') {
+          console.log(`[DEBUG-TRACE] webviewReady received for 2D array ${panelName}, restoring state`);
+          SyncManager.restoreState(panelName);
         } else if (message.command === 'reload') {
           // Check if debug session is still active before reloading
           const currentSession = vscode.debug.activeDebugSession;
@@ -1152,6 +1161,9 @@ export async function draw3DArrayImage(
           SyncManager.syncView(panelName, message.state);
         } else if (message.command === 'pixelHighlight') {
           SyncManager.syncPixelHighlight(panelName, message.pixelX, message.pixelY);
+        } else if (message.command === 'webviewReady') {
+          console.log(`[DEBUG-TRACE] webviewReady received for 3D array ${panelName}, restoring state`);
+          SyncManager.restoreState(panelName);
         } else if (message.command === 'reload') {
           const reloadStartTime = Date.now();
           console.log(`[DEBUG-TRACE] 3D array reload message received for ${panelName} at ${reloadStartTime}`);

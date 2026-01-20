@@ -592,6 +592,9 @@ export function getWebviewContentForMat(
                     isInitialized = true;
                     requestRender();
                     updateJetColorbarVisibility();
+                    
+                    // Notify extension that webview is ready to receive sync state
+                    vscode.postMessage({ command: 'webviewReady' });
                 }
 
                 function clampByte(v) {

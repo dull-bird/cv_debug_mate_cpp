@@ -208,6 +208,45 @@ export class SyncManager {
         }
     }
 
+    /**
+     * Restore the synchronized state for a specific variable's webview.
+     * This is called when a webview signals it's ready to receive state updates.
+     * @param variableName The variable name to restore state for
+     */
+    static restoreState(variableName: string) {
+        const panel = this.panels.get(variableName);
+        if (!panel) {
+            console.log(`[SyncManager] restoreState: panel for ${variableName} not found`);
+            return;
+        }
+
+        const groupId = this.variableToGroup.get(variableName);
+        if (groupId) {
+            const state = this.groupStates.get(groupId);
+            if (state) {
+                console.log(`[SyncManager] restoreState: sending group state to ${variableName}`);
+                panel.webview.postMessage({
+                    command: 'setView',
+                    state: state
+                });
+                this.variableHasSynced.add(variableName);
+                return;
+            }
+        }
+
+        // Not in a group, but might have a saved state from previous panel
+        const savedState = this.variableStates.get(variableName);
+        if (savedState) {
+            console.log(`[SyncManager] restoreState: sending saved state to ${variableName}`);
+            panel.webview.postMessage({
+                command: 'setView',
+                state: savedState
+            });
+        } else {
+            console.log(`[SyncManager] restoreState: no state found for ${variableName}`);
+        }
+    }
+
     static getGroupIndex(varName: string): number | undefined {
         const groupId = this.variableToGroup.get(varName);
         return groupId ? this.groupToIndex.get(groupId) : undefined;
