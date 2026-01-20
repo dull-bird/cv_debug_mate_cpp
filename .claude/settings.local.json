@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__acp__Write",
+      "mcp__acp__Edit"
+    ]
+  }
+}
