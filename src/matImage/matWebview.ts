@@ -1706,11 +1706,6 @@ export function getWebviewContentForMat(
                 window.addEventListener('beforeunload', () => {
                     isShuttingDown = true;
                 });
-                document.addEventListener('visibilitychange', () => {
-                    if (document.visibilityState === 'hidden') {
-                        isShuttingDown = true;
-                    }
-                });
 
                 // Initial setup
                 updateCanvasSize();
