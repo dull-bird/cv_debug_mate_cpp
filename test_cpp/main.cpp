@@ -10,6 +10,9 @@
  *   - 3D Image: T[H][W][C] (C-style 3D array, C=1,3,4),
  *               std::array<std::array<std::array<T,C>,W>,H>
  *   - 3D Point Cloud: std::vector<cv::Point3f/3d>, std::array<cv::Point3f/3d,N>
+ *   - 3D Point Cloud (PCL): pcl::PointCloud<pcl::PointXYZ>,
+ *               pcl::PointCloud<pcl::PointXYZI>, pcl::PointCloud<pcl::PointXYZRGB>
+ *               (requires PCL; build with -DHAVE_PCL or cmake finds PCL automatically)
  *   - 1D Plot: std::vector<T>, std::array<T,N>, T[N] (C-style 1D array),
  *              std::set<T>, cv::Mat(1×N or N×1)
  *   - Pointers: All above types can also be visualized via pointers (e.g.,
@@ -26,6 +29,12 @@
 #include <set>
 #include <thread>
 #include <vector>
+
+// PCL headers — only included when PCL is available
+#ifdef HAVE_PCL
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -612,6 +621,98 @@ void demo_multithreaded() {
 }
 
 // ============================================================
+// SECTION 7: PCL POINT CLOUD EXAMPLES (requires HAVE_PCL)
+// ============================================================
+#ifdef HAVE_PCL
+void demo_pcl_pointcloud() {
+  std::cout << "\n=== PCL Point Cloud Examples ===" << std::endl;
+  std::cout << "Requires PCL to be installed (brew install pcl / apt install libpcl-dev)"
+            << std::endl;
+
+  const int N = 50000;
+  const float radius = 5.0f;
+
+  // --- pcl::PointCloud<pcl::PointXYZ> ---
+  // The most common PCL type: 16 bytes per point (x,y,z + 4-byte padding)
+  pcl::PointCloud<pcl::PointXYZ> pcl_xyz;
+  pcl_xyz.width = N;
+  pcl_xyz.height = 1; // unorganised cloud
+  pcl_xyz.is_dense = true;
+  pcl_xyz.points.resize(N);
+
+  for (int i = 0; i < N; i++) {
+    float theta = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
+    float phi   = static_cast<float>(rand()) / RAND_MAX * M_PI;
+    float r     = radius * (0.9f + 0.1f * static_cast<float>(rand()) / RAND_MAX);
+    pcl_xyz.points[i].x = r * sinf(phi) * cosf(theta);
+    pcl_xyz.points[i].y = r * sinf(phi) * sinf(theta);
+    pcl_xyz.points[i].z = r * cosf(phi);
+  }
+
+  // --- pcl::PointCloud<pcl::PointXYZI> ---
+  // 16 bytes per point: x, y, z, intensity (same layout as PointXYZ + intensity field)
+  pcl::PointCloud<pcl::PointXYZI> pcl_xyzi;
+  pcl_xyzi.width = N;
+  pcl_xyzi.height = 1;
+  pcl_xyzi.is_dense = true;
+  pcl_xyzi.points.resize(N);
+
+  for (int i = 0; i < N; i++) {
+    float theta = static_cast<float>(rand()) / RAND_MAX * 2.0f * M_PI;
+    float phi   = static_cast<float>(rand()) / RAND_MAX * M_PI;
+    float r     = radius * (0.85f + 0.15f * static_cast<float>(rand()) / RAND_MAX);
+    pcl_xyzi.points[i].x = r * sinf(phi) * cosf(theta);
+    pcl_xyzi.points[i].y = r * sinf(phi) * sinf(theta);
+    pcl_xyzi.points[i].z = r * cosf(phi);
+    // Intensity: brighter at the top (z > 0)
+    pcl_xyzi.points[i].intensity = (pcl_xyzi.points[i].z / radius + 1.0f) * 0.5f;
+  }
+
+  // --- pcl::PointCloud<pcl::PointXYZRGB> ---
+  // 32 bytes per point: x, y, z, padding, r, g, b packed as float/uint32, more padding
+  const int W = 200, H = 200;
+  pcl::PointCloud<pcl::PointXYZRGB> pcl_xyzrgb;
+  pcl_xyzrgb.width = W;
+  pcl_xyzrgb.height = H; // organised (2-D grid)
+  pcl_xyzrgb.is_dense = false;
+  pcl_xyzrgb.points.resize(W * H);
+
+  for (int row = 0; row < H; row++) {
+    for (int col = 0; col < W; col++) {
+      auto& pt = pcl_xyzrgb.points[row * W + col];
+      pt.x = (col - W / 2) * 0.05f;
+      pt.y = (row - H / 2) * 0.05f;
+      pt.z = sinf(pt.x * 2.0f) * cosf(pt.y * 2.0f) * 1.5f;
+      // Color: R encodes X shift, G encodes Y shift, B constant
+      pt.r = static_cast<uint8_t>((col * 255) / W);
+      pt.g = static_cast<uint8_t>((row * 255) / H);
+      pt.b = 128;
+    }
+  }
+
+  // --- pcl::PointCloud<pcl::PointXYZ>::Ptr (shared_ptr / pointer) ---
+  // The Ptr typedef is boost::shared_ptr<pcl::PointCloud<T>>.
+  // Dereferencing it gives a normal pcl::PointCloud<T> which the debugger
+  // will show as: *pcl_xyz_ptr  →  pcl::PointCloud<pcl::PointXYZ>
+  pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_xyz_ptr(
+      new pcl::PointCloud<pcl::PointXYZ>(pcl_xyz));
+
+  std::cout << "  pcl_xyz:      " << pcl_xyz.size()    << " PointXYZ"    << std::endl;
+  std::cout << "  pcl_xyzi:     " << pcl_xyzi.size()   << " PointXYZI"   << std::endl;
+  std::cout << "  pcl_xyzrgb:   " << pcl_xyzrgb.size() << " PointXYZRGB (" << W << "x" << H << " organized)" << std::endl;
+  std::cout << "  pcl_xyz_ptr:  shared_ptr with " << pcl_xyz_ptr->size() << " pts" << std::endl;
+
+  // ===== BREAKPOINT HERE =====
+  int bp7 = 0; // Set breakpoint here to view all PCL point clouds
+  (void)bp7;
+  (void)pcl_xyz;
+  (void)pcl_xyzi;
+  (void)pcl_xyzrgb;
+  (void)pcl_xyz_ptr;
+}
+#endif // HAVE_PCL
+
+// ============================================================
 // MAIN
 // ============================================================
 int main() {
@@ -628,7 +729,14 @@ int main() {
   demo_1d_plots();
   demo_auto_refresh();
   demo_pointer_types();
-  demo_multithreaded(); // NEW: Multi-threaded debugging examples
+  demo_multithreaded();
+
+#ifdef HAVE_PCL
+  demo_pcl_pointcloud(); // PCL point cloud examples
+#else
+  std::cout << "\n[PCL] Section 7 skipped: PCL not available at build time." << std::endl;
+  std::cout << "  Install PCL (brew/apt/vcpkg) and re-run cmake to enable." << std::endl;
+#endif
 
   std::cout << "\n=== All demos complete ===" << std::endl;
   return 0;

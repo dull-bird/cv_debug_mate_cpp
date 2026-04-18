@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { getEvaluateContext, is2DStdArrayEnhanced, is2DCStyleArrayEnhanced, is1DCStyleArrayEnhanced, is3DCStyleArrayEnhanced, is3DStdArrayEnhanced } from "./utils/debugger";
-import { drawPointCloud, drawStdArrayPointCloud } from "./pointCloud/pointCloudProvider";
+import { drawPointCloud, drawStdArrayPointCloud, drawPCLPointCloud } from "./pointCloud/pointCloudProvider";
 import { drawMatImage, drawMatxImage, draw2DStdArrayImage, draw3DArrayImage } from "./matImage/matProvider";
 import { drawPlot, drawStdArrayPlot, drawCStyleArrayPlot } from "./plot/plotProvider";
 import { CVVariablesProvider, CVVariable, CVGroup } from "./cvVariablesProvider";
 import { PanelManager } from "./utils/panelManager";
 import { SyncManager } from "./utils/syncManager";
-import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from "./utils/opencv";
+import { isPoint3Vector, isMat, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression, isPCLPointCloud } from "./utils/opencv";
 import { getMatInfoFromVariables } from "./matImage/matProvider";
 import { logDebug, logInfo, logError } from "./utils/logger";
 
@@ -445,6 +445,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const point3Info = isPoint3Vector(variableInfo);
       const isMatType = isMat(variableInfo);
+      const pclInfo = isPCLPointCloud(variableInfo);
       
       // Check for uninitialized Point3 vector
       if (point3Info.isPoint3 && isUninitializedVector(point3Info.size)) {
@@ -510,7 +511,7 @@ export function activate(context: vscode.ExtensionContext) {
       let stdArray3D = { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
       
       // Only run slow array detection if we don't already know the type
-      const knownType = point3Info.isPoint3 || isMatType || matxInfo.isMatx || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined;
+      const knownType = point3Info.isPoint3 || pclInfo.isPCL || isMatType || matxInfo.isMatx || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined;
       console.log(`knownType=${knownType} (point3=${point3Info.isPoint3}, mat=${isMatType}, matx=${matxInfo.isMatx}, vec1D=${vector1D.is1D}, set1D=${set1D.isSet}, mat1D=${is1DMatType.is1D}, confirmed=${confirmed1DSize !== undefined})`);
       
       if (!knownType) {
@@ -699,14 +700,18 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       let viewType: "MatImageViewer" | "3DPointViewer" | "CurvePlotViewer" = "MatImageViewer";
-      if (stdArrayPoint3.isPoint3Array || point3Info.isPoint3) {
+      if (pclInfo.isPCL || stdArrayPoint3.isPoint3Array || point3Info.isPoint3) {
         viewType = "3DPointViewer";
       } else if (stdArray1D.is1DArray || cStyleArray1D.is1DArray || vector1D.is1D || set1D.isSet || is1DMatType.is1D || confirmed1DSize !== undefined) {
         viewType = "CurvePlotViewer";
       }
 
+      // pcl::PointCloud<T> - point cloud
+      if (pclInfo.isPCL && pclInfo.layout) {
+        await drawPCLPointCloud(debugSession, variableInfo, variableName, pclInfo.layout, pclInfo.pointType, reveal, shouldForce, panelVariableName);
+      }
       // std::array<Point3f/d> - point cloud
-      if (stdArrayPoint3.isPoint3Array) {
+      else if (stdArrayPoint3.isPoint3Array) {
         await drawStdArrayPointCloud(debugSession, variableInfo, variableName, stdArrayPoint3.size, stdArrayPoint3.isDouble, reveal, shouldForce, panelVariableName);
       }
       // std::array 1D - plot

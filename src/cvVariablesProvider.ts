@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression } from './utils/opencv';
+import { isMat, isPoint3Vector, is1DVector, isLikely1DMat, is1DSet, isMatx, is2DStdArray, is1DStdArray, isPoint3StdArray, is2DCStyleArray, is1DCStyleArray, is3DCStyleArray, is3DStdArray, isUninitializedOrInvalid, isUninitializedMat, isUninitializedMatFromChildren, isUninitializedVector, isPointerType, getPointerEvaluateExpression, isPCLPointCloudType } from './utils/opencv';
 import { SyncManager } from './utils/syncManager';
 import { PanelManager } from './utils/panelManager';
 
@@ -364,6 +364,8 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
                     const point3 = isPoint3Vector(typeCheckInfo);
                     const vector1D = is1DVector(typeCheckInfo);
                     const set1D = is1DSet(typeCheckInfo);
+                    // PCL detection (before std::array so the type string check is fast)
+                    const pclInfo = isPCLPointCloudType(typeCheckInfo.type || "");
                     // std::array detection
                     const stdArray2D = is2DStdArray(typeCheckInfo);
                     const stdArray1D = is1DStdArray(typeCheckInfo);
@@ -478,13 +480,22 @@ export class CVVariablesProvider implements vscode.TreeDataProvider<CVVariable |
 
                         if (isM || matxInfo.isMatx || point3.isPoint3 || vector1D.is1D || set1D.isSet || is1DM.is1D || confirmed1DSize !== undefined ||
                             stdArray2D.is2DArray || stdArray1D.is1DArray || stdArrayPoint3.isPoint3Array || cStyleArray2D.is2DArray || cStyleArray1D.is1DArray ||
-                            stdArray3D.is3DArray || cStyleArray3D.is3DArray) {
+                            stdArray3D.is3DArray || cStyleArray3D.is3DArray || pclInfo.isPCL) {
                             let kind: 'mat' | 'pointcloud' | 'plot' = 'mat';
                             let size = 0;
                             let sizeInfo = '';
 
+                            // pcl::PointCloud<T> - point cloud
+                            if (pclInfo.isPCL) {
+                                kind = 'pointcloud';
+                                // Try to get size from value string (size= pattern or width*height later)
+                                const sizeMatch = v.value?.match(/size=(\d+)/) ||
+                                                  v.value?.match(/\[(\d+)\]/);
+                                size = sizeMatch ? parseInt(sizeMatch[1]) : 0;
+                                sizeInfo = size > 0 ? `${size} points` : `pcl::${pclInfo.pointType}`;
+                            }
                             // std::array<Point3f/d> - point cloud
-                            if (stdArrayPoint3.isPoint3Array) {
+                            else if (stdArrayPoint3.isPoint3Array) {
                                 // Check for uninitialized
                                 if (isUninitializedVector(stdArrayPoint3.size)) {
                                     const warningVar = new CVVariable(

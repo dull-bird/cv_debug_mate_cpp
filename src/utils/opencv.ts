@@ -999,3 +999,93 @@ export function is3DCStyleArray(variableInfo: any): {
   console.log("is3DCStyleArray result: false");
   return { is3DArray: false, height: 0, width: 0, channels: 0, elementType: "", depth: 0 };
 }
+
+// ============== PCL (Point Cloud Library) Support ==============
+
+/**
+ * Byte layout for a known PCL point type.
+ * XYZ are always floats (4 bytes each) at fixed offsets within the struct.
+ * bytesPerPoint is the full struct size (including padding).
+ */
+export interface PCLPointLayout {
+  bytesPerPoint: number;
+  xOffset: number; // byte offset of x field
+  yOffset: number; // byte offset of y field
+  zOffset: number; // byte offset of z field
+}
+
+/**
+ * Known PCL point type layouts (all use SSE-aligned structs).
+ * Reference: PCL point_types.hpp
+ *
+ * PointXYZ      — 16 bytes: x@0  y@4  z@8  (pad@12)
+ * PointXYZI     — 16 bytes: x@0  y@4  z@8  (intensity@12, same layout)
+ * PointXYZRGB   — 32 bytes: x@0  y@4  z@8  (pad@12, rgb union@16, pad×4@20)
+ * PointXYZRGBA  — 32 bytes: same as XYZRGB
+ * PointXYZRGBL  — 32 bytes: same
+ * PointXYZL     — 32 bytes: x@0  y@4  z@8  (label@16)
+ * PointNormal   — 48 bytes: x@0  y@4  z@8  (normal_x@16 ...)
+ * PointXYZLNormal — 52 bytes treated as 64 boundary; use 64 to be safe
+ */
+const PCL_POINT_LAYOUTS: Record<string, PCLPointLayout> = {
+  // 16-byte types
+  "PointXYZ":            { bytesPerPoint: 16, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZI":           { bytesPerPoint: 16, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZL":           { bytesPerPoint: 32, xOffset: 0, yOffset: 4, zOffset: 8 },
+  // 32-byte types
+  "PointXYZRGB":         { bytesPerPoint: 32, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZRGBA":        { bytesPerPoint: 32, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZRGBL":        { bytesPerPoint: 32, xOffset: 0, yOffset: 4, zOffset: 8 },
+  // 48-byte types
+  "PointNormal":         { bytesPerPoint: 48, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZNormal":      { bytesPerPoint: 48, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZINormal":     { bytesPerPoint: 48, xOffset: 0, yOffset: 4, zOffset: 8 },
+  "PointXYZRGBNormal":   { bytesPerPoint: 56, xOffset: 0, yOffset: 4, zOffset: 8 },
+};
+
+/**
+ * Check whether the given type string is a pcl::PointCloud<T>.
+ *
+ * Handled forms:
+ *   pcl::PointCloud<pcl::PointXYZ>
+ *   pcl::PointCloud<pcl::PointXYZRGB>
+ *   class pcl::PointCloud<pcl::PointXYZ>
+ *   pcl::PointCloud<pcl::PointXYZ> * (pointer — caller strips the *)
+ */
+export function isPCLPointCloud(variableInfo: any): {
+  isPCL: boolean;
+  pointType: string;
+  layout: PCLPointLayout | null;
+} {
+  const type = (variableInfo.type || "").trim();
+  return isPCLPointCloudType(type);
+}
+
+/**
+ * Same check operating directly on a type string (for use in cvVariablesProvider).
+ */
+export function isPCLPointCloudType(type: string): {
+  isPCL: boolean;
+  pointType: string;
+  layout: PCLPointLayout | null;
+} {
+  // Match: (class )? pcl::PointCloud< (pcl::)? PointXYZ... >
+  const match = type.match(
+    /(?:class\s+)?pcl::PointCloud\s*<\s*(?:pcl::)?(\w+)\s*>/
+  );
+
+  if (!match) {
+    return { isPCL: false, pointType: "", layout: null };
+  }
+
+  const pointType = match[1];
+  const layout = PCL_POINT_LAYOUTS[pointType] ?? null;
+
+  if (!layout) {
+    console.log(`isPCLPointCloud: unknown point type "${pointType}", skipping`);
+    return { isPCL: false, pointType, layout: null };
+  }
+
+  console.log(`isPCLPointCloud: detected pcl::PointCloud<${pointType}>, layout=${JSON.stringify(layout)}`);
+  return { isPCL: true, pointType, layout };
+}

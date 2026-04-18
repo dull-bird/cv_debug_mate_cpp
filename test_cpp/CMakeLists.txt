@@ -34,10 +34,31 @@ find_package(OpenCV REQUIRED)
 message(STATUS "OpenCV: ${OpenCV_VERSION} at ${OpenCV_DIR}")
 
 # ============================================================
+# PCL Configuration (optional)
+# ============================================================
+# Builds PCL test cases when PCL is available on the host.
+#   macOS:  brew install pcl
+#   Ubuntu: sudo apt install libpcl-dev
+#   Windows: vcpkg install pcl
+find_package(PCL QUIET COMPONENTS common)
+if(PCL_FOUND)
+    message(STATUS "PCL: ${PCL_VERSION} — PCL test cases ENABLED")
+else()
+    message(STATUS "PCL: not found — PCL test cases DISABLED (install PCL to enable)")
+endif()
+
+# ============================================================
 # Build Target
 # ============================================================
 add_executable(test_debugmate main.cpp)
 target_link_libraries(test_debugmate ${OpenCV_LIBS})
+
+# Link PCL when available
+if(PCL_FOUND)
+    target_include_directories(test_debugmate SYSTEM PRIVATE ${PCL_INCLUDE_DIRS})
+    target_link_libraries(test_debugmate ${PCL_LIBRARIES})
+    target_compile_definitions(test_debugmate PRIVATE HAVE_PCL)
+endif()
 
 # ============================================================
 # Debug Symbols (for all build types)

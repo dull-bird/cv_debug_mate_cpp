@@ -14,6 +14,7 @@ import {
 import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
 import { SyncManager } from "../utils/syncManager";
+import { type PCLPointLayout } from "../utils/opencv";
 
 // Function to draw point cloud
 export async function drawPointCloud(
@@ -708,3 +709,270 @@ export async function drawStdArrayPointCloud(
   }
 }
 
+// ============== pcl::PointCloud<T> Support ==============
+
+/**
+ * Visualize a pcl::PointCloud<T> variable.
+ *
+ * Strategy:
+ *   1. Evaluate cloud.width * cloud.height (or cloud.points.size()) for point count.
+ *   2. Get the data pointer from cloud.points (the internal std::vector<T> member).
+ *   3. Read memory using the struct size from PCLPointLayout.
+ *   4. Extract x/y/z at their per-type float offsets, skipping NaN (invalid organised points).
+ *   5. Pipe into the existing 3D point cloud webview — no new panel type needed.
+ */
+export async function drawPCLPointCloud(
+  debugSession: vscode.DebugSession,
+  variableInfo: any,
+  variableName: string,
+  layout: PCLPointLayout,
+  pointType: string,
+  reveal: boolean = true,
+  force: boolean = false,
+  panelVariableName?: string
+) {
+  const panelName = panelVariableName || variableName;
+
+  const existingPanel = PanelManager.getPanel("3DPointViewer", debugSession.id, panelName);
+  if (existingPanel && (existingPanel as any)._isDisposing) {
+    console.log(`[drawPCLPointCloud] Aborting - panel for ${panelName} is being disposed`);
+    return;
+  }
+
+  try {
+    console.log(`[drawPCLPointCloud] variableName="${variableName}", pointType=${pointType}, layout=${JSON.stringify(layout)}`);
+    const panelTitle = `View: ${panelName}`;
+    const { bytesPerPoint, xOffset, yOffset, zOffset } = layout;
+
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Loading pcl::PointCloud<${pointType}>`,
+        cancellable: false
+      },
+      async (progress) => {
+        const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
+        const context = getEvaluateContext(debugSession);
+
+        // Step 1: Get point count (width * height, or fallback to points.size())
+        progress.report({ message: "Getting point count..." });
+        let size = 0;
+
+        try {
+          const widthResp = await debugSession.customRequest("evaluate", {
+            expression: `(long long)${variableName}.width`, frameId, context
+          });
+          const heightResp = await debugSession.customRequest("evaluate", {
+            expression: `(long long)${variableName}.height`, frameId, context
+          });
+          const w = parseInt(widthResp.result);
+          const h = parseInt(heightResp.result);
+          if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+            size = w * h;
+            console.log(`[drawPCLPointCloud] size from width×height: ${w}×${h}=${size}`);
+          }
+        } catch (e) {
+          console.log("[drawPCLPointCloud] width/height evaluate failed:", e);
+        }
+
+        if (size <= 0) {
+          const sizeExpressions = isUsingLLDB(debugSession)
+            ? [`${variableName}.points.size()`, `(long long)${variableName}.points.size()`]
+            : [`(long long)${variableName}.points.size()`, `(int)${variableName}.points.size()`];
+          for (const expr of sizeExpressions) {
+            try {
+              const resp = await debugSession.customRequest("evaluate", { expression: expr, frameId, context });
+              const parsed = parseInt(resp.result);
+              if (!isNaN(parsed) && parsed > 0) { size = parsed; break; }
+            } catch (e) { /* continue */ }
+          }
+        }
+
+        if (size <= 0) {
+          return { panel: null, points: [], dataPtrForToken: "", skipped: false };
+        }
+
+        // Step 2: Get data pointer of cloud.points (std::vector<T>)
+        progress.report({ message: "Getting data pointer..." });
+        const pointsExpr = `${variableName}.points`;
+        let dataPtr: string | null = null;
+
+        if (isUsingMSVC(debugSession)) {
+          dataPtr = await tryGetDataPointer(debugSession, pointsExpr, [
+            `(long long)&${pointsExpr}[0]`,
+            `reinterpret_cast<long long>(&${pointsExpr}[0])`,
+            `(long long)${pointsExpr}.data()`,
+            `reinterpret_cast<long long>(${pointsExpr}.data())`
+          ], frameId, context);
+        } else if (isUsingLLDB(debugSession)) {
+          dataPtr = await tryGetDataPointer(debugSession, pointsExpr, [
+            `${pointsExpr}.__begin_`,
+            `reinterpret_cast<long long>(${pointsExpr}.__begin_)`,
+            `${pointsExpr}.data()`,
+            `reinterpret_cast<long long>(${pointsExpr}.data())`,
+            `&${pointsExpr}[0]`,
+            `reinterpret_cast<long long>(&${pointsExpr}[0])`
+          ], frameId, context);
+        } else if (isUsingCppdbg(debugSession)) {
+          dataPtr = await tryGetDataPointer(debugSession, pointsExpr, [
+            `(long long)${pointsExpr}._M_impl._M_start`,
+            `reinterpret_cast<long long>(${pointsExpr}._M_impl._M_start)`,
+            `(long long)${pointsExpr}.data()`,
+            `reinterpret_cast<long long>(${pointsExpr}.data())`,
+            `(long long)&${pointsExpr}[0]`
+          ], frameId, context);
+        } else {
+          dataPtr = await tryGetDataPointer(debugSession, pointsExpr, [
+            `(long long)&${pointsExpr}[0]`,
+            `(long long)${pointsExpr}._M_impl._M_start`,
+            `(long long)${pointsExpr}.__begin_`,
+            `(long long)${pointsExpr}.data()`,
+            `reinterpret_cast<long long>(${pointsExpr}.data())`
+          ], frameId, context);
+        }
+
+        if (!dataPtr) {
+          console.log("[drawPCLPointCloud] Could not get data pointer");
+          return { panel: null, points: [], dataPtrForToken: "", skipped: false };
+        }
+
+        // Step 3: Get / create panel
+        const panel = PanelManager.getOrCreatePanel(
+          "3DPointViewer", panelTitle, debugSession.id, panelName, reveal, dataPtr
+        );
+
+        // Step 4: Freshness check
+        if (!force && dataPtr) {
+          progress.report({ message: "Checking if data changed..." });
+          const totalBytes = size * bytesPerPoint;
+          const sample = await getMemorySample(debugSession, dataPtr, totalBytes);
+          const stateToken = `${size}|${dataPtr}|${sample}`;
+          if (PanelManager.isPanelFresh("3DPointViewer", debugSession.id, panelName, stateToken)) {
+            return { panel, points: [], dataPtrForToken: dataPtr, skipped: true };
+          }
+        }
+
+        // Step 5: Read memory and extract XYZ
+        const totalBytes = size * bytesPerPoint;
+        progress.report({ message: `Reading ${size} points (${Math.round(totalBytes / 1024 / 1024 * 10) / 10} MB)...` });
+        const buffer = await readMemoryChunked(debugSession, dataPtr, totalBytes, progress);
+        const points: { x: number; y: number; z: number }[] = [];
+
+        if (buffer) {
+          progress.report({ message: "Processing point data..." });
+          for (let i = 0; i < size; i++) {
+            const base = i * bytesPerPoint;
+            if (base + zOffset + 4 > buffer.length) { break; }
+            const x = buffer.readFloatLE(base + xOffset);
+            const y = buffer.readFloatLE(base + yOffset);
+            const z = buffer.readFloatLE(base + zOffset);
+            // Skip NaN / Inf (pcl::PointCloud uses NaN for invalid points in organised clouds)
+            if (isFinite(x) && isFinite(y) && isFinite(z)) {
+              points.push({ x, y, z });
+            }
+          }
+          console.log(`[drawPCLPointCloud] Loaded ${points.length} valid points (${size - points.length} skipped)`);
+        }
+
+        return { panel, points, dataPtrForToken: dataPtr, skipped: false };
+      }
+    );
+
+    if (!result.panel) {
+      vscode.window.showWarningMessage(
+        `Could not load pcl::PointCloud<${pointType}> "${variableName}": unable to read point data.`
+      );
+      return;
+    }
+    if (result.skipped) { return; }
+
+    const { panel, points, dataPtrForToken } = result;
+
+    if (points.length === 0) {
+      vscode.window.showWarningMessage(
+        `pcl::PointCloud<${pointType}> "${variableName}" is empty or contains only invalid (NaN) points.`
+      );
+      return;
+    }
+
+    // Update state token
+    const totalBytes = points.length * bytesPerPoint;
+    const sample = dataPtrForToken ? await getMemorySample(debugSession, dataPtrForToken, totalBytes) : "";
+    const stateToken = `${points.length}|${dataPtrForToken}|${sample}`;
+    PanelManager.updateStateToken("3DPointViewer", debugSession.id, panelName, stateToken);
+
+    // If panel already has HTML, only send a data update (preserves camera state)
+    if (panel.webview.html && panel.webview.html.length > 0) {
+      if ((panel as any)._isDisposing) { return; }
+      try { panel.webview.postMessage({ command: "updateData", points }); } catch (e) { return; }
+      const savedState = SyncManager.getSavedState(panelName);
+      if (savedState && !(panel as any)._isDisposing) {
+        setTimeout(() => {
+          if (!(panel as any)._isDisposing) {
+            try { panel.webview.postMessage({ command: "setView", state: savedState }); } catch (e) {}
+          }
+        }, 100);
+      }
+      return;
+    }
+
+    // Fresh panel
+    panel.webview.html = getWebviewContentForPointCloud();
+    try {
+      if (!(panel as any)._isDisposing) { panel.webview.postMessage({ command: "ready" }); }
+    } catch (e) {}
+
+    SyncManager.registerPanel(panelName, panel);
+
+    if ((panel as any)._messageListener) { (panel as any)._messageListener.dispose(); }
+
+    (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
+      async (message) => {
+        if ((panel as any)._isDisposing) { return; }
+        if (message.command === "savePLY") {
+          try {
+            const plyData = generatePLYContent(points, message.format);
+            const uri = await vscode.window.showSaveDialog({
+              defaultUri: vscode.Uri.file(`${panelName}.ply`),
+              filters: { "PLY Files": ["ply"], "All Files": ["*"] }
+            });
+            if (uri) {
+              await vscode.workspace.fs.writeFile(uri, plyData);
+              vscode.window.showInformationMessage(
+                `Point cloud saved to ${uri.fsPath} (${message.format === "ascii" ? "ASCII" : "Binary"} format)`
+              );
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
+          }
+        } else if (message.command === "viewChanged") {
+          SyncManager.syncView(panelName, message.state);
+        } else if (message.command === "reload") {
+          const currentSession = vscode.debug.activeDebugSession;
+          if (currentSession && currentSession.id === debugSession.id && !(panel as any)._isDisposing) {
+            Promise.resolve(
+              vscode.commands.executeCommand("cv-debugmate.viewVariable", {
+                name: panelName, evaluateName: variableName, skipToken: true
+              })
+            )
+              .then(() => console.log("[drawPCLPointCloud] reload completed"))
+              .catch((e: Error) => console.log("[drawPCLPointCloud] reload failed:", e));
+          }
+        }
+      },
+      undefined,
+      undefined
+    );
+
+    if ((panel as any)._isDisposing) { return; }
+    try {
+      panel.webview.postMessage({ command: "completeData", points });
+    } catch (e) {
+      console.log("[drawPCLPointCloud] Final postMessage failed");
+    }
+
+  } catch (error) {
+    console.error("[drawPCLPointCloud] Error:", error);
+    throw error;
+  }
+}
