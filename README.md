@@ -70,7 +70,7 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 | **🖼️ 2D Image**       | Multi-channel, auto-normalize, colormap, zoom up to 100×, pixel values on hover |
 | **📊 3D Point Cloud** | Three.js powered, color by X/Y/Z, adjustable point size, export PLY             |
 | **🔗 View Sync**      | Pair variables for synchronized zoom/pan/rotation across viewers                |
-| **🔍 Auto Detection** | Variables panel auto-detects all visualizable types in current scope            |
+| **🔍 Auto Detection** | Variables panel auto-detects all visualizable types and organizes them into groups (Images, Plots, Points) |
 | **🔄 Auto Refresh**   | Webview auto-updates when stepping through code                                 |
 
 ---

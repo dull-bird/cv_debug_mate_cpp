@@ -2,7 +2,7 @@
     "name": "cv-debugmate-cpp",
     "displayName": "CV DebugMate C++",
     "description": "An extension for visualizing 1/2/3D data structures during C++ debugging. Inspired by Image Watch.",
-    "version": "0.0.37",
+    "version": "0.0.38",
     "license": "MIT",
     "publisher": "zwdai",
     "repository": {

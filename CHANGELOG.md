@@ -4,7 +4,13 @@ All notable changes to the "CV DebugMate C++" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [0.0.38] - 2025-01-14
+## [0.0.38] - 2026-01-21
+
+### Added
+
+- **Variable Grouping & Categorization**: Added a new CV DebugMate side panel that automatically categorizes visualizable variables into groups (Images, Plots, Points) for better organization during debugging.
+- **"Add to Group" Functionality**: New command to manually add variables to groups, improving management of multiple visualization targets.
+- **Webview State Restoration**: Panels now correctly restore their internal state (zoom, pan, orientation) when the extension is reloaded or when the webview becomes ready, ensuring a seamless experience when switching focus.
 
 ### Performance
 
@@ -30,6 +36,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Added `extensionReady` flag and loading overlay hide in `updateInitialData` message handler
 - **Concurrent refresh protection**: Added `isRefreshing` flag to prevent multiple simultaneous refresh operations
 - **Batch refresh optimization**: Limited visible panel refresh to maximum 2 at a time to reduce debugger load
+
+### Refactored
+
+- **Panel & Session Management**: Refactored `PanelManager` and `SyncManager` for improved code structure, more robust data pointer handling, and better integration with VS Code's auxiliary window management.
 
 ## [0.0.37] - 2025-01-11
 
