@@ -6,3 +6,4 @@ node_modules
 test_cpp/build*/
 *.ply
 *cache*/
+*.csv
