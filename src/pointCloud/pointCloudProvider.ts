@@ -11,7 +11,7 @@ import {
   getVectorSize,
   getStdArrayDataPointer
 } from "../utils/debugger";
-import { getWebviewContentForPointCloud, generatePLYContent } from "./pointCloudWebview";
+import { getWebviewContentForPointCloud, generatePLYContent, generatePCDContent } from "./pointCloudWebview";
 import { PanelManager } from "../utils/panelManager";
 import { SyncManager } from "../utils/syncManager";
 import { type PCLPointLayout } from "../utils/opencv";
@@ -194,25 +194,32 @@ export async function drawPointCloud(
         if ((panel as any)._isDisposing) {
           return;
         }
-        if (message.command === "savePLY") {
+        if (message.command === "savePointCloud") {
           try {
-            const plyData = generatePLYContent(points, message.format);
+            const formatString = message.format; // e.g. 'ply-binary', 'pcd-ascii'
+            const isPLY = formatString.startsWith('ply');
+            const dataFormat = formatString.includes('ascii') ? 'ascii' : 'binary';
+            const fileExt = isPLY ? 'ply' : 'pcd';
+            
+            const fileData = isPLY 
+                ? generatePLYContent(points, dataFormat) 
+                : generatePCDContent(points, dataFormat);
+
             const uri = await vscode.window.showSaveDialog({
-              defaultUri: vscode.Uri.file(`${panelName}.ply`),
-              filters: {
-                "PLY Files": ["ply"],
-                "All Files": ["*"]
-              }
+              defaultUri: vscode.Uri.file(`${panelName}.${fileExt}`),
+              filters: isPLY 
+                  ? { "PLY Files": ["ply"], "All Files": ["*"] }
+                  : { "PCD Files": ["pcd"], "All Files": ["*"] }
             });
             
             if (uri) {
-              await vscode.workspace.fs.writeFile(uri, plyData);
-              const formatLabel = message.format === 'ascii' ? 'ASCII' : 'Binary';
-              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${formatLabel} format)`);
+              await vscode.workspace.fs.writeFile(uri, fileData);
+              const formatLabel = dataFormat === 'ascii' ? 'ASCII' : 'Binary';
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${fileExt.toUpperCase()} ${formatLabel})`);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
-            console.error("Error saving PLY:", error);
+            vscode.window.showErrorMessage(`Failed to save point cloud: ${error}`);
+            console.error("Error saving point cloud:", error);
           }
         } else if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
@@ -646,25 +653,32 @@ export async function drawStdArrayPointCloud(
     // Handle messages from webview
     (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
       async (message) => {
-        if (message.command === "savePLY") {
+        if (message.command === "savePointCloud") {
           try {
-            const plyData = generatePLYContent(points, message.format);
+            const formatString = message.format; 
+            const isPLY = formatString.startsWith('ply');
+            const dataFormat = formatString.includes('ascii') ? 'ascii' : 'binary';
+            const fileExt = isPLY ? 'ply' : 'pcd';
+            
+            const fileData = isPLY 
+                ? generatePLYContent(points, dataFormat) 
+                : generatePCDContent(points, dataFormat);
+
             const uri = await vscode.window.showSaveDialog({
-              defaultUri: vscode.Uri.file(`${panelName}.ply`),
-              filters: {
-                "PLY Files": ["ply"],
-                "All Files": ["*"]
-              }
+              defaultUri: vscode.Uri.file(`${panelName}.${fileExt}`),
+              filters: isPLY 
+                  ? { "PLY Files": ["ply"], "All Files": ["*"] }
+                  : { "PCD Files": ["pcd"], "All Files": ["*"] }
             });
             
             if (uri) {
-              await vscode.workspace.fs.writeFile(uri, plyData);
-              const formatLabel = message.format === 'ascii' ? 'ASCII' : 'Binary';
-              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${formatLabel} format)`);
+              await vscode.workspace.fs.writeFile(uri, fileData);
+              const formatLabel = dataFormat === 'ascii' ? 'ASCII' : 'Binary';
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${fileExt.toUpperCase()} ${formatLabel})`);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
-            console.error("Error saving PLY:", error);
+            vscode.window.showErrorMessage(`Failed to save point cloud: ${error}`);
+            console.error("Error saving point cloud:", error);
           }
         } else if (message.command === 'viewChanged') {
           SyncManager.syncView(panelName, message.state);
@@ -968,21 +982,30 @@ export async function drawPCLPointCloud(
     (panel as any)._messageListener = panel.webview.onDidReceiveMessage(
       async (message) => {
         if ((panel as any)._isDisposing) { return; }
-        if (message.command === "savePLY") {
+        if (message.command === "savePointCloud") {
           try {
-            const plyData = generatePLYContent(points, message.format);
+            const formatString = message.format; 
+            const isPLY = formatString.startsWith('ply');
+            const dataFormat = formatString.includes('ascii') ? 'ascii' : 'binary';
+            const fileExt = isPLY ? 'ply' : 'pcd';
+            
+            const fileData = isPLY 
+                ? generatePLYContent(points, dataFormat) 
+                : generatePCDContent(points, dataFormat);
+
             const uri = await vscode.window.showSaveDialog({
-              defaultUri: vscode.Uri.file(`${panelName}.ply`),
-              filters: { "PLY Files": ["ply"], "All Files": ["*"] }
+              defaultUri: vscode.Uri.file(`${panelName}.${fileExt}`),
+              filters: isPLY 
+                  ? { "PLY Files": ["ply"], "All Files": ["*"] }
+                  : { "PCD Files": ["pcd"], "All Files": ["*"] }
             });
             if (uri) {
-              await vscode.workspace.fs.writeFile(uri, plyData);
-              vscode.window.showInformationMessage(
-                `Point cloud saved to ${uri.fsPath} (${message.format === "ascii" ? "ASCII" : "Binary"} format)`
-              );
+              await vscode.workspace.fs.writeFile(uri, fileData);
+              const formatLabel = dataFormat === 'ascii' ? 'ASCII' : 'Binary';
+              vscode.window.showInformationMessage(`Point cloud saved to ${uri.fsPath} (${fileExt.toUpperCase()} ${formatLabel})`);
             }
           } catch (error) {
-            vscode.window.showErrorMessage(`Failed to save PLY file: ${error}`);
+            vscode.window.showErrorMessage(`Failed to save point cloud: ${error}`);
           }
         } else if (message.command === "viewChanged") {
           SyncManager.syncView(panelName, message.state);

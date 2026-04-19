@@ -46,9 +46,9 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 |                      | `T[rows][cols]` (C-style 2D array)      | 🖼️ Image Viewer |
 |                      | `T[H][W][C]` (C-style 3D array, C=1,3,4)| 🖼️ Image Viewer |
 |                      | `std::array<...<T, C>, W>, H>`          | 🖼️ Image Viewer |
-| **Point Cloud (3D)** | `pcl::PointCloud<T>` (XYZ, RGB, Normal, etc.) | 📊 3D Viewer    |
-|                      | `std::vector<cv::Point3f / cv::Point3d>`| 📊 3D Viewer    |
-|                      | `std::array<cv::Point3f / cv::Point3d, N>`| 📊 3D Viewer    |
+| **Point Cloud (3D)** | `pcl::PointCloud<T>` (XYZ, RGB, Normal, etc.) | ✨ 3D Viewer    |
+|                      | `std::vector<cv::Point3f / cv::Point3d>`| ✨ 3D Viewer    |
+|                      | `std::array<cv::Point3f / cv::Point3d, N>`| ✨ 3D Viewer    |
 | **Plot (1D)**        | `std::vector<T>`, `std::array<T, N>`    | 📈 Plot Viewer  |
 |                      | `T[N]` (C-style 1D array), `std::set<T>`| 📈 Plot Viewer  |
 |                      | `cv::Mat` (1×N or N×1, single channel)  | 📈 Plot Viewer  |
@@ -69,7 +69,7 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 | --------------------- | ------------------------------------------------------------------------------- |
 | **📈 1D Plot**        | Line/Scatter/Histogram plotting, custom X-axis, box-zoom, pan, export to PNG/CSV |
 | **🖼️ 2D Image**       | Multi-channel visualization, auto-normalization, colormaps, high-ratio zoom, pixel inspection |
-| **📊 3D Point Cloud** | Supports `pcl::PointCloud` and OpenCV points! Three.js powered, color by RGB/Intensity/XYZ, adjustable point sizes, export to PLY |
+| **✨ 3D Point Cloud** | Supports `pcl::PointCloud` and OpenCV points! Three.js powered, color by RGB/Intensity/XYZ, adjustable point sizes, export to PLY & PCD |
 | **🔗 View Sync**      | Pair multiple variables together for synchronized zoom / pan / rotation |
 | **🔍 Auto Detection** | The sidebar panel auto-detects all visualizable variables within scope context |
 | **🔄 Auto Refresh**   | Webviews automatically update in real-time as you step through the code         |
@@ -141,7 +141,7 @@ Right-click a variable → **"View by CV DebugMate"**
 | Pan    | Right-click Drag     |
 | Zoom   | Scroll wheel         |
 | Color  | Extracted RGB/Intensity, or X/Y/Z heatmaps |
-| Export | Save to ASCII/Binary PLY |
+| Export | Save to ASCII/Binary PLY & PCD |
 
 ### Plot Viewer
 

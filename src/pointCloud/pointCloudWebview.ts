@@ -257,12 +257,14 @@ export function getWebviewContentForPointCloud(): string {
                     <button id="btnResetView">Reset</button>
                     <label>Size:</label>
                     <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
-                    <label>PLY:</label>
+                    <label>Save:</label>
                     <select id="plyFormatSelect" style="background: #333; color: white; border: 1px solid #555; border-radius: 3px;">
-                        <option value="binary" selected>Binary</option>
-                        <option value="ascii">ASCII</option>
+                        <option value="ply-binary" selected>PLY (Binary)</option>
+                        <option value="ply-ascii">PLY (ASCII)</option>
+                        <option value="pcd-binary">PCD (Binary)</option>
+                        <option value="pcd-ascii">PCD (ASCII)</option>
                     </select>
-                    <button id="btnSavePLY" class="save-btn" style="background: #28a745;">Save</button>
+                    <button id="btnSavePLY" class="save-btn" style="background: #28a745;">Export</button>
                 </div>
                 <div class="ctrl-row">
                     <span style="font-size: 10px; color: #888;">Colored by:</span>
@@ -849,7 +851,7 @@ export function getWebviewContentForPointCloud(): string {
                 
                 document.getElementById('btnSavePLY').onclick = () => {
                     const format = document.getElementById('plyFormatSelect').value;
-                    vscode.postMessage({ command: 'savePLY', format: format });
+                    vscode.postMessage({ command: 'savePointCloud', format: format });
                 };
 
                 let isSyncing = false;
@@ -1070,6 +1072,43 @@ end_header\n`;
     combined.set(headerBytes);
     combined.set(bodyBytes, headerBytes.length);
     
+    return combined;
+  }
+}
+
+// Function to generate PCD file content
+export function generatePCDContent(points: { x: number; y: number; z: number }[], format: 'binary' | 'ascii' = 'binary'): Uint8Array {
+  const header = `# .PCD v0.7 - Point Cloud Data file format
+VERSION 0.7
+FIELDS x y z
+SIZE 4 4 4
+TYPE F F F
+COUNT 1 1 1
+WIDTH ${points.length}
+HEIGHT 1
+VIEWPOINT 0 0 0 1 0 0 0
+POINTS ${points.length}
+DATA ${format}
+`;
+
+  if (format === 'ascii') {
+    let body = points.map(p => `${p.x} ${p.y} ${p.z}`).join("\\n") + "\\n";
+    return new TextEncoder().encode(header + body);
+  } else {
+    // binary
+    const headerBytes = new TextEncoder().encode(header);
+    const bodyBytes = new Uint8Array(points.length * 12); // 3 floats * 4 bytes
+    const view = new DataView(bodyBytes.buffer);
+
+    for (let i = 0; i < points.length; i++) {
+        const offset = i * 12;
+        view.setFloat32(offset, points[i].x, true);
+        view.setFloat32(offset + 4, points[i].y, true);
+        view.setFloat32(offset + 8, points[i].z, true);
+    }
+    const combined = new Uint8Array(headerBytes.length + bodyBytes.length);
+    combined.set(headerBytes);
+    combined.set(bodyBytes, headerBytes.length);
     return combined;
   }
 }
