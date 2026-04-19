@@ -754,36 +754,75 @@ export async function drawPCLPointCloud(
         const frameId = variableInfo?.frameId || await getCurrentFrameId(debugSession);
         const context = getEvaluateContext(debugSession);
 
-        // Step 1: Get point count (width * height, or fallback to points.size())
+        // Step 1: Get point count
         progress.report({ message: "Getting point count..." });
         let size = 0;
 
-        try {
-          const widthResp = await debugSession.customRequest("evaluate", {
-            expression: `(long long)${variableName}.width`, frameId, context
-          });
-          const heightResp = await debugSession.customRequest("evaluate", {
-            expression: `(long long)${variableName}.height`, frameId, context
-          });
-          const w = parseInt(widthResp.result);
-          const h = parseInt(heightResp.result);
+        // Fast path: try to extract from the summary string in variableInfo
+        const summaryStr = variableInfo?.value || variableInfo?.result || "";
+        const wdMatch = summaryStr.match(/width[:=]\s*(\d+)/i);
+        const htMatch = summaryStr.match(/height[:=]\s*(\d+)/i);
+        if (wdMatch && htMatch) {
+          const w = parseInt(wdMatch[1]), h = parseInt(htMatch[1]);
           if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
             size = w * h;
-            console.log(`[drawPCLPointCloud] size from width×height: ${w}×${h}=${size}`);
+            console.log(`[drawPCLPointCloud] size from summary width×height: ${w}×${h}=${size}`);
           }
-        } catch (e) {
-          console.log("[drawPCLPointCloud] width/height evaluate failed:", e);
+        }
+        if (size <= 0) {
+          const ptMatch = summaryStr.match(/points[^\s]*\s*size[:=]\s*(\d+)/i) || summaryStr.match(/size=(\d+)/i);
+          if (ptMatch) {
+            size = parseInt(ptMatch[1]);
+            console.log(`[drawPCLPointCloud] size from summary points size: ${size}`);
+          }
         }
 
+        // Fallback to evaluating width * height (organised clouds)
+        if (size <= 0) {
+          try {
+            const wExprs = isUsingLLDB(debugSession) ? [`${variableName}.width`] : [`(long long)${variableName}.width`, `${variableName}.width`];
+            const hExprs = isUsingLLDB(debugSession) ? [`${variableName}.height`] : [`(long long)${variableName}.height`, `${variableName}.height`];
+            
+            let w = 0, h = 0;
+            for (const expr of wExprs) {
+              try {
+                const resp = await debugSession.customRequest("evaluate", { expression: expr, frameId, context });
+                w = parseInt(resp.result);
+                if (!isNaN(w)) break;
+              } catch (e) {}
+            }
+            
+            for (const expr of hExprs) {
+              try {
+                const resp = await debugSession.customRequest("evaluate", { expression: expr, frameId, context });
+                h = parseInt(resp.result);
+                if (!isNaN(h)) break;
+              } catch (e) {}
+            }
+            
+            if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+              size = w * h;
+              console.log(`[drawPCLPointCloud] size from evaluated width×height: ${w}×${h}=${size}`);
+            }
+          } catch (e) {
+            console.log("[drawPCLPointCloud] width/height fallback failed:", e);
+          }
+        }
+
+        // Fallback to evaluating points.size()
         if (size <= 0) {
           const sizeExpressions = isUsingLLDB(debugSession)
             ? [`${variableName}.points.size()`, `(long long)${variableName}.points.size()`]
-            : [`(long long)${variableName}.points.size()`, `(int)${variableName}.points.size()`];
+            : [`(long long)${variableName}.points.size()`, `(int)${variableName}.points.size()`, `${variableName}.points.size()`];
           for (const expr of sizeExpressions) {
             try {
               const resp = await debugSession.customRequest("evaluate", { expression: expr, frameId, context });
               const parsed = parseInt(resp.result);
-              if (!isNaN(parsed) && parsed > 0) { size = parsed; break; }
+              if (!isNaN(parsed) && parsed > 0) { 
+                size = parsed; 
+                console.log(`[drawPCLPointCloud] size from evaluated ${expr}: ${size}`);
+                break; 
+              }
             } catch (e) { /* continue */ }
           }
         }
