@@ -120,7 +120,7 @@ Right-click a variable → **"View by C++ DebugMate"**
 
 ### Variables Panel
 
-![C++ DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
+![C++ DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel.png)
 
 ---
 
