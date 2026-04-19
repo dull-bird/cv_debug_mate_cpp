@@ -108,13 +108,15 @@
 ![1D 曲线图](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/plot.png)
 
 ### 2D 图像
-![Mat 可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_mac.png)
+![Image Overview](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_overview.png)
+![Pixel Details](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_pixel.png)
+![Matrix Values](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_matrix.png)
 
 ### 3D 点云
 ![点云可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
 ### 变量面板
-![C++ DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
+![C++ DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
 
 ---
 

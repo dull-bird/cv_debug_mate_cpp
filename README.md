@@ -110,7 +110,9 @@ Right-click a variable → **"View by C++ DebugMate"**
 
 ### 2D Image
 
-![Mat Visualization](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_mac.png)
+![Image Overview](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_overview.png)
+![Pixel Details](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_pixel.png)
+![Matrix Values](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/image_matrix.png)
 
 ### 3D Point Cloud
 
@@ -118,7 +120,7 @@ Right-click a variable → **"View by C++ DebugMate"**
 
 ### Variables Panel
 
-![C++ DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
+![C++ DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/cv_debugmate_panel.png)
 
 ---
 
