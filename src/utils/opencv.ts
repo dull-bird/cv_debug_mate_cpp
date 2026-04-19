@@ -51,6 +51,14 @@ export function isPointerType(type: string): { isPointer: boolean; baseType: str
     return { isPointer: true, baseType };
   }
 
+  // 3. Check for typedef smart pointers (like pcl::PointCloud<T>::Ptr or ::ConstPtr)
+  const typedefPtrMatch = normalizedType.match(/^(.*?)::(?:Ptr|ConstPtr)$/);
+  if (typedefPtrMatch) {
+    let baseType = typedefPtrMatch[1].trim();
+    baseType = baseType.replace(/^const\s+/, '').trim();
+    return { isPointer: true, baseType };
+  }
+
   return { isPointer: false, baseType: "" };
 }
 

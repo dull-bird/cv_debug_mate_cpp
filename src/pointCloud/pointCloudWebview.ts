@@ -254,7 +254,7 @@ export function getWebviewContentForPointCloud(): string {
                 <button class="toggle-btn" id="toggleControls" title="Hide/Show Controls">▼</button>
                 <div class="ctrl-row">
                     <button id="btnReload" title="Reload data from memory">Reload</button>
-                    <button id="btnResetView">Reset</button>
+                    <button id="btnResetAll" title="Reset all view parameters and camera">Reset</button>
                     <label>Size:</label>
                     <input type="number" id="pointSizeInput" value="0.1" step="0.05" min="0.01" max="20">
                     <label>Save:</label>
@@ -275,6 +275,7 @@ export function getWebviewContentForPointCloud(): string {
                 </div>
                 <div class="ctrl-row">
                     <span style="font-size: 10px; color: #888;">View from:</span>
+                    <button id="btnViewAuto" class="view-btn" title="Auto fit view">Auto</button>
                     <button id="btnViewTop" class="view-btn" title="View from Top (Z+)">Top</button>
                     <button id="btnViewBottom" class="view-btn" title="View from Bottom (Z-)">Bottom</button>
                     <button id="btnViewFront" class="view-btn" title="View from Front (Y+)">Front</button>
@@ -662,7 +663,15 @@ export function getWebviewContentForPointCloud(): string {
                 document.getElementById('btnHeightX').onclick = () => { updateColors('x'); updateColorButtons('x'); };
                 document.getElementById('btnHeightY').onclick = () => { updateColors('y'); updateColorButtons('y'); };
                 document.getElementById('btnHeightZ').onclick = () => { updateColors('z'); updateColorButtons('z'); };
-                document.getElementById('btnResetView').onclick = resetView;
+                document.getElementById('btnViewAuto').onclick = resetView;
+                document.getElementById('btnResetAll').onclick = () => {
+                    resetView();
+                    updateColors('solid');
+                    updateColorButtons('solid');
+                    document.getElementById('pointSizeInput').value = '0.1';
+                    if (pointsMaterial) pointsMaterial.size = 0.1;
+                    document.getElementById('plyFormatSelect').value = 'ply-binary';
+                };
                 document.getElementById('btnReload').onclick = () => {
                     vscode.postMessage({ command: 'reload' });
                 };

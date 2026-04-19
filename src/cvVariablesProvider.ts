@@ -70,7 +70,7 @@ export class CVVariable extends vscode.TreeItem {
         if (kind === 'pointcloud') typeIcon = 'layers';
         else if (kind === 'plot') typeIcon = 'graph';
         
-        this.isEmpty = (sizeInfo === '0' || sizeInfo === '0x0' || sizeInfo === '' || size === 0);
+        this.isEmpty = (sizeInfo === '0' || sizeInfo === '0x0' || sizeInfo === '' || (size === 0 && !sizeInfo.startsWith('pcl::')));
         const displaySize = this.isEmpty ? 'empty' : sizeInfo;
         
         // Check if panel is open
