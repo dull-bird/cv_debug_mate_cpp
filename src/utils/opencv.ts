@@ -27,19 +27,30 @@ export function isPointerType(type: string): { isPointer: boolean; baseType: str
   // Normalize the type string
   const normalizedType = type.trim();
   
-  // Check for pointer patterns:
+  // 1. Check for raw pointer patterns:
   // - "type *" or "type*"
   // - "type * const" or "type *const"
   // - "const type *" or "const type*"
-  const pointerMatch = normalizedType.match(/^(.*?)\s*\*\s*(const)?$/);
+  const rawPointerMatch = normalizedType.match(/^(.*?)\s*\*\s*(const)?$/);
   
-  if (pointerMatch) {
-    let baseType = pointerMatch[1].trim();
+  if (rawPointerMatch) {
+    let baseType = rawPointerMatch[1].trim();
     // Remove leading 'const' if present
     baseType = baseType.replace(/^const\s+/, '').trim();
     return { isPointer: true, baseType };
   }
   
+  // 2. Check for smart pointers (e.g. pcl::PointCloud<T>::Ptr resolves to boost::shared_ptr or std::shared_ptr)
+  // Match forms like "std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>"
+  // or "boost::shared_ptr<cv::Mat>"
+  const smartPointerMatch = normalizedType.match(/^(?:std|boost|std::__1)::(?:shared_ptr|unique_ptr)\s*<\s*(.+)\s*>$/);
+  if (smartPointerMatch) {
+    let baseType = smartPointerMatch[1].trim();
+    // We greedily match everything inside the < >, so we get the full type of the pointee
+    baseType = baseType.replace(/^const\s+/, '').trim();
+    return { isPointer: true, baseType };
+  }
+
   return { isPointer: false, baseType: "" };
 }
 

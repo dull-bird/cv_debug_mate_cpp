@@ -3,6 +3,7 @@
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.93%2B-blue?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdull-bird%2Fcv_debug_mate_cpp%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)](https://github.com/dull-bird/cv_debug_mate_cpp)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green?logo=opencv)](https://opencv.org/)
+[![PCL](https://img.shields.io/badge/PCL-1.x-blue?logo=c%2B%2B)](https://pointclouds.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![C++11](https://img.shields.io/badge/C%2B%2B-11-orange?logo=cplusplus)](https://en.cppreference.com/w/cpp/11)
 [![Demo Build](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml/badge.svg)](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml)
@@ -20,6 +21,10 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 > **📂 Example Project: [`test_cpp/`](test_cpp/)**
 >
 > Complete demo with ALL supported types! Build and debug to see CV DebugMate in action.
+> 
+> ⚠️ **Dependencies Required to Build the Demo:**
+> - **OpenCV** (Required): `brew install opencv` / `apt install libopencv-dev`
+> - **PCL** (Optional, for 3D demos): `brew install pcl` / `apt install libpcl-dev`
 >
 > ```bash
 > # macOS / Linux
@@ -33,32 +38,28 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 
 ## ⚡ Supported Types (Quick Reference)
 
-| Category             | Type                                    | Visualization   |
-| -------------------- | --------------------------------------- | --------------- |
-| **Image (2D)**       | `cv::Mat`, `cv::Mat_<T>`                | 🖼️ Image Viewer |
-|                      | `cv::Mat_<cv::Vec3b>`, `cv::Mat_<cv::Vec3f>` | 🖼️ Image Viewer |
+| Category             | Type                                    | Viewer          |
+| :------------------- | :-------------------------------------- | :-------------- |
+| **Image (2D & 3D)**  | `cv::Mat`, `cv::Mat_<T>`                | 🖼️ Image Viewer |
 |                      | `cv::Matx` (`Matx33f`, `Matx44d`, etc.) | 🖼️ Image Viewer |
 |                      | `std::array<std::array<T, cols>, rows>` | 🖼️ Image Viewer |
 |                      | `T[rows][cols]` (C-style 2D array)      | 🖼️ Image Viewer |
-| | `T[H][W][C]` (C-style 3D array, C=1,3,4) | 🖼️ Image Viewer |
-|                      | `std::array<std::array<std::array<T, C>, W>, H>` | 🖼️ Image Viewer |
-| **Point Cloud (3D)** | `std::vector<cv::Point3f>`              | 📊 3D Viewer    |
-|                      | `std::vector<cv::Point3d>`              | 📊 3D Viewer    |
-|                      | `std::array<cv::Point3f, N>`            | 📊 3D Viewer    |
-|                      | `std::array<cv::Point3d, N>`            | 📊 3D Viewer    |
-| **Plot (1D)**        | `std::vector<T>` (numeric)              | 📈 Plot Viewer  |
-|                      | `std::array<T, N>` (numeric)            | 📈 Plot Viewer  |
-|                      | `T[N]` (C-style 1D array, numeric)      | 📈 Plot Viewer  |
-|                      | `std::set<T>` (numeric)                 | 📈 Plot Viewer  |
+|                      | `T[H][W][C]` (C-style 3D array, C=1,3,4)| 🖼️ Image Viewer |
+|                      | `std::array<...<T, C>, W>, H>`          | 🖼️ Image Viewer |
+| **Point Cloud (3D)** | `pcl::PointCloud<T>` (XYZ, RGB, Normal, etc.) | 📊 3D Viewer    |
+|                      | `std::vector<cv::Point3f / cv::Point3d>`| 📊 3D Viewer    |
+|                      | `std::array<cv::Point3f / cv::Point3d, N>`| 📊 3D Viewer    |
+| **Plot (1D)**        | `std::vector<T>`, `std::array<T, N>`    | 📈 Plot Viewer  |
+|                      | `T[N]` (C-style 1D array), `std::set<T>`| 📈 Plot Viewer  |
 |                      | `cv::Mat` (1×N or N×1, single channel)  | 📈 Plot Viewer  |
-| **Pointer Types**    | `cv::Mat*`, `cv::Matx*`                 | Same as pointee |
-|                      | `std::vector<T>*`, `std::array<T,N>*`   | Same as pointee |
+| **Pointers**         | `cv::Mat*`, `pcl::PointCloud<T>::Ptr`       | Auto-deref      |
+|                      | `std::shared_ptr<T>`, `std::unique_ptr<T>`  | Auto-deref      |
 
 > **Numeric types**: `int`, `float`, `double`, `uchar`, `short`, `long`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, etc.
 
 > **Image depth**: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
 
-> **Pointer support**: Pointers to supported types (e.g., `cv::Mat*`, `std::vector<float>*`) are automatically dereferenced. A pointer and its pointee pointing to the same memory address will share the same visualization tab.
+> **Pointer & Smart Pointer Support**: Raw pointers (`cv::Mat*`) and smart pointers (`std::shared_ptr<cv::Mat>`, `std::unique_ptr<std::vector<float>>`, `boost::shared_ptr`) are natively supported. The extension automatically unpacks the smart pointer and visualizes the underlying 1D/2D/3D data. Pointers and their pointees pointing to the same memory will share a single visualization tab to save space.
 
 ---
 
@@ -66,12 +67,12 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 
 | Feature               | Description                                                                     |
 | --------------------- | ------------------------------------------------------------------------------- |
-| **📈 1D Plot**        | Line/Scatter/Histogram, custom X-axis, zoom, pan, export PNG/CSV                |
-| **🖼️ 2D Image**       | Multi-channel, auto-normalize, colormap, zoom up to 100×, pixel values on hover |
-| **📊 3D Point Cloud** | Three.js powered, color by X/Y/Z, adjustable point size, export PLY             |
-| **🔗 View Sync**      | Pair variables for synchronized zoom/pan/rotation across viewers                |
-| **🔍 Auto Detection** | Variables panel auto-detects all visualizable types and organizes them into groups (Images, Plots, Points) |
-| **🔄 Auto Refresh**   | Webview auto-updates when stepping through code                                 |
+| **📈 1D Plot**        | Line/Scatter/Histogram plotting, custom X-axis, box-zoom, pan, export to PNG/CSV |
+| **🖼️ 2D Image**       | Multi-channel visualization, auto-normalization, colormaps, high-ratio zoom, pixel inspection |
+| **📊 3D Point Cloud** | Supports `pcl::PointCloud` and OpenCV points! Three.js powered, color by RGB/Intensity/XYZ, adjustable point sizes, export to PLY |
+| **🔗 View Sync**      | Pair multiple variables together for synchronized zoom / pan / rotation |
+| **🔍 Auto Detection** | The sidebar panel auto-detects all visualizable variables within scope context |
+| **🔄 Auto Refresh**   | Webviews automatically update in real-time as you step through the code         |
 
 ---
 
@@ -136,10 +137,11 @@ Right-click a variable → **"View by CV DebugMate"**
 
 | Action | Control              |
 | ------ | -------------------- |
-| Rotate | Drag                 |
+| Rotate | Left-click Drag      |
+| Pan    | Right-click Drag     |
 | Zoom   | Scroll wheel         |
-| Color  | Switch by X/Y/Z axis |
-| Export | Save PLY             |
+| Color  | Extracted RGB/Intensity, or X/Y/Z heatmaps |
+| Export | Save to ASCII/Binary PLY |
 
 ### Plot Viewer
 

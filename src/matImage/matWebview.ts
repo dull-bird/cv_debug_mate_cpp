@@ -321,7 +321,10 @@ export function getWebviewContentForMat(
                 <button id="zoomIn">Zoom In</button>
                 <button id="zoomOut">Zoom Out</button>
                 <button id="reset">Reset</button>
-                <span id="zoomLevel">100%    </span>
+                <span class="dd" id="ddZoomScale">
+                    <button class="dd-btn" id="zoomLevel" type="button" style="text-align: right; font-family: monospace; min-width: 65px;" title="手动选择缩放比例">100%</button>
+                    <div class="dd-menu" role="menu" aria-label="Zoom preset menu" style="min-width: 80px;"></div>
+                </span>
             </span>
 
             <span class="ctrl-group" id="saveGroup">
@@ -897,6 +900,35 @@ export function getWebviewContentForMat(
                     (v) => { valueFormat = v; requestRender(); }
                 );
 
+                // Zoom Level preset dropdown
+                initDropdown(
+                    document.getElementById('ddZoomScale'),
+                    zoomLevelDisplay,
+                    [
+                        { value: 'fit', label: 'Fit Window' },
+                        { value: '10', label: '10%' },
+                        { value: '25', label: '25%' },
+                        { value: '50', label: '50%' },
+                        { value: '100', label: '100%' },
+                        { value: '200', label: '200%' },
+                        { value: '400', label: '400%' },
+                        { value: '800', label: '800%' },
+                        { value: '1600', label: '1600%' }
+                    ],
+                    () => 'custom', // Doesn't matter because we just use click to set state
+                    (v) => { 
+                        if (v === 'fit') {
+                            resetView();
+                        } else {
+                            const newScale = parseFloat(v) / 100.0;
+                            // Zoom relative to center of view
+                            const cx = window.innerWidth / 2;
+                            const cy = window.innerHeight / 2;
+                            setZoomAt(cx, cy, newScale);
+                        }
+                    }
+                );
+
                 // Jet Colorbar logic
                 const jetColorbar = document.getElementById('jetColorbar');
                 const sliderMax = document.getElementById('sliderMax');
@@ -1341,10 +1373,9 @@ export function getWebviewContentForMat(
                     drawPixelHighlight();
                     
                     // Update zoom level display
-                    // Fixed-width zoom display: min 1 digit, max 5 digits, padded to 5 with spaces + 4 trailing spaces
+                    // Set the button text to show the current zoom percentage
                     const pct = Math.max(0, Math.round(scale * 100));
-                    const pctStr = String(pct).slice(0, 5).padStart(5, ' ');
-                    zoomLevelDisplay.textContent = pctStr + '%    ';
+                    zoomLevelDisplay.textContent = pct + '%';
                 }
                 
                 // Draw pixel highlight with blue border (for synced panels)

@@ -3,6 +3,7 @@
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.93%2B-blue?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdull-bird%2Fcv_debug_mate_cpp%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)](https://github.com/dull-bird/cv_debug_mate_cpp)
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green?logo=opencv)](https://opencv.org/)
+[![PCL](https://img.shields.io/badge/PCL-1.x-blue?logo=c%2B%2B)](https://pointclouds.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![C++11](https://img.shields.io/badge/C%2B%2B-11-orange?logo=cplusplus)](https://en.cppreference.com/w/cpp/11)
 [![Demo Build](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml/badge.svg)](https://github.com/dull-bird/cv_debug_mate_cpp/actions/workflows/demo-build.yml)
@@ -18,9 +19,13 @@
 ## 🚀 立即体验！
 
 > **📂 示例项目: [`test_cpp/`](test_cpp/)**
+>
+> 包含了**所有**支持类型的完整测试代码，欢迎本地编译以便亲自体验！
 > 
-> 包含所有支持类型的完整演示！编译并调试即可体验 CV DebugMate。
-> 
+> ⚠️ **编译环境依赖要求:**
+> - **OpenCV** (必需): `brew install opencv` / `apt install libopencv-dev`
+> - **PCL** (可选, 用于体验3D特性): `brew install pcl` / `apt install libpcl-dev`
+>
 > ```bash
 > # macOS / Linux
 > cd test_cpp && ./build.sh && code .
@@ -34,31 +39,27 @@
 ## ⚡ 支持类型速查表
 
 | 类别 | 类型 | 可视化方式 |
-|------|------|-----------|
-| **图像 (2D)** | `cv::Mat`, `cv::Mat_<T>` | 🖼️ 图像查看器 |
-| | `cv::Mat_<cv::Vec3b>`, `cv::Mat_<cv::Vec3f>` | 🖼️ 图像查看器 |
+| :--- | :--- | :--------- |
+| **图像 (2D & 3D)** | `cv::Mat`, `cv::Mat_<T>` | 🖼️ 图像查看器 |
 | | `cv::Matx` (`Matx33f`, `Matx44d` 等) | 🖼️ 图像查看器 |
 | | `std::array<std::array<T, cols>, rows>` | 🖼️ 图像查看器 |
 | | `T[rows][cols]` (C 风格 2D 数组) | 🖼️ 图像查看器 |
 | | `T[H][W][C]` (C 风格 3D 数组, C=1,3,4) | 🖼️ 图像查看器 |
-| | `std::array<std::array<std::array<T, C>, W>, H>` | 🖼️ 图像查看器 |
-| **点云 (3D)** | `std::vector<cv::Point3f>` | 📊 3D 查看器 |
-| | `std::vector<cv::Point3d>` | 📊 3D 查看器 |
-| | `std::array<cv::Point3f, N>` | 📊 3D 查看器 |
-| | `std::array<cv::Point3d, N>` | 📊 3D 查看器 |
-| **曲线图 (1D)** | `std::vector<T>` (数值类型) | 📈 曲线查看器 |
-| | `std::array<T, N>` (数值类型) | 📈 曲线查看器 |
-| | `T[N]` (C 风格 1D 数组, 数值类型) | 📈 曲线查看器 |
-| | `std::set<T>` (数值类型) | 📈 曲线查看器 |
+| | `std::array<...<T, C>, W>, H>` | 🖼️ 图像查看器 |
+| **点云 (3D)** | `pcl::PointCloud<T>` (支持 XYZ, RGB, Normal 等) | 📊 3D 查看器 |
+| | `std::vector<cv::Point3f / cv::Point3d>` | 📊 3D 查看器 |
+| | `std::array<cv::Point3f / cv::Point3d, N>` | 📊 3D 查看器 |
+| **曲线图 (1D)** | `std::vector<T>`, `std::array<T, N>` | 📈 曲线查看器 |
+| | `T[N]` (C 风格 1D 数组), `std::set<T>` | 📈 曲线查看器 |
 | | `cv::Mat` (1×N 或 N×1, 单通道) | 📈 曲线查看器 |
-| **指针类型** | `cv::Mat*`, `cv::Matx*` | 与指向对象相同 |
-| | `std::vector<T>*`, `std::array<T,N>*` | 与指向对象相同 |
+| **指针类型** | `cv::Mat*`, `pcl::PointCloud<T>::Ptr` | 自动剥壳解读 |
+| | `std::shared_ptr<T>`, `std::unique_ptr<T>` | 自动剥壳解读 |
 
 > **数值类型**: `int`, `float`, `double`, `uchar`, `short`, `long`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t` 等
 
 > **图像深度**: `CV_8U`, `CV_8S`, `CV_16U`, `CV_16S`, `CV_32S`, `CV_32F`, `CV_64F`
 
-> **指针支持**: 支持指向上述类型的指针（如 `cv::Mat*`、`std::vector<float>*`），会自动解引用。指向同一内存地址的指针和原始变量会共享同一个可视化标签页。
+> **指针与智能指针支持**: 插件原生支持自动解包各种原始指针（如 `cv::Mat*`）以及标准库的智能指针（如 `std::shared_ptr<cv::Mat>`，`std::unique_ptr<std::vector<float>>`，`boost::shared_ptr`）。无论是 1D/2D 还是 3D 数据，只要被包装在智能指针中，插件都能自动剥壳并读取底层数据。指向同一内存地址的指针和真实变量会共享渲染标签页以节省您的屏幕空间。
 
 ---
 
@@ -66,12 +67,12 @@
 
 | 功能 | 说明 |
 |------|------|
-| **📈 1D 曲线图** | 折线/散点/直方图，自定义 X 轴，缩放平移，导出 PNG/CSV |
-| **🖼️ 2D 图像** | 多通道，自动归一化，伪彩色，100× 放大，悬停显示像素值 |
-| **📊 3D 点云** | Three.js 渲染，按 X/Y/Z 着色，可调点大小，导出 PLY |
-| **🔗 视图同步** | 配对变量实现缩放/平移/旋转联动 |
-| **🔍 自动检测** | 变量面板自动检测当前作用域内所有可视化类型，并按类别（图像、曲线、点云）分组显示 |
-| **🔄 自动刷新** | 单步调试时 Webview 自动更新 |
+| **📈 1D 曲线图** | 折线/散点/直方图，自定义 X 轴，框选缩放，无级平移，导出 PNG/CSV |
+| **🖼️ 2D 图像** | 多通道原生支持，自动极值归一化，多种伪彩色，百倍放大无损，悬停显示准确像素值 |
+| **📊 3D 点云** | 原生无缝支持 `pcl::PointCloud` 与 OpenCV 点集！Three.js 引擎驱动，按 RGB/反射率/XYZ 着色，自由调节点大小，一键导出 PLY 格式 |
+| **🔗 视图同步** | 配对多个同类型变量以实现缩放、平移以及相机视角的实时联动分析 |
+| **🔍 自动检测** | 侧边栏变量面板会自动从乱七八糟的堆栈中为您筛选出所有可供渲染的数据，并按类别分组整理 |
+| **🔄 自动刷新** | 当您执行单步调试过完代码断点时，打开的监视面板会自动且无感地跟进数据更新 |
 
 ---
 
@@ -132,10 +133,11 @@
 
 | 操作 | 方式 |
 |------|------|
-| 旋转 | 拖动 |
-| 缩放 | 滚轮 |
-| 颜色 | 按 X/Y/Z 轴切换 |
-| 导出 | Save PLY |
+| 旋转 | 鼠标左键框选拖动 |
+| 平移 | 鼠标右键按住拖动 |
+| 缩放 | 滚轮上下滚动 |
+| 颜色 | 可以选择原生 RGB/Intensity 渲染，或 X/Y/Z 空间深度热力图着色 |
+| 导出 | 导出并保存为标准 ASCII / Binary 的 .ply 模型文件 |
 
 ### 曲线查看器
 

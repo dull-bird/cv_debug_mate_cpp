@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <opencv2/opencv.hpp>
 #include <set>
 #include <thread>
@@ -486,6 +487,38 @@ void demo_pointer_types() {
             << std::endl;
   std::cout << "        will share the same visualization tab!" << std::endl;
 
+  // --- Smart pointers (shared_ptr, unique_ptr) ---
+  std::cout << "\n  --- Smart Pointers ---" << std::endl;
+  std::shared_ptr<cv::Mat> shared_mat = std::make_shared<cv::Mat>(mat_original.clone());
+  cv::putText(*shared_mat, "Shared Ptr", cv::Point(10, 80),
+              cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+  std::cout << "  shared_mat: std::shared_ptr<cv::Mat>" << std::endl;
+
+  std::unique_ptr<std::vector<float>> unique_vec(new std::vector<float>(vec_original));
+  for (size_t i = 0; i < unique_vec->size(); i++) {
+    (*unique_vec)[i] = cos(i * 0.1f) * 50.0f; // Modify slightly
+  }
+  std::cout << "  unique_vec: std::unique_ptr<std::vector<float>>" << std::endl;
+
+  std::shared_ptr<std::vector<cv::Point3f>> shared_cloud = std::make_shared<std::vector<cv::Point3f>>(cloud_original);
+  for (auto& p : *shared_cloud) p.z += 2.0f; // Shift Z upward
+  std::cout << "  shared_cloud: std::shared_ptr<std::vector<cv::Point3f>>" << std::endl;
+
+  std::shared_ptr<cv::Matx33f> shared_matx = std::make_shared<cv::Matx33f>(matx_original);
+  std::cout << "  shared_matx: std::shared_ptr<cv::Matx33f>" << std::endl;
+
+#ifdef HAVE_PCL
+  pcl::PointCloud<pcl::PointXYZ>::Ptr shared_pcl(new pcl::PointCloud<pcl::PointXYZ>());
+  shared_pcl->width = 100;
+  shared_pcl->height = 1;
+  shared_pcl->is_dense = true;
+  shared_pcl->points.resize(100);
+  for (int i = 0; i < 100; i++) {
+    shared_pcl->points[i] = pcl::PointXYZ(i * 0.1f, cos(i * 0.4f) * 2.0f, sin(i * 0.4f) * 2.0f);
+  }
+  std::cout << "  shared_pcl: pcl::PointCloud<pcl::PointXYZ>::Ptr (via PCL smart pointer)" << std::endl;
+#endif
+
   // ===== BREAKPOINT HERE =====
   int bp5 = 0; // Set breakpoint here to view pointer types
   (void)bp5;
@@ -501,6 +534,13 @@ void demo_pointer_types() {
   (void)pArray;
   (void)array2d_original;
   (void)pArray2D;
+  (void)shared_mat;
+  (void)unique_vec;
+  (void)shared_cloud;
+  (void)shared_matx;
+#ifdef HAVE_PCL
+  (void)shared_pcl;
+#endif
 }
 
 // ============================================================
