@@ -49,3 +49,8 @@ jobs:
             - name: Publish to Open VSX
               if: steps.check_msg.outputs.match == 'true'
               run: npx ovsx publish -p ${{ secrets.OPEN_VSX_TOKEN }}
+
+            # 步骤 6: 发布到 VS Code Marketplace (仅当匹配时执行)
+            - name: Publish to VS Code Marketplace
+              if: steps.check_msg.outputs.match == 'true'
+              run: npx @vscode/vsce publish -p ${{ secrets.VSCE_TOKEN }}
