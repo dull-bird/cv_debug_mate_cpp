@@ -1,6 +1,6 @@
 {
     "name": "cv-debugmate-cpp",
-    "displayName": "CV DebugMate C++",
+    "displayName": "C++ DebugMate",
     "description": "An extension for visualizing 1/2/3D data structures during C++ debugging. Inspired by Image Watch.",
     "version": "0.0.38",
     "license": "MIT",
@@ -37,7 +37,7 @@
         "commands": [
             {
                 "command": "extension.viewVariable",
-                "title": "View by CV DebugMate"
+                "title": "View by C++ DebugMate"
             },
             {
                 "command": "cv-debugmate.refreshVariables",
@@ -69,7 +69,7 @@
             "debug": [
                 {
                     "id": "cv-debugmate-variables",
-                    "name": "CV DebugMate"
+                    "name": "C++ DebugMate"
                 }
             ]
         },

@@ -1,4 +1,4 @@
-# CV DebugMate Test Project
+# C++ DebugMate Test Project
 
 This folder contains a complete test project demonstrating ALL supported types.
 
@@ -58,7 +58,7 @@ This folder contains a complete test project demonstrating ALL supported types.
 
 3. Set breakpoints at marked locations in `main.cpp`
 4. Press F5 to start debugging
-5. Use CV DebugMate to visualize variables!
+5. Use C++ DebugMate to visualize variables!
 
 ## 📋 Requirements
 

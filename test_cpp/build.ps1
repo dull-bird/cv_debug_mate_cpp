@@ -1,5 +1,5 @@
 # =============================================================
-# CV DebugMate Test - Build Script (Windows)
+# C++ DebugMate Test - Build Script (Windows)
 # =============================================================
 # Usage:
 #   .\build.ps1              # Build with auto-detected compiler
@@ -115,7 +115,7 @@ try {
     Write-Host "  1. Open test_cpp folder in VS Code"
     Write-Host "  2. Set breakpoints in main.cpp"
     Write-Host "  3. Start debugging (F5)"
-    Write-Host "  4. Use CV DebugMate to visualize!"
+    Write-Host "  4. Use C++ DebugMate to visualize!"
 }
 finally {
     Pop-Location

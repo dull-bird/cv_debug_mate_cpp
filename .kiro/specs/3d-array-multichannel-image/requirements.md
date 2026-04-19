@@ -2,9 +2,9 @@
 
 ## Introduction
 
-本功能为 CV DebugMate 扩展添加对 3D 数组（多通道图像）的支持。在 C++ 中，使用 `T[H][W][C]` 或 `std::array<std::array<std::array<T, C>, W>, H>` 来表示 RGB/BGR 等多通道图像是非常常见的做法，尤其在底层驱动、嵌入式系统或需要极致性能的场景中。
+本功能为 C++ DebugMate 扩展添加对 3D 数组（多通道图像）的支持。在 C++ 中，使用 `T[H][W][C]` 或 `std::array<std::array<std::array<T, C>, W>, H>` 来表示 RGB/BGR 等多通道图像是非常常见的做法，尤其在底层驱动、嵌入式系统或需要极致性能的场景中。
 
-当前 CV DebugMate 已支持：
+当前 C++ DebugMate 已支持：
 - 2D 数组（单通道图像）：`T[H][W]` 和 `std::array<std::array<T, W>, H>`
 - 1D 数组（曲线图）：`T[N]` 和 `std::array<T, N>`
 
@@ -16,7 +16,7 @@
 - **C_Style_3D_Array**: C 风格三维数组，如 `uint8_t img[480][640][3]`
 - **Std_3D_Array**: 三层嵌套的 std::array，如 `std::array<std::array<std::array<uint8_t, 3>, 640>, 480>`
 - **Interleaved_Format**: 交织存储格式，像素数据按 `R1G1B1 R2G2B2 ...` 顺序存储
-- **Image_Viewer**: CV DebugMate 的图像查看器组件
+- **Image_Viewer**: C++ DebugMate 的图像查看器组件
 - **Depth**: OpenCV 深度类型（CV_8U, CV_32F 等）
 - **Channels**: 图像通道数（1=灰度, 3=RGB/BGR, 4=RGBA/BGRA）
 
@@ -24,7 +24,7 @@
 
 ### Requirement 1: C 风格 3D 数组检测
 
-**User Story:** As a C++ developer, I want CV DebugMate to automatically detect C-style 3D arrays like `uint8_t img[480][640][3]`, so that I can visualize multi-channel images without manual configuration.
+**User Story:** As a C++ developer, I want C++ DebugMate to automatically detect C-style 3D arrays like `uint8_t img[480][640][3]`, so that I can visualize multi-channel images without manual configuration.
 
 #### Acceptance Criteria
 
@@ -35,7 +35,7 @@
 
 ### Requirement 2: std::array 3D 数组检测
 
-**User Story:** As a C++ developer, I want CV DebugMate to automatically detect 3-level nested std::array like `std::array<std::array<std::array<uint8_t, 3>, 640>, 480>`, so that I can visualize multi-channel images stored in modern C++ containers.
+**User Story:** As a C++ developer, I want C++ DebugMate to automatically detect 3-level nested std::array like `std::array<std::array<std::array<uint8_t, 3>, 640>, 480>`, so that I can visualize multi-channel images stored in modern C++ containers.
 
 #### Acceptance Criteria
 
@@ -68,7 +68,7 @@
 
 ### Requirement 5: Variables Panel 集成
 
-**User Story:** As a developer, I want 3D arrays to appear in the CV DebugMate variables panel with appropriate icons and size information, so that I can easily identify and click to visualize them.
+**User Story:** As a developer, I want 3D arrays to appear in the C++ DebugMate variables panel with appropriate icons and size information, so that I can easily identify and click to visualize them.
 
 #### Acceptance Criteria
 

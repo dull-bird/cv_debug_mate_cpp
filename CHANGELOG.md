@@ -1,6 +1,6 @@
 # Change Log
 
-All notable changes to the "CV DebugMate C++" extension will be documented in this file.
+All notable changes to the "C++ DebugMate" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
@@ -8,7 +8,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Added
 
-- **Variable Grouping & Categorization**: Added a new CV DebugMate side panel that automatically categorizes visualizable variables into groups (Images, Plots, Points) for better organization during debugging.
+- **Variable Grouping & Categorization**: Added a new C++ DebugMate side panel that automatically categorizes visualizable variables into groups (Images, Plots, Points) for better organization during debugging.
 - **"Add to Group" Functionality**: New command to manually add variables to groups, improving management of multiple visualization targets.
 - **Webview State Restoration**: Panels now correctly restore their internal state (zoom, pan, orientation) when the extension is reloaded or when the webview becomes ready, ensuring a seamless experience when switching focus.
 

@@ -1,8 +1,8 @@
 /**
- * CV DebugMate C++ - Test & Demo
+ * C++ DebugMate - Test & Demo
  *
  * This file contains examples of ALL supported types.
- * Set breakpoints and use CV DebugMate to visualize!
+ * Set breakpoints and use C++ DebugMate to visualize!
  *
  * Supported Types:
  *   - 2D Image: cv::Mat, cv::Mat_<T>, cv::Matx, std::array<std::array<T,C>,R>,
@@ -630,7 +630,7 @@ void demo_multithreaded() {
             << std::endl;
   std::cout << "  2. When stopped, select different threads in debugger"
             << std::endl;
-  std::cout << "  3. CV DebugMate will show variables from selected thread!"
+  std::cout << "  3. C++ DebugMate will show variables from selected thread!"
             << std::endl;
   std::cout << std::endl;
 
@@ -757,11 +757,11 @@ void demo_pcl_pointcloud() {
 // ============================================================
 int main() {
   std::cout << "========================================" << std::endl;
-  std::cout << "  CV DebugMate C++ - Test & Demo" << std::endl;
+  std::cout << "  C++ DebugMate - Test & Demo" << std::endl;
   std::cout << "========================================" << std::endl;
   std::cout << std::endl;
   std::cout << "Set breakpoints at the marked locations," << std::endl;
-  std::cout << "then use CV DebugMate to visualize!" << std::endl;
+  std::cout << "then use C++ DebugMate to visualize!" << std::endl;
 
   // Run all demos
   demo_2d_images();

@@ -55,12 +55,12 @@ Press `F5` in VS Code to launch the extension in debug mode.
 
 **Entry Point**: `src/extension.ts`
 - Activates extension on debug session start
-- Registers tree data provider for CV DebugMate panel
+- Registers tree data provider for C++ DebugMate panel
 - Handles variable visualization requests via context menu or tree view
 - Manages debug session lifecycle (start, stop, stack frame changes)
 
 **Variable Detection**: `src/cvVariablesProvider.ts`
-- Tree data provider that populates CV DebugMate panel in debug view
+- Tree data provider that populates C++ DebugMate panel in debug view
 - Scopes variable types using regex patterns and debugger commands
 - Detects uninitialized/invalid variables and shows warnings
 - Detects pointer types and dereferences them for type checking
@@ -131,7 +131,7 @@ Press `F5` in VS Code to launch the extension in debug mode.
 
 ### Data Flow
 
-1. User right-clicks variable in debug view or clicks in CV DebugMate panel
+1. User right-clicks variable in debug view or clicks in C++ DebugMate panel
 2. `extension.ts` calls `visualizeVariable()` with variable info
 3. Type detection determines viewer type (mat/plot/pointcloud)
 4. Provider (matProvider/plotProvider/pointCloudProvider) queries debugger:

@@ -1,4 +1,4 @@
-# CV DebugMate C++
+# C++ DebugMate
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.93%2B-blue?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdull-bird%2Fcv_debug_mate_cpp%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)](https://github.com/dull-bird/cv_debug_mate_cpp)
@@ -20,7 +20,7 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 
 > **📂 Example Project: [`test_cpp/`](test_cpp/)**
 >
-> Complete demo with ALL supported types! Build and debug to see CV DebugMate in action.
+> Complete demo with ALL supported types! Build and debug to see C++ DebugMate in action.
 > 
 > ⚠️ **Dependencies Required to Build the Demo:**
 > - **OpenCV** (Required): `brew install opencv` / `apt install libopencv-dev`
@@ -89,16 +89,16 @@ A Visual Studio Code extension for visualizing 1/2/3D data structures during C++
 
 ## 📖 Usage
 
-### Option 1: CV DebugMate Panel (Recommended)
+### Option 1: C++ DebugMate Panel (Recommended)
 
 1. Start a C++ debug session
 2. Open **"Run and Debug"** sidebar
-3. Find **CV DebugMate** section
+3. Find **C++ DebugMate** section
 4. Click variable name to view
 
 ### Option 2: Context Menu
 
-Right-click a variable → **"View by CV DebugMate"**
+Right-click a variable → **"View by C++ DebugMate"**
 
 ---
 
@@ -118,7 +118,7 @@ Right-click a variable → **"View by CV DebugMate"**
 
 ### Variables Panel
 
-![CV DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
+![C++ DebugMate Panel](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
 
 ---
 

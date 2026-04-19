@@ -2,7 +2,7 @@
 
 ## 概述
 
-CV DebugMate 现在可以检测未初始化的 C++ 变量，避免显示错误的大小或数据。
+C++ DebugMate 现在可以检测未初始化的 C++ 变量，避免显示错误的大小或数据。
 
 ## 工作原理
 
@@ -46,7 +46,7 @@ vec.push_back(1);      // 初始化后
 ```
 
 **在第一个断点处：**
-- CV DebugMate 会显示：`⚠️ vec (uninitialized or invalid)`
+- C++ DebugMate 会显示：`⚠️ vec (uninitialized or invalid)`
 - 不会尝试读取数据或显示错误的大小
 
 **在第二个断点处：**

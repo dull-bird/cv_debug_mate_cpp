@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# CV DebugMate Test - Build Script (macOS / Linux)
+# C++ DebugMate Test - Build Script (macOS / Linux)
 # =============================================================
 # Usage:
 #   ./build.sh          # Build with default compiler
@@ -67,5 +67,5 @@ echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Open test_cpp folder in VS Code"
 echo "  2. Set breakpoints in main.cpp"
 echo "  3. Start debugging (F5)"
-echo "  4. Use CV DebugMate to visualize!"
+echo "  4. Use C++ DebugMate to visualize!"
 

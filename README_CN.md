@@ -1,4 +1,4 @@
-# CV DebugMate C++
+# C++ DebugMate
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.93%2B-blue?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdull-bird%2Fcv_debug_mate_cpp%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue)](https://github.com/dull-bird/cv_debug_mate_cpp)
@@ -89,16 +89,16 @@
 
 ## 📖 使用方法
 
-### 方法 1：CV DebugMate 面板（推荐）
+### 方法 1：C++ DebugMate 面板（推荐）
 
 1. 启动 C++ 调试会话
 2. 打开 **"运行和调试"** 侧边栏
-3. 找到 **CV DebugMate** 区域
+3. 找到 **C++ DebugMate** 区域
 4. 点击变量名即可查看
 
 ### 方法 2：右键菜单
 
-右键变量 → **"View by CV DebugMate"**
+右键变量 → **"View by C++ DebugMate"**
 
 ---
 
@@ -114,7 +114,7 @@
 ![点云可视化](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/pointcloud.png)
 
 ### 变量面板
-![CV DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
+![C++ DebugMate 面板](https://raw.githubusercontent.com/dull-bird/cv_debug_mate_cpp/main/assets/panel_grouped.png)
 
 ---
 
